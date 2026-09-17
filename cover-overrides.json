@@ -1,0 +1,11 @@
+{
+  "US": "navy", "CA": "navy", "MX": "green", "BR": "navy", "GB": "navy", "IE": "burgundy",
+  "FR": "burgundy", "DE": "burgundy", "IT": "burgundy", "ES": "burgundy", "PT": "burgundy", "NL": "burgundy", "BE": "burgundy", "LU": "burgundy",
+  "AT": "burgundy", "SE": "burgundy", "DK": "burgundy", "FI": "burgundy", "PL": "burgundy", "CZ": "burgundy", "SK": "burgundy", "HU": "burgundy",
+  "SI": "burgundy", "RO": "burgundy", "BG": "burgundy", "GR": "burgundy", "CY": "burgundy", "MT": "burgundy", "EE": "burgundy", "LV": "burgundy", "LT": "burgundy",
+  "CH": "red", "IS": "navy", "RU": "burgundy", "UA": "navy", "GE": "burgundy", "TR": "burgundy", "KZ": "navy",
+  "CN": "burgundy", "JP": "burgundy", "KR": "navy", "IN": "navy", "PK": "green", "BD": "green", "SA": "green", "AE": "navy", "QA": "burgundy",
+  "IQ": "navy", "EG": "green", "MA": "green", "DZ": "green", "NG": "green", "KE": "navy", "ZA": "green", "AU": "navy", "NZ": "black",
+  "SG": "red", "MY": "red", "TH": "burgundy", "VN": "green", "PH": "burgundy", "ID": "green", "TW": "green", "HK": "navy", "LK": "navy",
+  "CO": "burgundy", "PE": "burgundy", "EC": "burgundy", "BO": "burgundy", "JM": "navy"
+}

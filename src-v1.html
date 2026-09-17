@@ -1,0 +1,987 @@
+<title>Stopover</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+:root {
+  --page: #EDF0EA;
+  --panel: #FFFFFF;
+  --panel-2: #F4F6F2;
+  --ink: #16221D;
+  --muted: #5C6A63;
+  --line: #D3DAD2;
+  --sea: #A8CBD5;
+  --land: #F4F2E8;
+  --coast: #8FA79B;
+  --borderline: #9C86B4;
+  --route: #D7263D;
+  --ferry: #1D6FB8;
+  --range: rgba(29, 111, 184, 0.10);
+  --range-edge: #1D6FB8;
+  --sign: #0B6B3A;
+  --sign-ink: #FFFFFF;
+  --sign-edge: #E9F3EC;
+  --fuel: #E9A21B;
+  --danger: #C42B2B;
+  --good: #1B8A4C;
+  --focus: #1D6FB8;
+  --label-halo: rgba(249, 248, 241, 0.92);
+  --display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --body: "Barlow", "Helvetica Neue", Arial, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #0C1411; --panel: #131D19; --panel-2: #18241F; --ink: #E5EDE8; --muted: #93A39A; --line: #26352F;
+    --sea: #0E2530; --land: #1C2924; --coast: #3F564C; --borderline: #7D6897; --route: #FF5C70; --ferry: #5AAAE8;
+    --range: rgba(90, 170, 232, 0.12); --range-edge: #5AAAE8; --sign: #0E7B44; --sign-ink: #FFFFFF; --sign-edge: #1B3A2A;
+    --fuel: #F2B233; --danger: #FF6B6B; --good: #4CC47E; --focus: #5AAAE8; --label-halo: rgba(20, 30, 26, 0.9);
+  }
+}
+:root[data-theme="dark"] {
+  --page: #0C1411; --panel: #131D19; --panel-2: #18241F; --ink: #E5EDE8; --muted: #93A39A; --line: #26352F;
+  --sea: #0E2530; --land: #1C2924; --coast: #3F564C; --borderline: #7D6897; --route: #FF5C70; --ferry: #5AAAE8;
+  --range: rgba(90, 170, 232, 0.12); --range-edge: #5AAAE8; --sign: #0E7B44; --sign-ink: #FFFFFF; --sign-edge: #1B3A2A;
+  --fuel: #F2B233; --danger: #FF6B6B; --good: #4CC47E; --focus: #5AAAE8; --label-halo: rgba(20, 30, 26, 0.9);
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 400 15px/1.45 var(--body); padding-inline: 16px; padding-block: 0; }
+button, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.app { max-width: 1400px; margin: 0 auto; min-height: 100%; display: grid; grid-template-rows: auto 1fr; }
+
+/* top bar */
+.bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 12px; flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 10px; }
+.shield { background: var(--fuel); color: #1d1606; font: 800 15px/1 var(--display); padding: 5px 7px 4px; border-radius: 4px 4px 10px 10px; letter-spacing: .02em; }
+.wordmark { font: 800 30px/1 var(--display); letter-spacing: .04em; text-transform: uppercase; }
+.bar nav { display: flex; gap: 6px; flex-wrap: wrap; }
+.btn { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 7px 12px; font-weight: 600; font-size: 14px; cursor: pointer; }
+.btn:hover:not(:disabled) { border-color: var(--ink); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.go { background: var(--sign); color: var(--sign-ink); border-color: var(--sign); }
+.btn.small { padding: 5px 9px; font-size: 13px; }
+.btn .cost { font: 500 11px/1 var(--mono); opacity: .7; margin-left: 4px; }
+
+/* stage */
+.stage { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 14px; padding-bottom: 16px; min-height: 0; }
+.mapwrap { position: relative; background: var(--sea); border-radius: 12px; overflow: hidden; min-height: 520px; border: 1px solid var(--line); touch-action: none; }
+#map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
+#map.dragging { cursor: grabbing; }
+.maptools { position: absolute; right: 10px; bottom: 10px; display: flex; flex-direction: column; gap: 6px; }
+.maptools button { width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; font-size: 18px; line-height: 1; }
+.legend { position: absolute; left: 10px; bottom: 10px; background: color-mix(in srgb, var(--panel) 88%, transparent); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-size: 12px; display: flex; gap: 12px; flex-wrap: wrap; max-width: calc(100% - 70px); }
+.legend i { display: inline-block; width: 18px; height: 0; border-top: 3px solid var(--route); vertical-align: middle; margin-right: 5px; }
+.legend i.f { border-top: 3px dashed var(--ferry); }
+.legend i.r { border-top: 2px dashed var(--range-edge); }
+.loading { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; background: var(--sea); z-index: 2; }
+.loading b { display: block; font: 700 26px/1.1 var(--display); text-transform: uppercase; letter-spacing: .03em; }
+.loading span { color: var(--muted); font-size: 14px; }
+
+.console { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+
+/* the road sign */
+.sign { background: var(--sign); color: var(--sign-ink); border-radius: 10px; padding: 12px 14px; box-shadow: inset 0 0 0 3px var(--sign), inset 0 0 0 5px var(--sign-edge); }
+.sign .from { font: 600 13px/1.2 var(--body); opacity: .85; display: flex; justify-content: space-between; gap: 8px; }
+.sign .to { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; margin-top: 6px; }
+.sign .arrow { width: 34px; height: 34px; display: grid; place-items: center; transition: transform .4s ease; }
+.sign .dest { font: 800 34px/0.95 var(--display); text-transform: uppercase; letter-spacing: .02em; overflow-wrap: anywhere; }
+.sign .dest small { display: block; font: 600 13px/1.3 var(--body); text-transform: none; letter-spacing: 0; opacity: .85; margin-top: 3px; }
+.sign .km { font: 700 28px/1 var(--display); text-align: right; white-space: nowrap; }
+.sign .km small { display: block; font: 500 11px/1.2 var(--body); opacity: .8; }
+
+/* dashboard */
+.dash { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: grid; gap: 10px; }
+.gaugehead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.label { font: 700 12px/1 var(--display); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.gaugeval { font: 500 13px/1 var(--mono); font-variant-numeric: tabular-nums; }
+.gauge { position: relative; height: 16px; border-radius: 4px; background: var(--panel-2); border: 1px solid var(--line); overflow: hidden; }
+.gauge .fill { position: absolute; inset: 0 auto 0 0; background: var(--fuel); transition: width .5s ease, background .3s; }
+.gauge.low .fill { background: var(--danger); }
+.gauge .ticks { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(4, 1fr); pointer-events: none; }
+.gauge .ticks span { border-right: 1px solid color-mix(in srgb, var(--ink) 25%, transparent); }
+.gauge .ticks span:last-child { border-right: 0; }
+.gaugescale { display: flex; justify-content: space-between; font: 600 11px/1 var(--display); color: var(--muted); margin-top: -4px; }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.stat { background: var(--panel-2); border-radius: 8px; padding: 8px 10px; min-width: 0; }
+.stat b { display: block; font: 700 24px/1 var(--display); font-variant-numeric: tabular-nums; }
+.tickets { display: flex; gap: 3px; margin-top: 3px; min-height: 22px; align-items: center; }
+.ticket { width: 22px; height: 16px; border-radius: 3px; background: var(--ferry); position: relative; }
+.ticket::after { content: ""; position: absolute; left: 50%; top: 2px; bottom: 2px; border-left: 1px dashed rgba(255,255,255,.7); }
+.ticket.used { background: transparent; border: 1px dashed var(--line); }
+.ticket.used::after { display: none; }
+
+/* entry */
+.entry { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: grid; gap: 8px; }
+.entryrow { position: relative; display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.entry input[type="text"] { width: 100%; min-width: 0; border: 2px solid var(--line); background: var(--panel-2); border-radius: 8px; padding: 10px 12px; font-size: 17px; font-weight: 500; }
+.entry input[type="text"]:focus { border-color: var(--sign); outline: none; }
+.hint { font-size: 13px; color: var(--muted); }
+.msg { font-size: 14px; min-height: 20px; }
+.msg.bad { color: var(--danger); }
+.msg.good { color: var(--good); }
+.sugg { position: absolute; left: 0; right: 0; top: calc(100% + 4px); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 16px 40px -18px rgba(0,0,0,.45); list-style: none; margin: 0; padding: 4px; z-index: 5; max-height: 300px; overflow-y: auto; }
+.sugg li { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 7px 8px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+.sugg li[aria-selected="true"] { background: var(--panel-2); }
+.sugg li small { color: var(--muted); display: block; font-size: 12px; }
+.sugg .rng { font: 500 11px/1.3 var(--mono); text-align: right; white-space: nowrap; color: var(--muted); }
+.sugg .rng.in { color: var(--good); }
+.tools { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.scouts { display: grid; gap: 6px; }
+.scout { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; background: var(--panel-2); border-radius: 8px; padding: 7px 10px; font-size: 14px; }
+.scout .pin { width: 22px; height: 22px; border-radius: 50%; background: var(--ferry); color: #fff; display: grid; place-items: center; font: 700 13px/1 var(--display); }
+.scout .masked { font: 500 14px/1.2 var(--mono); letter-spacing: .08em; }
+.scout small { display: block; color: var(--muted); font-size: 12px; }
+
+/* log */
+.log { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-height: 0; }
+.log ol { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 0; }
+.log li { display: grid; grid-template-columns: 16px 1fr auto; gap: 10px; position: relative; padding-bottom: 12px; }
+.log li::before { content: ""; position: absolute; left: 7px; top: 14px; bottom: -2px; border-left: 2px solid var(--route); }
+.log li.ferry::before { border-left: 2px dashed var(--ferry); }
+.log li:last-child::before { display: none; }
+.log .dot { width: 16px; height: 16px; border-radius: 50%; background: var(--panel); border: 3px solid var(--route); margin-top: 2px; }
+.log li.start .dot { background: var(--route); }
+.log .where { font-weight: 600; line-height: 1.25; }
+.log .where a { color: inherit; text-decoration-color: var(--line); }
+.log .meta { font-size: 12.5px; color: var(--muted); }
+.log .pts { font: 700 20px/1 var(--display); color: var(--good); text-align: right; white-space: nowrap; }
+.log .pts small { display: block; font: 500 10px/1.3 var(--mono); color: var(--muted); }
+.tier { display: inline-block; font: 700 11px/1 var(--display); letter-spacing: .08em; text-transform: uppercase; padding: 3px 5px 2px; border-radius: 3px; background: var(--panel-2); color: var(--muted); margin-left: 4px; vertical-align: 1px; }
+.tier.village { background: color-mix(in srgb, var(--good) 18%, transparent); color: var(--good); }
+.tier.town { background: color-mix(in srgb, var(--good) 12%, transparent); color: var(--good); }
+.newstamp { font: 700 10px/1 var(--display); letter-spacing: .1em; text-transform: uppercase; color: var(--ferry); margin-left: 4px; }
+
+/* finish */
+.finish { background: var(--panel); border: 2px solid var(--sign); border-radius: 10px; padding: 14px; display: grid; gap: 10px; }
+.finish h2 { margin: 0; font: 800 30px/1 var(--display); text-transform: uppercase; }
+.finish p { margin: 0; }
+.finish .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.finish ul { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 4px; }
+.finish ul li { background: var(--panel-2); border-radius: 5px; padding: 3px 7px; font-size: 13px; }
+.finish ul li small { color: var(--muted); }
+
+/* dialogs */
+dialog { border: 0; padding: 0; border-radius: 14px; background: var(--panel); color: var(--ink); width: min(640px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); box-shadow: 0 30px 80px -20px rgba(0,0,0,.55); }
+dialog::backdrop { background: rgba(6, 14, 10, .55); }
+.dlg { display: grid; gap: 0; }
+.dlg header { display: flex; justify-content: space-between; gap: 12px; padding: 18px 20px 12px; border-bottom: 1px solid var(--line); align-items: start; }
+.dlg h2 { margin: 0; font: 800 30px/1 var(--display); text-transform: uppercase; letter-spacing: .02em; }
+.dlg header p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+.dlg section { padding: 14px 20px; border-bottom: 1px solid var(--line); }
+.dlg section:last-of-type { border-bottom: 0; }
+.dlg footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 20px 18px; flex-wrap: wrap; }
+.x { width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--line); background: transparent; cursor: pointer; font-size: 18px; flex: none; }
+.choices { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.choice { border: 1.5px solid var(--line); background: var(--panel-2); border-radius: 8px; padding: 7px 11px; cursor: pointer; font-weight: 600; font-size: 14px; text-align: left; }
+.choice[aria-pressed="true"] { border-color: var(--sign); background: color-mix(in srgb, var(--sign) 12%, var(--panel)); }
+.choice small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
+.vehicles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
+.vehicles .choice { padding: 10px; }
+.vehicles .choice b { display: block; font: 700 20px/1.1 var(--display); text-transform: uppercase; }
+.howto ol { margin: 0; padding-left: 20px; display: grid; gap: 8px; }
+.tiers { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 8px; }
+.tiers th, .tiers td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--line); }
+.tiers td:nth-child(n+3), .tiers th:nth-child(n+3) { text-align: right; font-variant-numeric: tabular-nums; }
+.pp-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.stamps { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; max-height: 240px; overflow-y: auto; }
+.stamps span { background: var(--panel-2); border-radius: 5px; padding: 3px 7px; font-size: 13px; }
+
+@media (max-width: 980px) {
+  .stage { grid-template-columns: 1fr; }
+  .mapwrap { min-height: 0; height: 46svh; }
+}
+@media (max-width: 480px) {
+  .wordmark { font-size: 24px; }
+  .sign .dest { font-size: 28px; }
+  .vehicles { grid-template-columns: 1fr; }
+  .stats, .finish .grid, .pp-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .stat b { font-size: 20px; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }
+</style>
+
+<div class="app">
+  <header class="bar">
+    <div class="brand"><span class="shield" aria-hidden="true">E1</span><span class="wordmark">Stopover</span></div>
+    <nav>
+      <button class="btn" id="btn-new" type="button">New trip</button>
+      <button class="btn" id="btn-passport" type="button">Passport</button>
+      <button class="btn" id="btn-help" type="button">How to play</button>
+    </nav>
+  </header>
+
+  <main class="stage">
+    <div class="mapwrap">
+      <canvas id="map" aria-label="Map of your trip"></canvas>
+      <div class="loading" id="loading"><div><b>Unfolding the road atlas</b><span>Loading 225,199 settlements from GeoNames…</span></div></div>
+      <div class="legend"><span><i></i>Road</span><span><i class="f"></i>Ferry</span><span><i class="r"></i>Fuel range</span></div>
+      <div class="maptools">
+        <button id="zoom-in" type="button" aria-label="Zoom in">+</button>
+        <button id="zoom-out" type="button" aria-label="Zoom out">−</button>
+        <button id="recenter" type="button" aria-label="Fit the trip">⤢</button>
+      </div>
+    </div>
+
+    <aside class="console">
+      <div class="sign" id="sign"></div>
+      <div class="dash" id="dash"></div>
+      <div id="play"></div>
+      <div class="log" id="log"></div>
+    </aside>
+  </main>
+</div>
+
+<dialog id="dlg-new">
+  <div class="dlg">
+    <header><div><h2>Plan a trip</h2><p>Pick where, how, and how far. Longer trips need smaller towns to keep the tank topped up.</p></div><button class="x" type="button" data-close aria-label="Close">×</button></header>
+    <section>
+      <div class="label">Vehicle</div>
+      <div class="vehicles" id="opt-vehicle"></div>
+    </section>
+    <section>
+      <div class="label">Region</div>
+      <div class="choices" id="opt-region"></div>
+    </section>
+    <section>
+      <div class="label">Trip length</div>
+      <div class="choices" id="opt-length"></div>
+    </section>
+    <section>
+      <div class="label">Typing help</div>
+      <div class="choices" id="opt-assist"></div>
+    </section>
+    <footer>
+      <button class="btn" type="button" id="start-daily">Today’s daily trip</button>
+      <button class="btn go" type="button" id="start-trip">Start trip</button>
+    </footer>
+  </div>
+</dialog>
+
+<dialog id="dlg-help">
+  <div class="dlg howto">
+    <header><div><h2>How to play</h2><p>Get from the start to the destination by naming real places along the way.</p></div><button class="x" type="button" data-close aria-label="Close">×</button></header>
+    <section>
+      <ol>
+        <li><b>Name a settlement within range.</b> The dashed circle is how far your tank takes you. Any real city, town or village of 500+ people counts, from capitals to places the size of Heidelberg and much smaller.</li>
+        <li><b>Every stop refuels you</b>, but small places have small petrol stations. Capitals and big cities fill the tank; villages only top it up.</li>
+        <li><b>Smaller places score more.</b> Naming villages earns the most points, but they won't give you much fuel. Balance the two.</li>
+        <li><b>Water needs a ferry.</b> A road can cross short straits (up to 50 km). Anything wider needs a ferry ticket and a port at both ends, which is how you reach Cyprus, Mallorca or Sicily. A boat trip is the opposite: it can only moor in coastal places.</li>
+        <li><b>Stuck?</b> Scout shows three reachable places that get you closer, with only their first letter. Roadside help tops up half a tank.</li>
+      </ol>
+    </section>
+    <section>
+      <div class="label">Stops</div>
+      <table class="tiers" id="tier-table"></table>
+    </section>
+    <section>
+      <p class="hint">Settlements come from GeoNames (cities500, CC BY 4.0), and coastlines from Natural Earth. Distances are straight lines. Every place you visit is stamped in your Passport.</p>
+    </section>
+  </div>
+</dialog>
+
+<dialog id="dlg-passport">
+  <div class="dlg">
+    <header><div><h2>Passport</h2><p>Every settlement you have stopped in, across all trips.</p></div><button class="x" type="button" data-close aria-label="Close">×</button></header>
+    <section id="passport-body"></section>
+  </div>
+</dialog>
+
+<script id="geo" type="application/octet-stream">__GEO_DATA__</script>
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const fmt = n => Math.round(n).toLocaleString('en-US');
+const store = {
+  get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+
+// ---------- rules ----------
+const VEHICLES = {
+  car:  { name: 'Car',  icon: '🚗', tank: 450, gauge: 'Fuel', road: 50, ferry: true, blurb: '450 km tank · short straits by road, ferries for the rest' },
+  bike: { name: 'Bike', icon: '🚲', tank: 130, gauge: 'Energy', road: 15, ferry: true, blurb: '130 km of legs · perfect for learning small towns' },
+  boat: { name: 'Boat', icon: '⛵', tank: 650, gauge: 'Provisions', coastal: true, land: 60, blurb: '650 km of provisions · coastal ports only, no crossing land' },
+};
+const TIERS = [
+  { id: 'capital', label: 'Capital', pts: 10, refill: 1.0, test: (p, cap) => cap },
+  { id: 'metropolis', label: 'Metropolis', pts: 10, refill: 1.0, test: p => p >= 1e6, note: '1M+' },
+  { id: 'city', label: 'City', pts: 20, refill: 0.8, test: p => p >= 250000, note: '250k+' },
+  { id: 'large-town', label: 'Large town', pts: 35, refill: 0.6, test: p => p >= 50000, note: '50k+' },
+  { id: 'town', label: 'Town', pts: 55, refill: 0.45, test: p => p >= 10000, note: '10k+' },
+  { id: 'village', label: 'Village', pts: 80, refill: 0.3, test: () => true, note: 'under 10k' },
+];
+const ARRIVE_BONUS = 250, TICKET_BONUS = 25, SCOUT_COST = 20, REVEAL_COST = 10, HELP_COST = 75, FERRY_MAX = 1200;
+const REGIONS = [
+  { id: 'EU', name: 'Europe' }, { id: 'AS', name: 'Asia' }, { id: 'AF', name: 'Africa' },
+  { id: 'NA', name: 'North America' }, { id: 'SA', name: 'South America' }, { id: 'OC', name: 'Oceania' }, { id: 'ALL', name: 'Anywhere' },
+];
+const LENGTHS = [
+  { id: 'short', name: 'Short', km: [350, 700], minPop: 500000, blurb: '350–700 km' },
+  { id: 'medium', name: 'Medium', km: [700, 1400], minPop: 300000, blurb: '700–1,400 km' },
+  { id: 'long', name: 'Long', km: [1400, 2600], minPop: 200000, blurb: '1,400–2,600 km' },
+  { id: 'epic', name: 'Epic', km: [2600, 5000], minPop: 200000, blurb: '2,600–5,000 km' },
+];
+const LEN_SCALE = { car: 1, bike: 0.3, boat: 1.2 };
+
+// ---------- geometry ----------
+const R = 6371, rad = d => d * Math.PI / 180, deg = r => r * 180 / Math.PI;
+function dist(la1, lo1, la2, lo2) {
+  const a = Math.sin(rad(la2 - la1) / 2) ** 2 + Math.cos(rad(la1)) * Math.cos(rad(la2)) * Math.sin(rad(lo2 - lo1) / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+function bearing(la1, lo1, la2, lo2) {
+  const y = Math.sin(rad(lo2 - lo1)) * Math.cos(rad(la2));
+  const x = Math.cos(rad(la1)) * Math.sin(rad(la2)) - Math.sin(rad(la1)) * Math.cos(rad(la2)) * Math.cos(rad(lo2 - lo1));
+  return (deg(Math.atan2(y, x)) + 360) % 360;
+}
+const compass = b => ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(b / 45) % 8];
+function interp(la1, lo1, la2, lo2, f) {
+  const p1 = rad(la1), l1 = rad(lo1), p2 = rad(la2), l2 = rad(lo2);
+  const x1 = Math.cos(p1) * Math.cos(l1), y1 = Math.cos(p1) * Math.sin(l1), z1 = Math.sin(p1);
+  const x2 = Math.cos(p2) * Math.cos(l2), y2 = Math.cos(p2) * Math.sin(l2), z2 = Math.sin(p2);
+  const d = Math.acos(Math.max(-1, Math.min(1, x1 * x2 + y1 * y2 + z1 * z2)));
+  if (d < 1e-9) return [la1, lo1];
+  const a = Math.sin((1 - f) * d) / Math.sin(d), b = Math.sin(f * d) / Math.sin(d);
+  const x = a * x1 + b * x2, y = a * y1 + b * y2, z = a * z1 + b * z2;
+  return [deg(Math.atan2(z, Math.hypot(x, y))), deg(Math.atan2(y, x))];
+}
+function destPoint(la, lo, brng, d) {
+  const p1 = rad(la), l1 = rad(lo), t = rad(brng), dr = d / R;
+  const p2 = Math.asin(Math.sin(p1) * Math.cos(dr) + Math.cos(p1) * Math.sin(dr) * Math.cos(t));
+  const l2 = l1 + Math.atan2(Math.sin(t) * Math.sin(dr) * Math.cos(p1), Math.cos(dr) - Math.sin(p1) * Math.sin(p2));
+  return [deg(p2), ((deg(l2) + 540) % 360) - 180];
+}
+
+// ---------- data ----------
+let G = null; // { n, name[], alts[], lat, lon, pop, cc, fc, adm, countries, admList, mask, land, border }
+const fold = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/ß/g, 'ss').replace(/[^a-z0-9]+/g, ' ').trim();
+const flagEmoji = cc => cc && cc.length === 2 ? String.fromCodePoint(...[...cc].map(c => 127397 + c.charCodeAt(0))) : '';
+
+async function loadData() {
+  const b64 = $('geo').textContent.trim();
+  const bin = atob(b64); const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const buf = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+  const dv = new DataView(buf);
+  const metaLen = dv.getUint32(0, true), namesLen = dv.getUint32(4, true);
+  const td = new TextDecoder();
+  let off = 8;
+  const meta = JSON.parse(td.decode(new Uint8Array(buf, off, metaLen))); off += metaLen;
+  const namesText = td.decode(new Uint8Array(buf, off, namesLen)); off += namesLen;
+  const n = meta.n, lat = new Float32Array(n), lon = new Float32Array(n), pop = new Uint32Array(n), cc = new Uint8Array(n), fc = new Uint8Array(n);
+  for (let i = 0, o = off; i < n; i++, o += 14) { lat[i] = dv.getInt32(o, true) / 1e5; lon[i] = dv.getInt32(o + 4, true) / 1e5; pop[i] = dv.getUint32(o + 8, true); cc[i] = dv.getUint8(o + 12); fc[i] = dv.getUint8(o + 13); }
+  off += meta.bytes.bin;
+  const adm = new Uint16Array(buf.slice(off, off + meta.bytes.adm)); off += meta.bytes.adm;
+  const mask = new Uint8Array(buf.slice(off, off + meta.bytes.mask)); off += meta.bytes.mask;
+  const landArr = new Int32Array(buf.slice(off, off + meta.bytes.land)); off += meta.bytes.land;
+  const borderArr = new Int32Array(buf.slice(off, off + meta.bytes.border));
+  const name = new Array(n), alts = new Array(n);
+  const lines = namesText.split('\n');
+  for (let i = 0; i < n; i++) { const parts = lines[i].split('\t'); name[i] = parts[0]; alts[i] = parts.length > 1 ? parts.slice(1) : null; }
+  const capital = meta.fc.indexOf('PPLC');
+  G = { n, name, alts, lat, lon, pop, cc, fc, adm, capital, countries: meta.countries, admList: meta.adm, mask, maskW: meta.maskW, maskH: meta.maskH,
+    land: decodeLines(landArr), border: decodeLines(borderArr) };
+  G.contOf = G.countries.map(c => c[2]);
+  // spatial grid, 1° cells
+  G.grid = new Map();
+  for (let i = 0; i < n; i++) { const k = (Math.floor(lat[i]) + 90) * 360 + (Math.floor(lon[i]) + 180); let a = G.grid.get(k); if (!a) G.grid.set(k, a = []); a.push(i); }
+  G.coastCache = new Int8Array(n);
+  // country label anchors: population-weighted centre of its settlements (unit vectors, so it survives the antimeridian)
+  const acc = G.countries.map(() => [0, 0, 0, 0]);
+  for (let i = 0; i < n; i++) { const w = Math.sqrt(pop[i] + 1), a = acc[cc[i]], p = rad(lat[i]), l = rad(lon[i]); a[0] += w * Math.cos(p) * Math.cos(l); a[1] += w * Math.cos(p) * Math.sin(l); a[2] += w * Math.sin(p); a[3] += pop[i]; }
+  G.anchors = acc.map((a, i) => a[3] > 300000 ? { i, pop: a[3], lat: deg(Math.atan2(a[2], Math.hypot(a[0], a[1]))), lon: deg(Math.atan2(a[1], a[0])) } : null).filter(Boolean).sort((x, y) => y.pop - x.pop);
+}
+function decodeLines(arr) {
+  const out = []; let i = 0;
+  while (i < arr.length) {
+    const len = arr[i++]; const pts = new Float32Array(len * 2); let x = 0, y = 0, minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
+    for (let k = 0; k < len; k++) { x += arr[i++]; y += arr[i++]; const lx = x / 100, ly = y / 100; pts[2 * k] = lx; pts[2 * k + 1] = ly; if (lx < minX) minX = lx; if (lx > maxX) maxX = lx; if (ly < minY) minY = ly; if (ly > maxY) maxY = ly; }
+    out.push({ pts, minX, maxX, minY, maxY });
+  }
+  return out;
+}
+let searchIndex = null;
+function buildSearch() {
+  const keys = [], ids = [];
+  for (let i = 0; i < G.n; i++) {
+    keys.push(fold(G.name[i])); ids.push(i);
+    if (G.alts[i]) for (const a of G.alts[i]) { keys.push(fold(a)); ids.push(i); }
+  }
+  const order = Array.from(keys.keys()).sort((a, b) => keys[a] < keys[b] ? -1 : keys[a] > keys[b] ? 1 : ids[a] - ids[b]);
+  searchIndex = { keys: order.map(o => keys[o]), ids: Int32Array.from(order.map(o => ids[o])) };
+}
+function lowerBound(key) { let lo = 0, hi = searchIndex.keys.length; while (lo < hi) { const m = (lo + hi) >> 1; if (searchIndex.keys[m] < key) lo = m + 1; else hi = m; } return lo; }
+function prefixIds(prefix, limit = 4000) {
+  const out = new Set(); for (let i = lowerBound(prefix); i < searchIndex.keys.length && out.size < limit; i++) { if (!searchIndex.keys[i].startsWith(prefix)) break; out.add(searchIndex.ids[i]); }
+  return [...out];
+}
+function exactIds(key) { const out = new Set(); for (let i = lowerBound(key); i < searchIndex.keys.length; i++) { const k = searchIndex.keys[i]; if (k === key || k.startsWith(key + ' ')) out.add(searchIndex.ids[i]); else if (!k.startsWith(key)) break; } return [...out]; }
+function nearby(la, lo, km) {
+  const out = [], dLat = km / 111, dLon = km / (111 * Math.max(0.05, Math.cos(rad(la))));
+  const r0 = Math.floor(la - dLat), r1 = Math.floor(la + dLat), c0 = Math.floor(lo - dLon), c1 = Math.floor(lo + dLon);
+  for (let r = Math.max(-90, r0); r <= Math.min(89, r1); r++) for (let c = c0; c <= c1; c++) {
+    const cw = ((c + 180) % 360 + 360) % 360; const a = G.grid.get((r + 90) * 360 + cw); if (a) for (const id of a) out.push(id);
+  }
+  return out;
+}
+const isLand = (la, lo) => { const r = Math.floor((90 - la) * 10), c = Math.floor(((((lo + 180) % 360) + 360) % 360) * 10); if (r < 0 || r >= G.maskH) return la < 0; const b = r * G.maskW + c; return (G.mask[b >> 3] & (1 << (b & 7))) !== 0; };
+function coastal(id) {
+  if (G.coastCache[id]) return G.coastCache[id] > 0;
+  let c = !isLand(G.lat[id], G.lon[id]);
+  for (let ring = 4; !c && ring <= 12; ring += 4) for (let b = 0; b < 360 && !c; b += 30) { const [la, lo] = destPoint(G.lat[id], G.lon[id], b, ring); if (!isLand(la, lo)) c = true; }
+  G.coastCache[id] = c ? 1 : -1; return c;
+}
+function legInfo(a, b) {
+  const d = dist(G.lat[a], G.lon[a], G.lat[b], G.lon[b]);
+  const steps = Math.max(2, Math.min(600, Math.ceil(d / 4))), step = d / steps;
+  let water = 0, land = 0, waterRun = 0, landRun = 0, run = 0, prev = null;
+  for (let i = 1; i <= steps; i++) {
+    const [la, lo] = interp(G.lat[a], G.lon[a], G.lat[b], G.lon[b], i / steps);
+    const l = i === steps ? true : isLand(la, lo);
+    if (l) land += step; else water += step;
+    if (l === prev) run += step; else run = step;
+    prev = l;
+    if (l) landRun = Math.max(landRun, run); else waterRun = Math.max(waterRun, run);
+  }
+  return { d, water, land, waterRun, landRun };
+}
+const tierOf = id => TIERS.find(t => t.test(G.pop[id], G.fc[id] === G.capital));
+const countryName = id => G.countries[G.cc[id]][1];
+const ccOf = id => G.countries[G.cc[id]][0];
+const placeLine = id => { const a = G.admList[G.adm[id]]; return `${a && a !== G.name[id] ? a + ', ' : ''}${countryName(id)}`; };
+
+// Can this vehicle go from a to b right now?
+function checkLeg(vehicleId, a, b, fuel, tickets) {
+  const v = VEHICLES[vehicleId], info = legInfo(a, b);
+  if (v.coastal) {
+    if (!coastal(b)) return { ok: false, info, why: 'inland' };
+    if (info.landRun > v.land) return { ok: false, info, why: 'overland' };
+    if (info.d > fuel) return { ok: false, info, why: 'range', need: info.d };
+    return { ok: true, info, kind: 'sail', fuel: info.d };
+  }
+  if (info.waterRun <= v.road) {
+    if (info.d > fuel) return { ok: false, info, why: 'range', need: info.d };
+    return { ok: true, info, kind: 'road', fuel: info.d };
+  }
+  if (info.waterRun > FERRY_MAX) return { ok: false, info, why: 'ocean' };
+  if (!coastal(a) || !coastal(b)) return { ok: false, info, why: 'port', inland: !coastal(a) ? a : b };
+  if (tickets <= 0) return { ok: false, info, why: 'tickets' };
+  if (info.land > fuel) return { ok: false, info, why: 'range', need: info.land };
+  return { ok: true, info, kind: 'ferry', fuel: info.land, ticket: 1 };
+}
+function explain(res, id) {
+  const nm = G.name[id], i = res.info;
+  switch (res.why) {
+    case 'range': return `${nm} is ${fmt(res.need)} km of ${res.need === i.d ? 'travel' : 'driving'} away, but you have ${fmt(S.fuel)} km left in the tank.`;
+    case 'inland': return `${nm} is inland, and your boat can only moor in coastal places.`;
+    case 'overland': return `There's ${fmt(i.landRun)} km of land between here and ${nm}. A boat needs open water.`;
+    case 'ocean': return `${fmt(i.waterRun)} km of open water is too far even for a ferry (the limit is ${fmt(FERRY_MAX)} km).`;
+    case 'port': return `Getting to ${nm} means crossing ${fmt(i.waterRun)} km of water, and ferries need a port at both ends. ${G.name[res.inland]} is too far inland.`;
+    case 'tickets': return `Getting to ${nm} means crossing ${fmt(i.waterRun)} km of water, and you're out of ferry tickets.`;
+    default: return `You can't reach ${nm} from here.`;
+  }
+}
+
+// ---------- trip generation ----------
+function rng(seed) { let a = 0; for (const ch of String(seed)) a = Math.imul(a ^ ch.charCodeAt(0), 2654435761) >>> 0; return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function planRoute(vehicleId, start, dest, maxTickets) {
+  const v = VEHICLES[vehicleId];
+  const hop = v.tank * (vehicleId === 'car' ? 0.6 : 0.45), minPop = vehicleId === 'car' ? 50000 : 10000;
+  const prev = new Map([[start, -1]]), usedT = new Map([[start, 0]]);
+  let frontier = [start], depth = 0, budget = 60000;
+  while (frontier.length && depth < 40) {
+    const next = [];
+    // explore towards the destination first
+    frontier.sort((x, y) => dist(G.lat[x], G.lon[x], G.lat[dest], G.lon[dest]) - dist(G.lat[y], G.lon[y], G.lat[dest], G.lon[dest]));
+    for (const u of frontier) {
+      for (const w of nearby(G.lat[u], G.lon[u], hop)) {
+        if (w !== dest && (G.pop[w] < minPop || prev.has(w))) continue;
+        if (prev.has(w) && usedT.get(w) <= usedT.get(u)) continue;
+        if (dist(G.lat[u], G.lon[u], G.lat[w], G.lon[w]) > hop) continue;
+        if (--budget < 0) return null;
+        if (v.coastal && !coastal(w)) continue;
+        const res = checkLeg(vehicleId, u, w, hop, maxTickets - usedT.get(u));
+        if (!res.ok) continue;
+        prev.set(w, u); usedT.set(w, usedT.get(u) + (res.ticket || 0));
+        if (w === dest) { const path = [dest]; let p = u; while (p !== -1) { path.unshift(p); p = prev.get(p); } return { path, tickets: usedT.get(w) }; }
+        next.push(w);
+      }
+    }
+    frontier = next; depth++;
+  }
+  return null;
+}
+function generateTrip(opts, seed) {
+  const r = rng(seed), v = VEHICLES[opts.vehicle], len = LENGTHS.find(l => l.id === opts.length);
+  const [kmMin, kmMax] = len.km.map(k => k * LEN_SCALE[opts.vehicle]);
+  const minPop = opts.vehicle === 'bike' ? Math.min(len.minPop, 100000) : len.minPop;
+  const inRegion = id => opts.region === 'ALL' ? G.contOf[G.cc[id]] !== 'AN' : G.contOf[G.cc[id]] === opts.region;
+  const pool = [];
+  for (let i = 0; i < G.n && G.pop[i] >= 50000; i++) if ((G.pop[i] >= minPop || G.fc[i] === G.capital) && inRegion(i) && (!v.coastal || coastal(i))) pool.push(i);
+  const t0 = performance.now();
+  for (let attempt = 0; attempt < 60 && performance.now() - t0 < 3000; attempt++) {
+    const s = pool[Math.floor(r() * pool.length)];
+    if (v.coastal && !coastal(s)) continue;
+    const cands = pool.filter(i => { if (i === s) return false; const d = dist(G.lat[s], G.lon[s], G.lat[i], G.lon[i]); return d >= kmMin && d <= kmMax; });
+    if (!cands.length) continue;
+    const d = cands[Math.floor(r() * cands.length)];
+    if (v.coastal && !coastal(d)) continue;
+    const plan = planRoute(opts.vehicle, s, d, 3);
+    if (!plan || plan.path.length < 3) continue;
+    return { start: s, dest: d, par: plan.path, tickets: v.ferry ? Math.max(2, plan.tickets + 1) : 0 };
+  }
+  return null;
+}
+
+// ---------- state ----------
+let S = null; // current trip state
+let opts = Object.assign({ vehicle: 'car', region: 'EU', length: 'short', assist: 'explorer' }, store.get('stopover-opts') || {});
+const passport = Object.assign({ stamps: {}, trips: 0, best: {} }, store.get('stopover-passport') || {});
+const stampKey = id => `${G.name[id]}|${ccOf(id)}|${G.lat[id].toFixed(2)}|${G.lon[id].toFixed(2)}`;
+const save = () => { store.set('stopover-trip', S); };
+
+function startTrip(o, daily) {
+  const today = new Date().toISOString().slice(0, 10);
+  const seed = daily ? 'daily-' + today : 'trip-' + Date.now() + Math.random();
+  if (daily) o = { ...o, vehicle: 'car', length: 'medium', region: ['EU', 'NA', 'AS', 'EU', 'SA', 'AF', 'EU'][new Date().getDay()] };
+  const trip = generateTrip(o, seed);
+  if (!trip) { setMsg("Couldn't find a workable route with those settings. Try another region or length.", 'bad'); return false; }
+  const v = VEHICLES[o.vehicle];
+  S = { v: 1, daily: daily ? today : null, opts: o, start: trip.start, dest: trip.dest, par: trip.par, cur: trip.start, fuel: v.tank, tickets: trip.tickets, ticketsTotal: trip.tickets,
+    stops: [], pts: 0, penalties: 0, scouts: [], helps: 0, done: false, gaveUp: false, km: 0 };
+  hintIds = []; view.follow = true;
+  save(); render(); fitView(true);
+  setMsg(`Name a place within ${fmt(v.tank)} km of ${G.name[trip.start]} to set off.`);
+  return true;
+}
+
+function travel(id) {
+  if (S.done) return;
+  if (id === S.cur || id === S.start || S.stops.some(s => s.id === id)) { setMsg(`You've already stopped in ${G.name[id]}. Pick somewhere new.`, 'bad'); return; }
+  const res = checkLeg(S.opts.vehicle, S.cur, id, S.fuel, S.tickets);
+  if (!res.ok) { setMsg(explain(res, id), 'bad'); flashRange(); return; }
+  const v = VEHICLES[S.opts.vehicle], tier = tierOf(id), key = stampKey(id), fresh = !passport.stamps[key];
+  const arrived = id === S.dest;
+  S.fuel = Math.max(0, S.fuel - res.fuel);
+  const before = S.fuel;
+  if (!arrived) S.fuel = Math.min(v.tank, S.fuel + v.tank * tier.refill);
+  if (res.ticket) S.tickets -= 1;
+  const pts = arrived ? 0 : tier.pts;
+  S.stops.push({ id, kind: res.kind, km: res.info.d, pts, refill: S.fuel - before, tier: tier.id, fresh });
+  S.km += res.info.d; S.pts += pts; S.cur = id; S.scouts = []; hintIds = [];
+  if (fresh) passport.stamps[key] = Date.now();
+  if (arrived) finishTrip(false);
+  else {
+    const left = dist(G.lat[id], G.lon[id], G.lat[S.dest], G.lon[S.dest]);
+    setMsg(`${res.kind === 'ferry' ? 'Ferry crossing done. ' : ''}Welcome to ${G.name[id]}: +${pts} pts, ${v.gauge.toLowerCase()} topped up by ${fmt(S.fuel - before)} km. ${fmt(left)} km to ${G.name[S.dest]}.`, 'good');
+  }
+  store.set('stopover-passport', passport);
+  save(); render(); fitView(false);
+}
+
+function finishTrip(gaveUp) {
+  S.done = true; S.gaveUp = gaveUp;
+  if (!gaveUp) {
+    S.bonus = ARRIVE_BONUS + S.tickets * TICKET_BONUS;
+    S.total = Math.max(0, S.pts + S.bonus - S.penalties);
+    passport.trips += 1;
+    const bk = `${S.opts.vehicle}-${S.opts.length}`; passport.best[bk] = Math.max(passport.best[bk] || 0, S.total);
+    store.set('stopover-passport', passport);
+    setMsg(`You made it to ${G.name[S.dest]}!`, 'good');
+  } else { S.total = 0; setMsg(`Trip abandoned. The dashed grey line shows a route that works.`); }
+  S.passed = passedTowns();
+}
+
+function passedTowns() {
+  const seen = new Set([S.start, ...S.stops.map(s => s.id)]), found = new Map();
+  let prev = S.start;
+  for (const s of S.stops) {
+    const d = dist(G.lat[prev], G.lon[prev], G.lat[s.id], G.lon[s.id]), steps = Math.max(1, Math.ceil(d / 10));
+    if (s.kind !== 'ferry') for (let i = 0; i <= steps; i++) {
+      const [la, lo] = interp(G.lat[prev], G.lon[prev], G.lat[s.id], G.lon[s.id], i / steps);
+      for (const id of nearby(la, lo, 12)) if (!seen.has(id) && G.pop[id] >= 2000 && dist(la, lo, G.lat[id], G.lon[id]) <= 12) found.set(id, true);
+    }
+    prev = s.id;
+  }
+  return [...found.keys()].sort((a, b) => G.pop[b] - G.pop[a]).slice(0, 12);
+}
+
+// ---------- scouting ----------
+let hintIds = [];
+function scout() {
+  if (S.done || S.scouts.length) return;
+  const v = VEHICLES[S.opts.vehicle], here = S.cur, dHere = dist(G.lat[here], G.lon[here], G.lat[S.dest], G.lon[S.dest]);
+  const taken = new Set([S.start, ...S.stops.map(s => s.id)]);
+  const reach = Math.min(S.fuel, v.coastal ? v.tank : Math.max(S.fuel, 1300));
+  const cands = nearby(G.lat[here], G.lon[here], reach).filter(id => !taken.has(id) && dist(G.lat[here], G.lon[here], G.lat[id], G.lon[id]) <= reach)
+    .map(id => ({ id, gain: dHere - dist(G.lat[id], G.lon[id], G.lat[S.dest], G.lon[S.dest]) })).filter(c => c.gain > 0)
+    .sort((a, b) => b.gain - a.gain);
+  const picks = [];
+  const bands = [id => G.pop[id] >= 250000 || G.fc[id] === G.capital, id => G.pop[id] >= 10000 && G.pop[id] < 250000, id => G.pop[id] < 10000];
+  for (const band of bands) {
+    let checked = 0;
+    for (const c of cands) {
+      if (!band(c.id) || picks.includes(c.id)) continue;
+      if (picks.some(p => dist(G.lat[p], G.lon[p], G.lat[c.id], G.lon[c.id]) < Math.max(25, reach * 0.12))) continue;
+      if (++checked > 120) break;
+      if (checkLeg(S.opts.vehicle, here, c.id, S.fuel, S.tickets).ok || c.id === S.dest) { picks.push(c.id); break; }
+    }
+  }
+  if (!picks.length) { setMsg('Your scout found nothing reachable that gets you closer. Try roadside help, or head sideways.', 'bad'); return; }
+  S.penalties += SCOUT_COST;
+  S.scouts = picks.map(id => ({ id, revealed: false }));
+  hintIds = picks;
+  save(); render(); fitView(false);
+}
+const mask = s => s.split('').map((ch, i) => i === 0 || /[\s\-']/.test(ch) ? ch : '·').join('');
+
+// ---------- rendering: console ----------
+function setMsg(text, cls = '') { const el = $('msg'); if (el) { el.textContent = text; el.className = 'msg ' + cls; } lastMsg = { text, cls }; }
+let lastMsg = { text: '', cls: '' };
+
+function render() {
+  if (!S) return;
+  const v = VEHICLES[S.opts.vehicle];
+  const dLeft = dist(G.lat[S.cur], G.lon[S.cur], G.lat[S.dest], G.lon[S.dest]);
+  const brg = bearing(G.lat[S.cur], G.lon[S.cur], G.lat[S.dest], G.lon[S.dest]);
+  $('sign').innerHTML = `
+    <div class="from"><span>From ${flagEmoji(ccOf(S.start))} ${esc(G.name[S.start])}</span><span>${S.daily ? 'Daily · ' + S.daily : esc(v.icon + ' ' + v.name + ' · ' + LENGTHS.find(l => l.id === S.opts.length).name)}</span></div>
+    <div class="to">
+      <div class="arrow" style="transform: rotate(${Math.round(brg)}deg)" aria-hidden="true"><svg width="30" height="30" viewBox="0 0 30 30"><path d="M15 2 L25 16 H18 V28 H12 V16 H5 Z" fill="currentColor"/></svg></div>
+      <div class="dest">${flagEmoji(ccOf(S.dest))} ${esc(G.name[S.dest])}<small>${esc(placeLine(S.dest))}</small></div>
+      <div class="km">${S.done && !S.gaveUp ? 'Arrived' : fmt(dLeft) + ' km'}<small>${S.done && !S.gaveUp ? '' : compass(brg) + ' · as the crow flies'}</small></div>
+    </div>`;
+  const pct = Math.max(0, Math.min(100, S.fuel / v.tank * 100));
+  $('dash').innerHTML = `
+    <div><div class="gaugehead"><span class="label">${v.gauge}</span><span class="gaugeval">${fmt(S.fuel)} / ${fmt(v.tank)} km</span></div>
+    <div class="gauge ${pct < 25 ? 'low' : ''}" role="meter" aria-valuemin="0" aria-valuemax="${v.tank}" aria-valuenow="${Math.round(S.fuel)}" aria-label="${v.gauge} range"><div class="fill" style="width:${pct}%"></div><div class="ticks"><span></span><span></span><span></span><span></span></div></div>
+    <div class="gaugescale"><span>E</span><span>½</span><span>F</span></div></div>
+    <div class="stats">
+      <div class="stat"><span class="label">Points</span><b>${fmt(S.done && !S.gaveUp ? S.total : S.pts - S.penalties)}</b></div>
+      <div class="stat"><span class="label">Stops</span><b>${S.stops.length}</b></div>
+      <div class="stat"><span class="label">${v.ferry ? 'Ferry tickets' : 'Travelled'}</span>${v.ferry ? `<div class="tickets">${Array.from({ length: S.ticketsTotal }, (_, i) => `<span class="ticket ${i >= S.tickets ? 'used' : ''}"></span>`).join('') || '<span class="hint">none</span>'}</div>` : `<b>${fmt(S.km)}</b>`}</div>
+    </div>`;
+
+  if (!S.done) {
+    const typing = $('entry-input');
+    const keep = typing ? { value: typing.value, focus: document.activeElement === typing } : null;
+    $('play').innerHTML = `
+      <div class="entry">
+        <label class="label" for="entry-input">Next stop · within ${fmt(S.fuel)} km of ${esc(G.name[S.cur])}</label>
+        <form class="entryrow" id="entry-form" autocomplete="off">
+          <input type="text" id="entry-input" placeholder="${S.stops.length ? 'Name a city, town or village' : 'e.g. a town on the way'}" spellcheck="false" aria-autocomplete="list" aria-controls="sugg">
+          <button class="btn go" type="submit">Go ${v.icon}</button>
+          <ul class="sugg" id="sugg" role="listbox" hidden></ul>
+        </form>
+        <div class="msg ${lastMsg.cls}" id="msg" aria-live="polite">${esc(lastMsg.text)}</div>
+        ${S.scouts.length ? `<div class="scouts">${S.scouts.map((sc, i) => `
+          <div class="scout"><span class="pin">${i + 1}</span><div><span class="masked">${esc(sc.revealed ? G.name[sc.id] : mask(G.name[sc.id]))}</span><small>${flagEmoji(ccOf(sc.id))} ${esc(tierOf(sc.id).label)} · ${fmt(dist(G.lat[S.cur], G.lon[S.cur], G.lat[sc.id], G.lon[sc.id]))} km ${compass(bearing(G.lat[S.cur], G.lon[S.cur], G.lat[sc.id], G.lon[sc.id]))}</small></div>
+          ${sc.revealed ? '' : `<button class="btn small" type="button" data-reveal="${i}">Reveal<span class="cost">−${REVEAL_COST}</span></button>`}</div>`).join('')}</div>` : ''}
+        <div class="tools">
+          <button class="btn small" type="button" id="btn-scout" ${S.scouts.length ? 'disabled' : ''}>Scout ahead<span class="cost">−${SCOUT_COST}</span></button>
+          <button class="btn small" type="button" id="btn-help-road" ${S.fuel >= v.tank / 2 ? 'disabled' : ''}>${v.coastal ? 'Resupply at sea' : S.opts.vehicle === 'bike' ? 'Rest stop' : 'Roadside help'}<span class="cost">−${HELP_COST}</span></button>
+          <button class="btn small" type="button" id="btn-giveup">Give up</button>
+        </div>
+      </div>`;
+    wireEntry();
+    if (keep) { $('entry-input').value = keep.value; if (keep.focus) $('entry-input').focus(); }
+  } else {
+    const bonus = S.gaveUp ? '' : `<div class="grid">
+        <div class="stat"><span class="label">Stops</span><b>${S.stops.length}</b></div>
+        <div class="stat"><span class="label">Stop points</span><b>${fmt(S.pts)}</b></div>
+        <div class="stat"><span class="label">Arrival bonus</span><b>+${fmt(S.bonus)}</b></div>
+      </div>`;
+    const bk = `${S.opts.vehicle}-${S.opts.length}`;
+    $('play').innerHTML = `
+      <div class="finish">
+        <h2>${S.gaveUp ? 'Trip abandoned' : `${fmt(S.total)} points`}</h2>
+        <p>${S.gaveUp ? `A route that works: ${S.par.map(id => esc(G.name[id])).join(' → ')}.` : `${fmt(S.km)} km through ${new Set(S.stops.map(s => ccOf(s.id))).size} ${new Set(S.stops.map(s => ccOf(s.id))).size === 1 ? 'country' : 'countries'}${S.penalties ? `, −${S.penalties} for scouting and help` : ''}. Best for ${VEHICLES[S.opts.vehicle].name.toLowerCase()} · ${S.opts.length}: ${fmt(passport.best[bk] || S.total)}.`}</p>
+        ${bonus}
+        ${S.gaveUp ? '' : `<p class="hint">A short route with only big cities: ${S.par.map(id => esc(G.name[id])).join(' → ')} (${S.par.length - 2} stops).</p>`}
+        ${S.passed && S.passed.length ? `<div><div class="label" style="margin-bottom:6px">Places you drove right past</div><ul>${S.passed.map(id => `<li>${flagEmoji(ccOf(id))} ${esc(G.name[id])} <small>${fmt(G.pop[id])}</small></li>`).join('')}</ul></div>` : ''}
+        <div class="tools"><button class="btn go" type="button" id="btn-again">Next trip</button><button class="btn" type="button" id="btn-change">Change settings</button></div>
+      </div>`;
+    $('btn-again').onclick = () => startTrip(opts, false);
+    $('btn-change').onclick = openNew;
+  }
+
+  const items = [`<li class="start"><span class="dot"></span><div><div class="where">${flagEmoji(ccOf(S.start))} ${esc(G.name[S.start])}</div><div class="meta">Start · ${esc(placeLine(S.start))}</div></div><div></div></li>`]
+    .concat(S.stops.map(s => {
+      const t = TIERS.find(x => x.id === s.tier), arrived = s.id === S.dest;
+      return `<li class="${s.kind === 'ferry' ? 'ferry' : ''}"><span class="dot"></span>
+        <div><div class="where"><a href="https://en.wikipedia.org/w/index.php?search=${encodeURIComponent(G.name[s.id] + ' ' + countryName(s.id))}" target="_blank" rel="noopener">${flagEmoji(ccOf(s.id))} ${esc(G.name[s.id])}</a>${arrived ? '<span class="tier">Destination</span>' : `<span class="tier ${t.id}">${t.label}</span>`}${s.fresh ? '<span class="newstamp">New stamp</span>' : ''}</div>
+        <div class="meta">${esc(placeLine(s.id))} · pop ${fmt(G.pop[s.id])} · ${s.kind === 'ferry' ? '⛴ ' : ''}${fmt(s.km)} km${arrived ? '' : ` · +${fmt(s.refill)} km ${VEHICLES[S.opts.vehicle].gauge.toLowerCase()}`}</div></div>
+        <div class="pts">${arrived ? '🏁' : '+' + s.pts}</div></li>`;
+    }).reverse());
+  $('log').innerHTML = `<div class="label">Route log</div><ol>${[items[0], ...items.slice(1).reverse()].join('')}</ol>`;
+  draw();
+}
+
+// ---------- entry & suggestions ----------
+let suggIds = [], suggSel = -1;
+function wireEntry() {
+  const input = $('entry-input'), list = $('sugg');
+  input.addEventListener('input', () => {
+    suggSel = -1;
+    if (opts.assist !== 'explorer' || !searchIndex) { list.hidden = true; return; }
+    const key = fold(input.value);
+    if (key.length < 2) { list.hidden = true; suggIds = []; return; }
+    suggIds = prefixIds(key).sort((a, b) => G.pop[b] - G.pop[a]).slice(0, 8);
+    if (!suggIds.length) { list.hidden = true; return; }
+    list.innerHTML = suggIds.map((id, i) => {
+      const d = dist(G.lat[S.cur], G.lon[S.cur], G.lat[id], G.lon[id]);
+      const inRange = d <= S.fuel;
+      return `<li role="option" id="sg-${i}" data-i="${i}" aria-selected="false"><div>${flagEmoji(ccOf(id))} ${esc(G.name[id])}<small>${esc(placeLine(id))} · ${esc(tierOf(id).label)}</small></div><span class="rng ${inRange ? 'in' : ''}">${fmt(d)} km<br>${inRange ? 'in range' : 'too far'}</span></li>`;
+    }).join('');
+    list.hidden = false;
+  });
+  const submit = () => {
+    if (!list.hidden && suggSel >= 0) { const id = suggIds[suggSel]; list.hidden = true; input.value = ''; travel(id); return; }
+    list.hidden = true; submitName(input.value);
+  };
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); submit(); return; }
+    if (list.hidden || !suggIds.length) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      suggSel = (suggSel + (e.key === 'ArrowDown' ? 1 : -1) + suggIds.length) % suggIds.length;
+      list.querySelectorAll('li').forEach((li, i) => li.setAttribute('aria-selected', String(i === suggSel)));
+      input.setAttribute('aria-activedescendant', 'sg-' + suggSel);
+    } else if (e.key === 'Escape') { list.hidden = true; }
+  });
+  input.addEventListener('blur', () => setTimeout(() => { if (list) list.hidden = true; }, 150));
+  list.addEventListener('mousedown', e => { const li = e.target.closest('li[data-i]'); if (li) { e.preventDefault(); list.hidden = true; input.value = ''; travel(suggIds[+li.dataset.i]); } });
+  $('entry-form').addEventListener('submit', e => { e.preventDefault(); submit(); });
+  $('btn-scout').onclick = scout;
+  $('btn-help-road').onclick = () => { const v = VEHICLES[S.opts.vehicle]; S.fuel = Math.max(S.fuel, v.tank / 2); S.penalties += HELP_COST; S.helps++; setMsg(`Help arrived: ${v.gauge.toLowerCase()} is back to half. −${HELP_COST} pts.`); save(); render(); fitView(false); };
+  $('btn-giveup').onclick = () => { if (confirm('Give up this trip? You will see a route that works.')) { finishTrip(true); save(); render(); fitView(true); } };
+  document.querySelectorAll('[data-reveal]').forEach(b => b.onclick = () => { const sc = S.scouts[+b.dataset.reveal]; sc.revealed = true; S.penalties += REVEAL_COST; save(); render(); });
+}
+function submitName(raw) {
+  if (!searchIndex) { setMsg('Still loading the gazetteer, one moment…'); return; }
+  const key = fold(raw);
+  if (!key) { setMsg('Type the name of a city, town or village.', 'bad'); return; }
+  let ids = exactIds(key);
+  if (!ids.length) {
+    // did you mean? nearby places within two typos
+    const near = nearby(G.lat[S.cur], G.lon[S.cur], Math.max(600, S.fuel * 1.5)).filter(id => Math.abs(fold(G.name[id]).length - key.length) <= 2);
+    const close = near.filter(id => lev(fold(G.name[id]), key) <= (key.length > 6 ? 2 : 1)).sort((a, b) => G.pop[b] - G.pop[a]);
+    setMsg(close.length ? `No place called “${raw.trim()}”. Did you mean ${[...new Set(close.slice(0, 3).map(id => G.name[id]))].join(', ')}?` : `No settlement called “${raw.trim()}” in the gazetteer. Check the spelling, or try the local name.`, 'bad');
+    return;
+  }
+  const taken = new Set([S.start, ...S.stops.map(s => s.id)]);
+  if (ids.every(id => taken.has(id))) { setMsg(`You've already stopped in ${G.name[ids[0]]}. Pick somewhere new.`, 'bad'); return; }
+  ids = ids.filter(id => !taken.has(id)).sort((a, b) => (b === S.dest) - (a === S.dest) || G.pop[b] - G.pop[a]);
+  let best = null, nearest = null, nearestD = Infinity;
+  for (const id of ids.slice(0, 300)) {
+    const d = dist(G.lat[S.cur], G.lon[S.cur], G.lat[id], G.lon[id]);
+    if (d < nearestD) { nearestD = d; nearest = id; }
+    if (d > Math.max(S.fuel, FERRY_MAX + S.fuel)) continue;
+    if (checkLeg(S.opts.vehicle, S.cur, id, S.fuel, S.tickets).ok) { best = id; break; }
+  }
+  if (best != null) { $('entry-input').value = ''; travel(best); return; }
+  const res = checkLeg(S.opts.vehicle, S.cur, nearest, S.fuel, S.tickets);
+  setMsg((ids.length > 1 ? `The nearest ${G.name[nearest]} is in ${countryName(nearest)}. ` : '') + explain(res, nearest), 'bad');
+  flashRange();
+}
+function lev(a, b) {
+  const m = a.length, n = b.length; if (!m) return n; if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  for (let i = 1; i <= m; i++) { const cur = [i]; for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); prev = cur; }
+  return prev[n];
+}
+
+// ---------- map ----------
+const canvas = $('map'), ctx = canvas.getContext('2d');
+const view = { lon: 10, y: 0.9, s: 900, target: null, follow: true };
+const mercY = la => Math.log(Math.tan(Math.PI / 4 + rad(Math.max(-85, Math.min(85, la))) / 2));
+const invMercY = y => deg(2 * Math.atan(Math.exp(y)) - Math.PI / 2);
+let W = 0, H = 0, flashUntil = 0;
+function resize() { const r = canvas.getBoundingClientRect(), dpr = window.devicePixelRatio || 1; W = r.width; H = r.height; canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); draw(); }
+const wrapLon = lo => { let d = lo - view.lon; d = ((d + 540) % 360) - 180; return view.lon + d; };
+const px = (lo, la) => [W / 2 + rad(wrapLon(lo) - view.lon) * view.s, H / 2 - (mercY(la) - view.y) * view.s];
+function fitView(instant) {
+  if (!S || !G) return;
+  const ids = [S.start, S.dest, S.cur, ...S.stops.map(s => s.id), ...hintIds];
+  const lon0 = G.lon[S.cur]; let minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
+  const add = (la, lo) => { let d = ((lo - lon0 + 540) % 360) - 180; const x = lon0 + d; minX = Math.min(minX, x); maxX = Math.max(maxX, x); const y = mercY(la); minY = Math.min(minY, y); maxY = Math.max(maxY, y); };
+  ids.forEach(id => add(G.lat[id], G.lon[id]));
+  if (!S.done) for (let b = 0; b < 360; b += 45) { const [la, lo] = destPoint(G.lat[S.cur], G.lon[S.cur], b, Math.max(40, S.fuel)); add(la, lo); }
+  const pad = 56, padR = 130, sx = (W - pad - padR) / Math.max(1e-6, rad(maxX - minX)), sy = (H - pad * 2) / Math.max(1e-6, maxY - minY);
+  const sFit = Math.min(sx, sy);
+  const target = { lon: (minX + maxX) / 2 + deg((padR - pad) / 2 / Math.max(120, Math.min(60000, sFit))), y: (minY + maxY) / 2, s: Math.max(120, Math.min(60000, Math.min(sx, sy))) };
+  view.follow = true;
+  if (instant || !W) { Object.assign(view, target); draw(); return; }
+  animateTo(target);
+}
+let anim = null;
+function animateTo(target) {
+  const from = { lon: view.lon, y: view.y, s: view.s }, t0 = performance.now(), dur = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 550;
+  let dl = ((target.lon - from.lon + 540) % 360) - 180;
+  cancelAnimationFrame(anim);
+  const step = now => {
+    const k = dur ? Math.min(1, (now - t0) / dur) : 1, e = k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+    view.lon = from.lon + dl * e; view.y = from.y + (target.y - from.y) * e; view.s = Math.exp(Math.log(from.s) + (Math.log(target.s) - Math.log(from.s)) * e);
+    draw(); if (k < 1) anim = requestAnimationFrame(step);
+  };
+  anim = requestAnimationFrame(step);
+}
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function tracePolys(list, close) {
+  const lonSpan = deg(W / view.s), west = view.lon - lonSpan / 2 - 2, east = view.lon + lonSpan / 2 + 2;
+  const top = invMercY(view.y + H / 2 / view.s) + 2, bottom = invMercY(view.y - H / 2 / view.s) - 2;
+  ctx.beginPath();
+  for (const p of list) {
+    if (p.maxY < bottom || p.minY > top) continue;
+    if (lonSpan < 300) { const c = wrapLon((p.minX + p.maxX) / 2), half = (p.maxX - p.minX) / 2; if (half < 170 && (c + half < west || c - half > east)) continue; }
+    const pts = p.pts; let lastX = null;
+    for (let i = 0; i < pts.length; i += 2) {
+      const [x, y] = px(pts[i], pts[i + 1]);
+      if (i === 0 || (lastX !== null && Math.abs(x - lastX) > W * 2 && Math.abs(x - lastX) > view.s * 3)) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      lastX = x;
+    }
+    if (close) ctx.closePath();
+  }
+}
+function label(text, x, y, opt = {}) {
+  ctx.font = `${opt.weight || 600} ${opt.size || 13}px ${opt.family || 'Barlow, sans-serif'}`;
+  ctx.textAlign = opt.align || 'left'; ctx.textBaseline = 'middle';
+  ctx.lineWidth = 4; ctx.strokeStyle = css('--label-halo'); ctx.lineJoin = 'round'; ctx.strokeText(text, x, y);
+  ctx.fillStyle = opt.color || css('--ink'); ctx.fillText(text, x, y);
+}
+function greatCircle(a, b, seg = 40) { const out = []; for (let i = 0; i <= seg; i++) { const [la, lo] = interp(G.lat[a], G.lon[a], G.lat[b], G.lon[b], i / seg); out.push(px(lo, la)); } return out; }
+function stroke(points, color, width, dash = []) { ctx.beginPath(); points.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.setLineDash(dash); ctx.strokeStyle = color; ctx.lineWidth = width; ctx.stroke(); ctx.setLineDash([]); }
+function draw() {
+  if (!W || !G) return;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = css('--sea'); ctx.fillRect(0, 0, W, H);
+  tracePolys(G.land, true); ctx.fillStyle = css('--land'); ctx.fill('evenodd');
+  ctx.strokeStyle = css('--coast'); ctx.lineWidth = 0.8; ctx.stroke();
+  tracePolys(G.border, false); ctx.setLineDash([4, 3]); ctx.strokeStyle = css('--borderline'); ctx.lineWidth = 1; ctx.stroke(); ctx.setLineDash([]);
+  // unlabeled towns for orientation: bigger places first, more appear as you zoom in
+  const kmPerPx = 2 * Math.PI * R / view.s / (2 * Math.PI) * Math.cos(rad(invMercY(view.y)));
+  const minPop = kmPerPx > 6 ? 1e6 : kmPerPx > 3 ? 500000 : kmPerPx > 1.5 ? 150000 : kmPerPx > 0.7 ? 50000 : 15000;
+  ctx.fillStyle = css('--coast');
+  for (let i = 0; i < G.n && G.pop[i] >= minPop; i++) { const [x, y] = px(G.lon[i], G.lat[i]); if (x < -5 || y < -5 || x > W + 5 || y > H + 5) continue; ctx.beginPath(); ctx.arc(x, y, G.pop[i] >= 1e6 ? 2.6 : 1.8, 0, 7); ctx.fill(); }
+  // country names
+  const placed = [];
+  ctx.font = '600 12px "Barlow Condensed", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (const a of G.anchors) {
+    const [x, y] = px(a.lon, a.lat); if (x < 30 || y < 12 || x > W - 30 || y > H - 12) continue;
+    const t = G.countries[a.i][1].toUpperCase(), w = ctx.measureText(t).width + 16;
+    if (placed.some(p => Math.abs(p[0] - x) < (p[2] + w) / 2 && Math.abs(p[1] - y) < 16)) continue;
+    if (w > kmPerPx * 0 + 400) continue;
+    placed.push([x, y, w]);
+    ctx.fillStyle = css('--muted'); ctx.globalAlpha = 0.55; ctx.fillText(t.split('').join(String.fromCharCode(8202)), x, y); ctx.globalAlpha = 1;
+    if (placed.length > 40) break;
+  }
+  if (!S) return;
+  const v = VEHICLES[S.opts.vehicle];
+  // reach circle
+  if (!S.done) {
+    const ring = []; for (let b = 0; b <= 360; b += 4) { const [la, lo] = destPoint(G.lat[S.cur], G.lon[S.cur], b, Math.max(1, S.fuel)); ring.push(px(lo, la)); }
+    ctx.beginPath(); ring.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.closePath();
+    const flashing = performance.now() < flashUntil;
+    ctx.fillStyle = flashing ? 'rgba(196, 43, 43, 0.14)' : css('--range'); ctx.fill();
+    ctx.setLineDash([7, 5]); ctx.strokeStyle = flashing ? css('--danger') : css('--range-edge'); ctx.lineWidth = 1.6; ctx.stroke(); ctx.setLineDash([]);
+  }
+  // par route when abandoned
+  if (S.done && S.gaveUp) for (let i = 1; i < S.par.length; i++) stroke(greatCircle(S.par[i - 1], S.par[i]), css('--muted'), 2.5, [3, 5]);
+  // trip so far
+  let prev = S.start;
+  for (const s of S.stops) {
+    const pts = greatCircle(prev, s.id);
+    if (s.kind === 'ferry') stroke(pts, css('--ferry'), 3, [8, 6]);
+    else { stroke(pts, css('--label-halo'), 6); stroke(pts, css('--route'), 3); }
+    prev = s.id;
+  }
+  // straight-line hint to destination
+  if (!S.done) stroke(greatCircle(S.cur, S.dest, 60), css('--muted'), 1, [2, 6]);
+  // stops
+  for (const s of S.stops) { if (s.id === S.dest) continue; const [x, y] = px(G.lon[s.id], G.lat[s.id]); ctx.beginPath(); ctx.arc(x, y, 4.5, 0, 7); ctx.fillStyle = css('--panel'); ctx.fill(); ctx.lineWidth = 2.5; ctx.strokeStyle = css('--route'); ctx.stroke(); label(G.name[s.id], x + (s.id === S.cur && !S.done ? 20 : 8), y - 1, { size: 12 }); }
+  // scouting pins
+  hintIds.forEach((id, i) => { const [x, y] = px(G.lon[id], G.lat[id]); ctx.beginPath(); ctx.arc(x, y, 10, 0, 7); ctx.fillStyle = css('--ferry'); ctx.fill(); ctx.fillStyle = '#fff'; ctx.font = '700 13px "Barlow Condensed", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(i + 1), x, y + 1); });
+  // start
+  { const [x, y] = px(G.lon[S.start], G.lat[S.start]); ctx.beginPath(); ctx.arc(x, y, 6, 0, 7); ctx.fillStyle = css('--route'); ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = css('--panel'); ctx.stroke(); label(G.name[S.start], x + (S.cur === S.start && !S.done ? 20 : 10), y, { size: 14, weight: 700 }); }
+  // destination: checkered flag plate
+  { const [x, y] = px(G.lon[S.dest], G.lat[S.dest]);
+    ctx.fillStyle = css('--sign'); ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x - 9, y - 9, 18, 18, 4) : ctx.rect(x - 9, y - 9, 18, 18); ctx.fill();
+    ctx.fillStyle = '#fff'; for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) if ((i + j) % 2 === 0) ctx.fillRect(x - 6 + i * 4, y - 6 + j * 4, 4, 4);
+    label(G.name[S.dest].toUpperCase(), x + 14, y, { size: 16, weight: 800, family: '"Barlow Condensed", sans-serif', color: css('--sign') }); }
+  // you
+  if (!S.done || S.cur !== S.dest) { const [x, y] = px(G.lon[S.cur], G.lat[S.cur]); ctx.beginPath(); ctx.arc(x, y, 15, 0, 7); ctx.fillStyle = css('--panel'); ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = css('--ink'); ctx.stroke(); ctx.font = '17px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(v.icon, x, y + 1); }
+}
+function flashRange() { flashUntil = performance.now() + 900; draw(); setTimeout(draw, 950); }
+
+// pan & zoom
+let drag = null;
+canvas.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, lon: view.lon, vy: view.y }; canvas.setPointerCapture(e.pointerId); canvas.classList.add('dragging'); cancelAnimationFrame(anim); });
+canvas.addEventListener('pointermove', e => { if (!drag) return; view.lon = drag.lon - deg((e.clientX - drag.x) / view.s); view.y = drag.vy + (e.clientY - drag.y) / view.s; view.follow = false; draw(); });
+const endDrag = () => { drag = null; canvas.classList.remove('dragging'); };
+canvas.addEventListener('pointerup', endDrag); canvas.addEventListener('pointercancel', endDrag);
+function zoomAt(f, cx = W / 2, cy = H / 2) {
+  const lon = view.lon + deg((cx - W / 2) / view.s), y = view.y - (cy - H / 2) / view.s;
+  view.s = Math.max(100, Math.min(80000, view.s * f));
+  view.lon = lon - deg((cx - W / 2) / view.s); view.y = y + (cy - H / 2) / view.s; draw();
+}
+canvas.addEventListener('wheel', e => { e.preventDefault(); const r = canvas.getBoundingClientRect(); zoomAt(Math.exp(-e.deltaY * 0.0015), e.clientX - r.left, e.clientY - r.top); }, { passive: false });
+$('zoom-in').onclick = () => zoomAt(1.5); $('zoom-out').onclick = () => zoomAt(1 / 1.5); $('recenter').onclick = () => fitView(false);
+new ResizeObserver(resize).observe(canvas);
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
+new MutationObserver(draw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+// ---------- dialogs ----------
+document.querySelectorAll('dialog').forEach(d => { d.addEventListener('click', e => { if (e.target === d || e.target.closest('[data-close]')) d.close(); }); });
+function choiceGroup(el, items, key, render) {
+  el.innerHTML = items.map(it => `<button type="button" class="choice" data-v="${it.id}" aria-pressed="${draft[key] === it.id}">${render(it)}</button>`).join('');
+  el.onclick = e => { const b = e.target.closest('[data-v]'); if (!b) return; draft[key] = b.dataset.v; el.querySelectorAll('[data-v]').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.v === draft[key]))); };
+}
+let draft = { ...opts };
+function openNew() {
+  draft = { ...opts };
+  choiceGroup($('opt-vehicle'), Object.entries(VEHICLES).map(([id, v]) => ({ id, ...v })), 'vehicle', v => `<b>${v.icon} ${v.name}</b><small>${v.blurb}</small>`);
+  choiceGroup($('opt-region'), REGIONS, 'region', r => r.name);
+  choiceGroup($('opt-length'), LENGTHS, 'length', l => `${l.name}<small>${l.blurb} by car</small>`);
+  choiceGroup($('opt-assist'), [{ id: 'explorer', name: 'Explorer', blurb: 'Suggestions as you type' }, { id: 'navigator', name: 'Navigator', blurb: 'No suggestions: type it from memory' }], 'assist', a => `${a.name}<small>${a.blurb}</small>`);
+  $('dlg-new').showModal();
+}
+$('start-trip').onclick = () => { opts = { ...draft }; store.set('stopover-opts', opts); if (startTrip(opts, false)) $('dlg-new').close(); };
+$('start-daily').onclick = () => { opts = { ...draft }; store.set('stopover-opts', opts); if (startTrip(opts, true)) $('dlg-new').close(); };
+$('btn-new').onclick = openNew;
+$('btn-help').onclick = () => $('dlg-help').showModal();
+$('tier-table').innerHTML = `<thead><tr><th>Stop</th><th>Size</th><th>Points</th><th>Refill</th></tr></thead><tbody>${TIERS.map(t => `<tr><td><span class="tier ${t.id}">${t.label}</span></td><td>${t.id === 'capital' ? 'national capital' : t.note}</td><td>+${t.pts}</td><td>${Math.round(t.refill * 100)}% of tank</td></tr>`).join('')}<tr><td colspan="2">Reaching the destination</td><td>+${ARRIVE_BONUS}</td><td>+${TICKET_BONUS} per spare ticket</td></tr></tbody>`;
+$('btn-passport').onclick = () => {
+  const entries = G ? Object.entries(passport.stamps).sort((a, b) => b[1] - a[1]) : [];
+  const countries = new Map(); for (const [k] of entries) { const cc = k.split('|')[1]; countries.set(cc, (countries.get(cc) || 0) + 1); }
+  const top = [...countries.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12);
+  $('passport-body').innerHTML = `
+    <div class="pp-grid">
+      <div class="stat"><span class="label">Stamps</span><b>${fmt(entries.length)}</b></div>
+      <div class="stat"><span class="label">Countries</span><b>${countries.size}</b></div>
+      <div class="stat"><span class="label">Trips done</span><b>${passport.trips}</b></div>
+    </div>
+    ${top.length ? `<div class="label" style="margin-top:14px">Most stamped countries</div><div class="stamps">${top.map(([cc, n]) => `<span>${flagEmoji(cc)} ${esc((G.countries.find(c => c[0] === cc) || [cc, cc])[1])} · ${n}</span>`).join('')}</div>` : ''}
+    <div class="label" style="margin-top:14px">Latest stamps</div>
+    <div class="stamps">${entries.slice(0, 80).map(([k]) => { const [nm, cc] = k.split('|'); return `<span>${flagEmoji(cc)} ${esc(nm)}</span>`; }).join('') || '<span>No stamps yet. Finish a leg to get your first one.</span>'}</div>`;
+  $('dlg-passport').showModal();
+};
+
+// ---------- boot ----------
+(async () => {
+  try { await loadData(); }
+  catch (err) { $('loading').innerHTML = `<div><b>The atlas didn't load</b><span>This browser couldn't unpack the settlement data (${esc(err.message)}). Try a recent Chrome, Safari, Firefox or Edge.</span></div>`; return; }
+  $('loading').hidden = true;
+  resize();
+  const saved = store.get('stopover-trip');
+  if (saved && saved.v === 1 && saved.start < G.n && saved.dest < G.n) { S = saved; hintIds = S.scouts ? S.scouts.map(s => s.id) : []; render(); fitView(true); setMsg(S.done ? '' : `Trip resumed. You're in ${G.name[S.cur]}.`); }
+  else if (!startTrip(opts, false)) startTrip({ vehicle: 'car', region: 'EU', length: 'short', assist: opts.assist }, false);
+  setTimeout(() => { buildSearch(); if (!S.done) setMsg(lastMsg.text, lastMsg.cls); }, 30);
+})();
+})();
+</script>

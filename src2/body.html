@@ -1,0 +1,279 @@
+
+<div class="app">
+  <header class="bar">
+    <div class="brand"><span class="shield" aria-hidden="true">E2</span><span class="wordmark">Stopover</span><span class="brandmode" id="brand-mode" aria-hidden="true"></span><span class="ver" id="ver-badge">V3</span></div>
+    <nav>
+      <button class="btn cta" id="btn-new" type="button">New trip</button>
+      <button type="button" class="leaguechip" id="league-chip" title="Your league"><i></i><span>Travel document</span></button>
+      <span class="coins" id="coin-count" title="Coins"><i></i><span>0</span></span>
+      <button class="btn" id="btn-study" type="button">Study</button>
+      <button class="btn" id="btn-blind" type="button">Blind spots<span class="count" id="blind-count" hidden>0</span></button>
+      <button class="btn" id="btn-passport" type="button">Passport<span class="count" id="pp-count" hidden title="New flags">0</span></button>
+      <button class="btn" id="btn-shop" type="button">Shop</button>
+      <button class="btn" id="btn-settings" type="button">Settings</button>
+      <button class="btn" id="btn-help" type="button">How to play</button>
+      <button class="btn" id="btn-theme" type="button" aria-label="Switch to night mode">🌙</button>
+    </nav>
+  </header>
+
+  <main class="stage">
+    <div class="mapwrap">
+      <canvas id="map" aria-label="Map of your trip"></canvas>
+      <div class="loading" id="loading"><div><b>Unfolding the road atlas</b><span>Loading 225,199 settlements from GeoNames…</span></div></div>
+      <div class="maplayers">
+        <button class="btn small" id="layers-btn" type="button" aria-expanded="false" aria-controls="layerpanel">Map layers</button>
+        <div class="layerpanel" id="layerpanel" hidden></div>
+      </div>
+      <div class="legend" id="trip-legend"><span><i></i>Road</span><span><i class="f"></i>Ferry</span><span><i class="r"></i>Range</span></div>
+      <div class="maptools">
+        <button id="zoom-in" type="button" aria-label="Zoom in">+</button>
+        <button id="zoom-out" type="button" aria-label="Zoom out">−</button>
+        <button id="recenter" type="button" aria-label="Fit the trip">⤢</button>
+      </div>
+    </div>
+    <aside class="console">
+      <div class="sign" id="sign"></div>
+      <div class="dash" id="dash"></div>
+      <div id="wanted" hidden></div>
+      <div id="play"></div>
+      <div id="postcard"></div>
+      <div class="log" id="log"></div>
+    </aside>
+  </main>
+</div>
+
+<dialog id="dlg-new">
+  <div class="dlg">
+    <header><div><h2>Plan a trip</h2><p>Pick where, how, and how far. Longer trips need smaller towns to keep the tank topped up.</p></div><button class="x" type="button" data-close aria-label="Close">×</button></header>
+    <section><div class="label">Vehicle</div><div class="vehicles" id="opt-vehicle"></div></section>
+    <section id="sec-voyage" hidden><div class="label">Voyage</div><div class="choices" id="opt-voyage"></div><div id="isle-pick"></div></section>
+    <section id="sec-regions"><div class="label">Regions <span class="hint" style="text-transform:none;letter-spacing:0;font-family:var(--body);font-weight:400">· pick one or more</span></div><div class="choices" id="opt-region"></div><p class="hint" id="region-hint" style="margin:6px 0 0"></p></section>
+    <section>
+      <div class="label">Route <span class="hint" style="text-transform:none;letter-spacing:0;font-family:var(--body);font-weight:400">· optional</span></div>
+      <div class="routepick"><div id="pick-from"></div><div id="pick-to"></div></div>
+      <div class="viapick" id="pick-via"></div>
+      <p class="hint" id="route-hint" style="margin:8px 0 0"></p>
+    </section>
+    <section id="sec-length"><div class="label">Trip length</div><div class="choices" id="opt-length"></div></section>
+    <section><div class="label">Typing help</div><div class="choices" id="opt-assist"></div></section>
+    <section>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div class="label">Difficulty</div><span class="mult" id="mult-badge">Score ×1.00</span></div>
+      <div class="choices" id="opt-preset"></div>
+      <div id="opt-rules" style="display:grid;gap:8px;margin-top:10px"></div>
+    </section>
+    <section id="avoid-summary"></section>
+    <footer>
+      <button class="btn" type="button" id="start-daily">Today’s daily trip</button>
+      <button class="btn go" type="button" id="start-trip">Start trip</button>
+    </footer>
+  </div>
+</dialog>
+
+<dialog id="dlg-settings">
+  <div class="dlg">
+    <header><div><h2>Settings</h2><p>Rules, looks, and the countries you want to stay out of.</p></div><button class="x" type="button" data-close aria-label="Close">×</button></header>
+    <section>
+      <div class="switchrow"><div><b>Classic rules (v1)</b><small>The original game: every visit scores the same, no avoided countries, no flag postcards and the original map. Your passport and coins still count.</small></div><label class="toggle"><input type="checkbox" id="set-classic" aria-label="Classic rules"><span></span></label></div>
+      <div class="switchrow"><div><b>Sound effects</b><small>A chime when you collect a flag. Rarer flags ring longer.</small></div><label class="toggle"><input type="checkbox" id="set-sound" aria-label="Sound effects"><span></span></label></div>
+      <div class="switchrow"><div><b>Flag pop-ups</b><small>The card that drops in when you collect flags. Off shows a short message instead.</small></div><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end"><div class="seg" id="set-popup" role="group" aria-label="Flag pop-up size"></div><button class="btn small" type="button" id="popup-preview">Preview</button></div></div>
+    </section>
+    <section>
+      <div class="label">Avoid countries</div>
+      <p class="hint" style="margin:6px 0 0">Avoided countries are hatched on the map. You can't stop in them or drive across them, so you have to learn their neighbours instead. Applies from your next trip.</p>
+      <div class="tagrow" id="avoid-tags"></div>
+      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><select class="field" id="avoid-add" aria-label="Country to avoid"></select><button class="btn small" id="avoid-add-btn" type="button">Avoid</button></div>
+    </section>
+    <section>
+      <div class="label">Equipped</div>
+      <div id="equip"></div>
+    </section>
+    <section>
+      <details id="debug"><summary class="label" style="cursor:pointer">Debug tools</summary>
+        <p class="hint" style="margin:8px 0">Cheats for testing. They only change this browser's save.</p>
+        <div class="tools">
+          <button class="btn small" type="button" data-debug="coins">+10,000 coins</button>
+          <button class="btn small" type="button" data-debug="unlock">Unlock every shop item</button>
+          <button class="btn small" type="button" data-debug="supplies">+10 of every supply</button>
+          <button class="btn small" type="button" data-debug="fill">Fill tank now</button>
+          <button class="btn small" type="button" data-debug="tickets">+5 ferry tickets this trip</button>
+          <button class="btn small" type="button" data-debug="route">Show a route from here</button>
+          <button class="btn small" type="button" data-debug="finish">Jump to destination</button>
+          <button class="btn small" type="button" data-debug="news">Show both announcements</button>
+          <button class="btn small" type="button" data-debug="news-train">Show train announcement</button>
+          <button class="btn small" type="button" data-debug="flagdrop">Collect 2 test flags</button>
+          <button class="btn small" type="button" data-debug="blind">Add 12 sample blind spots</button>
+          <button class="btn small" type="button" data-debug="reset">Reset all progress</button>
+        </div>
+        <div class="switchrow"><div><b>Infinite fuel</b><small>Any distance is in range. Ferry and avoid rules still apply.</small></div><label class="toggle"><input type="checkbox" id="debug-fuel" aria-label="Infinite fuel"><span></span></label></div>
+      </details>
+    </section>
+  </div>
+</dialog>
+
+<dialog id="dlg-shop">
+  <div class="dlg">
+    <header><div><h2>Shop</h2><p>Spend coins from trips, flags, study and achievements.</p></div><button class="x" type="button" data-close aria-label="Close">×</button></header>
+    <section id="shop-body"></section>
+  </div>
+</dialog>
+
+<dialog id="dlg-help">
+  <div class="dlg howto">
+    <header><div><h2>How to play</h2><p>Get from the start to the destination by naming real places along the way.</p></div><button class="x" type="button" data-close aria-label="Close">×</button></header>
+    <section>
+      <ol>
+        <li><b>Name a settlement within range.</b> The dashed circle shows how far your tank takes you. Any real city, town or village of 500+ people counts.</li>
+        <li><b>Every stop refuels you.</b> Big cities fill the tank. Villages only top it up, but they score far more. A hop shorter than a fifth of your tank scores less, so make every leg count.</li>
+        <li><b>Plan your own route, or let the atlas pick.</b> In New trip, choose one or more regions, and optionally a start, a destination and up to three places to pass through, like Munich to Grozny by way of Budapest. Checkpoints must be reached before the destination and pay a bonus.</li>
+        <li><b>Familiar places pay less.</b> Your first visit to a place earns a 1.5× bonus. After that, each return visit pays less, down to 0.35×, and refuels less too: half from the 4th visit, a quarter from the 6th.</li>
+        <li><b>Discover to win big.</b> The arrival bonus grows with the share of your stops that are places you have never been. The Discovery bar on the dashboard shows it. Pick <b>Uncharted</b> as the region for a trip through the countries you know least (score ×1.15).</li>
+        <li><b>Roads follow the land.</b> If the straight line crosses a bay, you drive round it, and that longer distance comes out of your tank. Straits up to 50 km are bridged. Wider water needs a ferry ticket and a port at both ends. A boat can only moor on the coast and sails round headlands.</li>
+        <li><b>Collect flags.</b> Every new place you stop in unlocks the flags that fly there: the city's own flag, its state or region, and the country. Your collection lives in the Passport, and every flag nudges your explorer rating up.</li>
+        <li><b>Far-Flung Isles.</b> Pick the boat, then the Far-Flung Isles voyage: sail from a real port to a remote island outpost like Grytviken on South Georgia, Adamstown on Pitcairn, Flying Fish Cove on Christmas Island or Cockburn Town in the Turks and Caicos. Your boat is stocked for the longest ocean crossing, the capital counts even if it sits inland, and voyages score ×1.3.</li>
+        <li><b>Take the train.</b> On a road trip, towns with a station connect along real railway lines, up to 900 km a ride. Those trains cost a few coins and no fuel, and the town you arrive in scores half. Or pick <b>Train</b> as your vehicle: a whole trip by rail, station to station, with a rail range that refills at every stop and full points.</li>
+        <li><b>Blind spots</b> collects the places you keep missing: towns you drive straight past, towns under your flights and train rides, and Study answers you get wrong. Flip through them like flashcards with A/D or the arrow keys.</li>
+        <li><b>Stuck?</b> Scout shows three reachable places with only their first letter. If you give up, the map draws a route from where you are, through the biggest and closest places, so you can learn it.</li>
+        <li><b>Earn coins</b> mostly from finishing trips (1 per 10 points, and longer trips pay a bigger arrival bonus), plus flags, Study, blind spots and achievements. Spend them in the shop on supplies, upgrades, interface themes and map styles.</li>
+      </ol>
+    </section>
+    <section><div class="label">Stops</div><table class="tiers" id="tier-table"></table></section>
+    <section><p class="hint">Places come from GeoNames (cities500, CC BY 4.0), flags from Wikimedia Commons via Wikidata, and coastlines and borders from Natural Earth. Road and sea distances follow a 10 km grid of the coastline, not real roads. Progress is saved in this browser.</p></section>
+  </div>
+</dialog>
+
+<dialog id="dlg-passport" class="full">
+  <div class="dlg" style="height:100%">
+    <header><div><h2>Passport</h2><p>How well you know each country. Click one on the map.</p></div><button class="x" type="button" data-close aria-label="Close">×</button></header>
+    <div class="split">
+      <div class="mapwrap"><canvas id="pp-map" aria-label="Mastery map"></canvas>
+        <div class="legend" style="display:grid;gap:4px;min-width:240px"><div class="masterylegend" id="pp-legend"></div><div class="masterylabels"><span>Stranger</span><span>Cartographer</span></div></div>
+      </div>
+      <div class="side">
+        <div class="tabs" role="tablist" id="pp-tabs">
+          <button type="button" role="tab" data-tab="book" aria-selected="false">Passport</button>
+          <button type="button" role="tab" data-tab="country" aria-selected="true">Country</button>
+          <button type="button" role="tab" data-tab="flags" aria-selected="false">Flags</button>
+          <button type="button" role="tab" data-tab="stats" aria-selected="false">Stats</button>
+          <button type="button" role="tab" data-tab="awards" aria-selected="false">Achievements</button>
+          <button type="button" role="tab" data-tab="trips" aria-selected="false">Trips</button>
+        </div>
+        <div id="pp-body" style="display:grid;gap:14px"></div>
+      </div>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="dlg-study" class="full">
+  <div class="dlg" style="height:100%">
+    <header><div><h2>Study</h2><p>Learn where places are, Seterra-style. Right answers raise your mastery and earn coins.</p></div><button class="x" type="button" data-close aria-label="Close">×</button></header>
+    <div class="split">
+      <div class="mapwrap"><canvas id="st-map" aria-label="Study map"></canvas><div class="quizbar" id="st-bar" hidden></div></div>
+      <div class="side" id="st-side"></div>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="dlg-news" class="news" aria-labelledby="news-title">
+  <div class="news-hero" aria-hidden="true">
+    <svg viewBox="0 0 560 260" preserveAspectRatio="xMidYMid slice">
+      <circle cx="460" cy="70" r="34" fill="#FFE7A8" opacity=".9"/>
+      <g class="cloud"><ellipse cx="0" cy="62" rx="46" ry="16" fill="#fff" opacity=".85"/><ellipse cx="30" cy="52" rx="30" ry="18" fill="#fff" opacity=".85"/></g>
+      <g class="cloud b"><ellipse cx="0" cy="118" rx="60" ry="15" fill="#fff" opacity=".7"/><ellipse cx="-26" cy="108" rx="28" ry="14" fill="#fff" opacity=".7"/></g>
+      <path d="M0 196 L560 184 L560 260 L0 260 Z" fill="#6E8B5B"/>
+      <path d="M0 214 L560 202 L560 238 L0 250 Z" fill="#3B3F45"/>
+      <path d="M0 232 L560 220" stroke="#F6F1E3" stroke-width="3" stroke-dasharray="22 18"/>
+      <g fill="#F2622A"><rect x="40" y="200" width="6" height="6" rx="1"/><rect x="160" y="197" width="6" height="6" rx="1"/><rect x="280" y="195" width="6" height="6" rx="1"/><rect x="400" y="192" width="6" height="6" rx="1"/><rect x="520" y="190" width="6" height="6" rx="1"/></g>
+      <g class="plane">
+        <g transform="translate(0 176)">
+          <g class="blur" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity="0"><path d="M-70 10h40M-90 20h55M-60 30h30"/></g>
+          <path d="M-6 22 C 10 10, 70 8, 118 12 C 132 13, 140 18, 138 24 C 136 29, 126 31, 112 31 L 6 31 C -2 31, -8 27, -6 22 Z" fill="#FBFBF7"/>
+          <path d="M-4 22 L -16 -6 L 6 -6 L 30 19 Z" fill="#F2622A"/>
+          <path d="M40 24 L 76 24 L 50 46 L 36 46 Z" fill="#DADDE2"/>
+          <path d="M6 20 L 22 20 L 12 12 L 2 12 Z" fill="#DADDE2"/>
+          <path d="M122 15 C 130 16, 136 19, 136 22 L 126 22 Z" fill="#274A6B"/>
+          <g fill="#274A6B"><circle cx="40" cy="18" r="1.8"/><circle cx="48" cy="18" r="1.8"/><circle cx="56" cy="18" r="1.8"/><circle cx="64" cy="18" r="1.8"/><circle cx="72" cy="18" r="1.8"/><circle cx="80" cy="18" r="1.8"/><circle cx="88" cy="18" r="1.8"/><circle cx="96" cy="18" r="1.8"/><circle cx="104" cy="18" r="1.8"/></g>
+          <path d="M-6 26 L 138 26" stroke="#1D6FB8" stroke-width="2"/>
+          <circle cx="30" cy="34" r="3" fill="#2B2B2B"/><circle cx="104" cy="34" r="3" fill="#2B2B2B"/>
+        </g>
+      </g>
+    </svg>
+  </div>
+  <div class="news-body">
+    <span class="eyebrow">New in Stopover</span>
+    <h2 id="news-title">Planes have landed</h2>
+    <p>Hop between more than 1,100 airport cities when the road gets long. Flights cost coins by distance, you land with a full tank, and your passport gets an "arrived by air" stamp. Want a bigger score? Switch planes off in the trip settings.</p>
+    <div class="news-perk"><b>2</b><span><strong>Your first two flights are on us.</strong><br><span class="hint">They're already waiting in your account.</span></span></div>
+    <div class="tools" style="justify-content:flex-end"><button class="btn" type="button" data-close>Maybe later</button><button class="btn go" type="button" id="news-fly">Start flying ✈</button></div>
+  </div>
+</dialog>
+
+<dialog id="dlg-news-train" class="news stacked" aria-labelledby="news-train-title">
+  <div class="news-hero rail" aria-hidden="true">
+    <svg viewBox="0 0 560 250" preserveAspectRatio="xMidYMid slice">
+      <circle cx="120" cy="150" r="46" fill="#FFD9A0" opacity=".85"/>
+      <g class="birds" fill="none" stroke="#2A2340" stroke-width="1.6" stroke-linecap="round"><path d="M0 60 q5 -5 10 0 q5 -5 10 0"/><path d="M26 48 q4 -4 8 0 q4 -4 8 0"/></g>
+      <path d="M0 170 L70 118 L130 150 L210 96 L290 146 L360 108 L450 150 L520 116 L560 132 L560 250 L0 250 Z" fill="#5B3F6B" opacity=".7"/>
+      <path d="M0 186 L90 150 L170 176 L260 140 L350 172 L440 146 L560 170 L560 250 L0 250 Z" fill="#43304F"/>
+      <g stroke="#2A2038" stroke-width="3"><path d="M40 204 V120 M160 204 V120 M280 204 V120 M400 204 V120 M520 204 V120"/></g>
+      <g stroke="#2A2038" stroke-width="2"><path d="M40 128 h22 M160 128 h22 M280 128 h22 M400 128 h22 M520 128 h22"/></g>
+      <path d="M0 136 Q100 142 200 136 T400 136 T600 136" stroke="#2A2038" stroke-width="1.2" fill="none"/>
+      <rect x="0" y="206" width="560" height="44" fill="#2A2038"/>
+      <path d="M0 207 H560" stroke="#C9B8A8" stroke-width="2.5"/>
+      <g fill="#20192B"><rect x="0" y="210" width="560" height="4"/></g>
+      <g fill="#3A2E47"><rect x="8" y="214" width="18" height="4"/><rect x="48" y="214" width="18" height="4"/><rect x="88" y="214" width="18" height="4"/><rect x="128" y="214" width="18" height="4"/><rect x="168" y="214" width="18" height="4"/><rect x="208" y="214" width="18" height="4"/><rect x="248" y="214" width="18" height="4"/><rect x="288" y="214" width="18" height="4"/><rect x="328" y="214" width="18" height="4"/><rect x="368" y="214" width="18" height="4"/><rect x="408" y="214" width="18" height="4"/><rect x="448" y="214" width="18" height="4"/><rect x="488" y="214" width="18" height="4"/><rect x="528" y="214" width="18" height="4"/></g>
+      <g class="train">
+        <g class="speed" stroke="#FFE7C2" stroke-width="2" stroke-linecap="round" opacity="0"><path d="M-470 168h-40M-468 182h-60M-472 194h-30"/></g>
+        <g class="bob">
+          <path d="M-446 146 h-10" stroke="#10161F" stroke-width="2"/>
+          <g transform="translate(-460 0)">
+            <rect x="0" y="160" width="146" height="40" rx="5" fill="#1B2330"/>
+            <rect x="0" y="190" width="146" height="5" fill="#FFC21A"/>
+            <g fill="#FFE3A3"><rect x="10" y="168" width="18" height="12" rx="2"/><rect x="34" y="168" width="18" height="12" rx="2"/><rect x="58" y="168" width="18" height="12" rx="2"/><rect x="82" y="168" width="18" height="12" rx="2"/><rect x="106" y="168" width="18" height="12" rx="2"/></g>
+            <rect x="130" y="166" width="10" height="22" rx="1" fill="#2E3A4B"/>
+          </g>
+          <g transform="translate(-306 0)">
+            <rect x="0" y="160" width="146" height="40" rx="5" fill="#1B2330"/>
+            <rect x="0" y="190" width="146" height="5" fill="#FFC21A"/>
+            <g fill="#FFE3A3"><rect x="10" y="168" width="18" height="12" rx="2"/><rect x="34" y="168" width="18" height="12" rx="2"/><rect x="58" y="168" width="18" height="12" rx="2"/><rect x="82" y="168" width="18" height="12" rx="2"/><rect x="106" y="168" width="18" height="12" rx="2"/></g>
+            <rect x="6" y="166" width="10" height="22" rx="1" fill="#2E3A4B"/>
+          </g>
+          <g transform="translate(-152 0)">
+            <path d="M0 165 Q0 160 5 160 H110 Q138 160 150 186 L152 195 Q152 200 147 200 H0 Z" fill="#1B2330"/>
+            <path d="M0 190 H150 L152 195 H0 Z" fill="#FFC21A"/>
+            <path d="M112 166 H124 Q136 170 142 184 H112 Z" fill="#9FC3E8"/>
+            <g fill="#FFE3A3"><rect x="12" y="168" width="18" height="12" rx="2"/><rect x="36" y="168" width="18" height="12" rx="2"/><rect x="60" y="168" width="18" height="12" rx="2"/><rect x="84" y="168" width="18" height="12" rx="2"/></g>
+            <circle cx="146" cy="193" r="2.2" fill="#FFF6D6"/>
+            <path d="M70 160 L84 146 M84 146 L66 146" stroke="#10161F" stroke-width="2" fill="none"/>
+          </g>
+          <g fill="#10161F"><circle cx="-440" cy="202" r="5"/><circle cx="-400" cy="202" r="5"/><circle cx="-356" cy="202" r="5"/><circle cx="-326" cy="202" r="5"/><circle cx="-286" cy="202" r="5"/><circle cx="-202" cy="202" r="5"/><circle cx="-132" cy="202" r="5"/><circle cx="-102" cy="202" r="5"/><circle cx="-26" cy="202" r="5"/></g>
+        </g>
+      </g>
+    </svg>
+  </div>
+  <div class="news-body">
+    <span class="eyebrow">New in Stopover</span>
+    <h2 id="news-train-title">All aboard: trains are here</h2>
+    <p>Ride real railway lines around the world, drawn from OpenStreetMap. Name a town with a station and the train follows the actual track there. You use no fuel, you get a "by rail" stamp, and the town you arrive in scores half.</p>
+    <div class="news-facts"><div><b>900 km</b>of track per ride</div><div><b>~5–20</b>coins a ride</div><div><b>×0.5</b>points on arrival</div></div>
+    <div class="news-perk"><b>2</b><span><strong>Your first two train rides are free.</strong><br><span class="hint">They're waiting in your account, next to your free flights.</span></span></div>
+    <div class="tools" style="justify-content:flex-end"><button class="btn" type="button" data-close>Maybe later</button><button class="btn go" type="button" id="news-train-go">Take the train</button></div>
+  </div>
+</dialog>
+
+<dialog id="dlg-blind" class="full">
+  <div class="dlg" style="height:100%">
+    <header><div><h2>Blind spots</h2><p>Places you keep missing: towns you drove straight past, towns under your flights and train rides, and Study answers you got wrong. Name each one, flip the card, and be honest.</p></div><button class="x" type="button" data-close aria-label="Close">×</button></header>
+    <div class="bs-grid">
+      <div class="mapwrap"><canvas id="bs-map" aria-label="Where this blind spot is"></canvas><div class="bs-pin" id="bs-pin" hidden></div></div>
+      <div class="bs-side" id="bs-side"></div>
+      <div class="bs-strip">
+        <button class="btn small" type="button" id="bs-prev" aria-label="Previous card">←</button>
+        <div class="bs-track" id="bs-track" role="list"></div>
+        <button class="btn small" type="button" id="bs-next" aria-label="Next card">→</button>
+      </div>
+    </div>
+  </div>
+</dialog>
+
+<div class="flagdrop" id="flagdrop" role="status" hidden></div>
+<div class="toast" id="toast" role="status" hidden></div>

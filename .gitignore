@@ -1,0 +1,7 @@
+node_modules/
+cache/
+backup-v2/
+dist/
+data.b64
+.wrangler/
+.dev.vars
