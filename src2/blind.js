@@ -80,6 +80,7 @@ function bsSample(n) {
 function renderBlindCount() {
   const el = $('blind-count'); if (!el || !G) return;
   const n = bsDeck('due').length; el.hidden = !n; el.textContent = n > 99 ? '99+' : String(n);
+  const m = $('menu-count'); if (m) { m.hidden = !n; m.textContent = el.textContent; }
 }
 
 // ---- the flashcard viewer

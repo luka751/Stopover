@@ -413,7 +413,7 @@ if (CLOUD) {
     P.playerName = CLOUD.user.name; saveProfile();
     CLOUD.summary = () => { const r = explorerRating(); return { rating: r.total, league: leagueOf(r.total).id, places: r.known, countries: Object.keys(P.stamps || {}).filter(k => !k.startsWith('area:')).length }; };
     const nav = document.querySelector('header.bar nav');
-    nav.insertAdjacentHTML('afterbegin', `<button class="btn go" id="btn-online" type="button">🏁 Race<span class="count" id="online-count" hidden></span></button>`);
+    nav.insertAdjacentHTML('afterbegin', `<button class="btn go icon" id="btn-online" type="button" title="Race your friends" aria-label="Race">🏁<span class="count" id="online-count" hidden></span></button>`);
     nav.insertAdjacentHTML('beforeend', `<button class="btn mebtn" id="btn-me" type="button" title="Your profile">${unameHtml(CLOUD.user.name)}</button>`);
     $('btn-online').onclick = () => openOnline(ONLINE.code ? 'race' : ONLINE.tab);
     $('btn-me').onclick = () => openProfile(CLOUD.user.name);

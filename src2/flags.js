@@ -306,7 +306,7 @@ function renderFlagTab(body) {
 function openedFlagTab() { FL.seenBefore = P.flagsViewedAt || 0; P.flagsViewedAt = Date.now(); P.flagsNew = 0; saveProfile(); renderFlagBadge(); }
 // redraw as flag pictures arrive, at most a few times a second
 let flagRedraw = 0;
-function flagsArrived() { clearTimeout(flagRedraw); flagRedraw = setTimeout(() => { if ($('dlg-passport').open && (ppTab === 'flags' || ppTab === 'stats')) renderPassport(); if (S && !S.classic) renderWanted(); }, 250); }
+function flagsArrived() { clearTimeout(flagRedraw); flagRedraw = setTimeout(() => { if ($('dlg-passport').open && (ppTab === 'flags' || ppTab === 'stats')) renderPassport(); if (S && !S.classic) { renderWanted(); renderDeck(); } }, 250); }
 // wanted flags on the trip map: a pennant on each place still to find
 function drawWantedPins(m, ctx, pal) {
   if (!S || S.classic || !flagCat || !P.wanted || P.wanted.day !== localDay()) return;

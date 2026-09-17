@@ -4,16 +4,24 @@
     <div class="brand"><span class="shield" aria-hidden="true">E2</span><span class="wordmark">Stopover</span><span class="brandmode" id="brand-mode" aria-hidden="true"></span><span class="ver" id="ver-badge">V3</span></div>
     <nav>
       <button class="btn cta" id="btn-new" type="button">New trip</button>
-      <button type="button" class="leaguechip" id="league-chip" title="Your league"><i></i><span>Travel document</span></button>
-      <span class="coins" id="coin-count" title="Coins"><i></i><span>0</span></span>
+      <div class="status">
+        <button type="button" class="leaguechip" id="league-chip" title="Your league"><i></i><span>Travel document</span><span class="count" id="pp-count" hidden title="New flags">0</span></button>
+        <button type="button" class="coins" id="coin-count" title="Coins · open the shop"><i></i><span>0</span></button>
+      </div>
+      <button class="btn icon" id="btn-help" type="button" title="How to play" aria-label="How to play">?</button>
+      <button class="btn icon" id="btn-theme" type="button" aria-label="Switch to night mode">🌙</button>
+      <div class="menuwrap">
+        <button class="btn menubtn" id="btn-menu" type="button" title="Menu" aria-haspopup="true" aria-expanded="false" aria-controls="quickmenu"><span aria-hidden="true">☰</span><kbd aria-hidden="true">Tab</kbd><span class="count" id="menu-count" hidden title="Blind spots waiting">0</span></button>
+        <div class="quickmenu" id="quickmenu" role="menu" aria-label="Menu" hidden></div>
+      </div>
+    </nav>
+    <div class="stowed" hidden>
       <button class="btn" id="btn-study" type="button">Study</button>
       <button class="btn" id="btn-blind" type="button">Blind spots<span class="count" id="blind-count" hidden>0</span></button>
-      <button class="btn" id="btn-passport" type="button">Passport<span class="count" id="pp-count" hidden title="New flags">0</span></button>
+      <button class="btn" id="btn-passport" type="button">Passport</button>
       <button class="btn" id="btn-shop" type="button">Shop</button>
       <button class="btn" id="btn-settings" type="button">Settings</button>
-      <button class="btn" id="btn-help" type="button">How to play</button>
-      <button class="btn" id="btn-theme" type="button" aria-label="Switch to night mode">🌙</button>
-    </nav>
+    </div>
   </header>
 
   <main class="stage">
@@ -34,10 +42,16 @@
     <aside class="console">
       <div class="sign" id="sign"></div>
       <div class="dash" id="dash"></div>
-      <div id="wanted" hidden></div>
       <div id="play"></div>
-      <div id="postcard"></div>
-      <div class="log" id="log"></div>
+      <section class="deck" id="deck">
+        <div class="decktabs" id="deck-tabs" role="tablist" aria-label="Trip panels"></div>
+        <div class="deckbody" id="deck-body">
+          <div class="deckpane" id="pane-place" role="tabpanel" hidden><div id="postcard"></div></div>
+          <div class="deckpane" id="pane-log" role="tabpanel" hidden><div class="log" id="log"></div></div>
+          <div class="deckpane" id="pane-wanted" role="tabpanel" hidden><div id="wanted" hidden></div></div>
+          <div class="deckpane" id="pane-trip" role="tabpanel" hidden><div id="tripdetail"></div></div>
+        </div>
+      </section>
     </aside>
   </main>
 </div>

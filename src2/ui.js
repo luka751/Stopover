@@ -81,20 +81,41 @@ function renderPlaying(v) {
   if (keep) { $('entry-input').value = keep.value; if (keep.focus) $('entry-input').focus(); }
 }
 function renderFinished() {
-  const bk = `${S.opts.vehicle}-${S.opts.length}`, countries = new Set(S.stops.map(s => ccOf(s.id))).size, firsts = S.stops.filter(s => s.fresh && s.id !== S.dest).length;
+  const v = VEHICLES[S.opts.vehicle], bk = `${S.opts.vehicle}-${S.opts.length}`;
+  const countries = new Set(S.stops.map(s => ccOf(s.id))).size, firsts = S.stops.filter(s => s.fresh && s.id !== S.dest).length;
   const routeList = (ids, cls) => `<ol class="rescue">${ids.map((id, i) => {
     const first = i === 0, last = i === ids.length - 1, prevId = ids[i - 1], ferry = !first && VEHICLES[S.opts.vehicle].ferry && checkLeg(S.opts.vehicle, prevId, id, 1e6, 9, null, true).kind === 'ferry';
     return `<li class="${ferry ? 'ferry' : ''}"><span class="dot">${first || last ? '' : i}</span><div><div class="where">${placeFlagHtml(id)}<a href="${wikiLink(id)}" target="_blank" rel="noopener">${esc(G.name[id])}</a><span class="tier ${tierOf(id).id}">${last ? 'Destination' : first ? (cls === 'rescue' ? 'You stopped here' : 'Start') : (S.via || []).includes(id) ? 'Via' : tierOf(id).label}</span></div><div class="meta">${esc(placeLine(id))} · pop ${fmt(G.pop[id])}${first ? '' : ` · ${ferry ? '⛴ ' : ''}${fmt(dist(G.lat[prevId], G.lon[prevId], G.lat[id], G.lon[id]))} km`}</div></div><div></div></li>`;
   }).join('')}</ol>`;
+  const block = (title, body) => `<div><div class="label" style="margin-bottom:6px">${title}</div>${body}</div>`;
+  // the long lists live in the Trip tab of the deck, so the score and the buttons never leave the screen
+  const passed = S.passed && S.passed.length
+    ? block(`Places you ${v.rail ? 'rode' : v.coastal ? 'sailed' : 'drove'} right past`, `<ul class="passed">${S.passed.map(id => `<li>${esc(G.name[id])} <small>${fmt(G.pop[id])}</small></li>`).join('')}</ul>`) : '';
+  const route = S.gaveUp && S.rescue
+    ? block(`A way to ${esc(G.name[S.dest])} from ${esc(G.name[S.cur])}`, routeList(S.rescue, 'rescue'))
+    : block(`The big-city route from the start (${S.par.length - 2} stops)`, routeList(S.par, 'par'));
+  $('tripdetail').innerHTML = `<div class="tripdetail">${route}${passed}</div>`;
+
+  const disc = Math.round((S.discovery ?? 1) * 100), paid = Math.round(discoveryBonusFactor(S.discovery ?? 1) * 100);
   $('play').innerHTML = `
     <div class="finish">
       <h2>${S.gaveUp ? 'Trip abandoned' : `${fmt(S.total)} points`}</h2>
       ${S.gaveUp
-        ? (S.rescue ? `<p>Here's a way to ${esc(G.name[S.dest])} from ${esc(G.name[S.cur])}. It's drawn on the map in green and sticks to the biggest, closest places. Every leg fits your ${VEHICLES[S.opts.vehicle].gauge.toLowerCase()}${VEHICLES[S.opts.vehicle].ferry ? ' and ferry tickets' : ''}${viaLeft().length ? `, and it passes through ${viaLeft().map(x => esc(G.name[x])).join(' and ')}` : ''}.</p>${routeList(S.rescue, 'rescue')}` : `<p>No workable route from ${esc(G.name[S.cur])} could be found. Here's the one from the start: ${S.par.map(id => esc(G.name[id])).join(' → ')}.</p>`)
-        : `<p>${fmt(S.km)} km through ${countries} ${countries === 1 ? 'country' : 'countries'}, ${firsts} new ${firsts === 1 ? 'place' : 'places'}${S.flights ? `, ${S.flights} ${S.flights === 1 ? 'flight' : 'flights'} (${Math.round((1 - (S.groundShare ?? 1)) * 100)}% of the distance flown, −${S.flightCoins} coins)` : ''}${S.penalties ? `, −${S.penalties} for scouting and help` : ''}. ${lengthOf(S.opts.length).name} trip, difficulty ×${(S.mult || 1).toFixed(2)}.${S.classic ? '' : ` Discovery ${Math.round((S.discovery ?? 1) * 100)}%: the arrival bonus paid ${Math.round(discoveryBonusFactor(S.discovery ?? 1) * 100)}%.`} Best for ${VEHICLES[S.opts.vehicle].name.toLowerCase()} · ${S.opts.length}: ${fmt(P.best[bk] || S.total)}.</p>
-          <div class="stats"><div class="stat"><span class="label">Stop points</span><b>${fmt(S.pts)}</b></div><div class="stat"><span class="label">Arrival bonus</span><b>+${fmt(S.bonus)}</b></div><div class="stat"><span class="label">Coins</span><b>+${fmt(S.coins || 0)}</b></div></div>
-          <details><summary class="hint" style="cursor:pointer">The big-city route from the start (${S.par.length - 2} stops)</summary>${routeList(S.par, 'par')}</details>`}
-      ${S.passed && S.passed.length ? `<div><div class="label" style="margin-bottom:6px">Places you ${VEHICLES[S.opts.vehicle].rail ? 'rode' : VEHICLES[S.opts.vehicle].coastal ? 'sailed' : 'drove'} right past</div><ul>${S.passed.map(id => `<li>${esc(G.name[id])} <small>${fmt(G.pop[id])}</small></li>`).join('')}</ul></div>` : ''}
+        ? (S.rescue ? `<p>The way to ${esc(G.name[S.dest])} is drawn on the map in green and listed under <b>The way</b>. It sticks to the biggest, closest places and every leg fits your ${v.gauge.toLowerCase()}${v.ferry ? ' and ferry tickets' : ''}${viaLeft().length ? `, passing through ${viaLeft().map(x => esc(G.name[x])).join(' and ')}` : ''}.</p>`
+          : `<p>No workable route from ${esc(G.name[S.cur])} could be found. The one from the start is under <b>The way</b>.</p>`)
+        : `<p>${countries} ${countries === 1 ? 'country' : 'countries'}, ${firsts} new ${firsts === 1 ? 'place' : 'places'}${S.flights ? `, ${S.flights} ${S.flights === 1 ? 'flight' : 'flights'} (${Math.round((1 - (S.groundShare ?? 1)) * 100)}% flown, −${S.flightCoins} coins)` : ''}${S.penalties ? `, −${S.penalties} for scouting and help` : ''}. ${lengthOf(S.opts.length).name} trip, difficulty ×${(S.mult || 1).toFixed(2)}. Best for ${v.name.toLowerCase()} · ${S.opts.length}: ${fmt(P.best[bk] || S.total)}.</p>
+          <div class="stats">
+            <div class="stat"><span class="label">Stop points</span><b>${fmt(S.pts)}</b></div>
+            <div class="stat" title="${S.classic ? 'Paid for reaching the destination' : `Discovery paid ${paid}% of the full arrival bonus`}"><span class="label">Arrival bonus</span><b>+${fmt(S.bonus)}</b></div>
+            <div class="stat"><span class="label">Coins</span><b>+${fmt(S.coins || 0)}</b></div>
+          </div>
+          <div class="stats">
+            <div class="stat"><span class="label">Stops · score</span><b>${S.stops.length} <small class="mult" style="font-size:13px;vertical-align:3px">×${(S.mult || 1).toFixed(2)}</small></b></div>
+            <div class="stat"><span class="label">Travelled</span><b>${fmt(S.km)}</b></div>
+            ${S.classic
+              ? `<div class="stat"><span class="label">Countries</span><b>${countries}</b></div>`
+              : `<div class="stat" title="The share of your stops that were places you had never been · it paid ${paid}% of the arrival bonus"><span class="label">Discovery</span><b>${disc}%</b></div>`}
+          </div>`}
       ${!S.classic && bsDeck('due').length ? `<div class="news-perk"><span><strong>${bsDeck('due').length} blind spots to review.</strong><br><span class="hint">Towns you hopped over on your trips are waiting in the deck.</span></span><button class="btn small dark" type="button" id="btn-review" style="margin-left:auto">Review</button></div>` : ''}
       ${S.race && HOOKS.finishedButtons ? HOOKS.finishedButtons() : `<div class="tools"><button class="btn go" type="button" id="btn-again">${opts.from != null && opts.to != null ? 'Same route again' : 'Next trip'}</button><button class="btn" type="button" id="btn-change">Change trip</button></div>`}
     </div>`;
@@ -123,8 +144,46 @@ function renderLog() {
         <div class="meta">${esc(placeLine(s.id))} · pop ${fmt(G.pop[s.id])} · ${s.kind === 'ferry' ? '⛴ ' : s.kind === 'flight' ? '✈ ' : s.kind === 'train' ? '🚆 ' : ''}${fmt(s.km)} km${s.kind === 'train' && !s.own ? ` · −${s.cost} coins` : s.kind === 'flight' ? ` · ${s.cost ? `−${s.cost} coins` : 'free flight'} · tank refilled` : arrived ? '' : ` · +${fmt(s.refill)} km`}${s.hop && s.hop < 1 ? ` · short hop ×${s.hop.toFixed(2)}` : ''}</div></div>
         <div class="pts">${arrived ? '🏁' : '+' + s.pts}${!arrived && s.mult && s.mult !== 1 ? `<small>×${s.mult}</small>` : ''}</div></li>`;
     }));
-  $('log').innerHTML = `<div class="label">Route log</div><ol>${items.join('')}</ol>`;
+  $('log').innerHTML = `<ol>${items.join('')}</ol>`;
 }
+// ---- the deck: the place card, the route log, the wanted board and the trip write-up share one bounded panel,
+// so the console always ends above the fold and Next trip never hides below it
+const DECK = { tab: 'place', shown: '', stops: -1, doneShown: false };
+function deckTabs() {
+  const t = [];
+  if (!S.classic) t.push({ id: 'place', label: 'Place' });
+  t.push({ id: 'log', label: 'Route' });
+  const left = $('wanted').hidden ? 0 : $('wanted').querySelectorAll('li:not(.done)').length;
+  if (!$('wanted').hidden) t.push({ id: 'wanted', label: 'Wanted', mark: '🎯', count: left });
+  if (S.done) t.push({ id: 'trip', label: S.gaveUp ? 'The way' : 'Trip' });
+  return t;
+}
+function renderDeck() {
+  if (!S || !$('deck-tabs')) return;
+  if (S.stops.length < DECK.stops) { DECK.tab = S.classic ? 'log' : 'place'; DECK.doneShown = false; }
+  if (S.done) { if (!DECK.doneShown) { DECK.doneShown = true; DECK.tab = S.gaveUp ? 'trip' : 'log'; } }
+  else {
+    DECK.doneShown = false;
+    // a stop that flew new flags is worth looking at, so the place card comes forward on its own
+    if (DECK.stops >= 0 && S.stops.length > DECK.stops && (S.lastFlagsNew || []).length) DECK.tab = 'place';
+  }
+  DECK.stops = S.stops.length;
+  const tabs = deckTabs();
+  if (!tabs.some(t => t.id === DECK.tab)) DECK.tab = tabs[0].id;
+  $('deck-tabs').innerHTML = tabs.map(t => `<button type="button" role="tab" id="tab-${t.id}" data-deck="${t.id}" aria-controls="pane-${t.id}" aria-selected="${t.id === DECK.tab}" tabindex="${t.id === DECK.tab ? 0 : -1}">${t.mark ? t.mark + ' ' : ''}${t.label}${t.count ? `<span class="count">${t.count}</span>` : ''}</button>`).join('');
+  for (const id of ['place', 'log', 'wanted', 'trip']) { const pane = $('pane-' + id); pane.hidden = id !== DECK.tab; pane.setAttribute('aria-labelledby', 'tab-' + id); }
+  if (DECK.shown !== DECK.tab) { DECK.shown = DECK.tab; $('deck-body').scrollTop = 0; }
+}
+$('deck-tabs').onclick = e => { const b = e.target.closest('[data-deck]'); if (!b) return; DECK.tab = b.dataset.deck; renderDeck(); };
+$('deck-tabs').onkeydown = e => {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  const ids = [...$('deck-tabs').querySelectorAll('[data-deck]')].map(b => b.dataset.deck);
+  if (ids.length < 2) return;
+  e.preventDefault();
+  DECK.tab = ids[(ids.indexOf(DECK.tab) + (e.key === 'ArrowRight' ? 1 : ids.length - 1)) % ids.length];
+  renderDeck(); $('tab-' + DECK.tab).focus();
+};
+
 function render() {
   if (!S || !G) return;
   const v = VEH(S.opts.vehicle);
@@ -133,8 +192,9 @@ function render() {
   $('trip-legend').innerHTML = `${v.rail ? '<span><i class="t"></i>Rail</span>' : `<span><i></i>${v.coastal ? 'Sea' : 'Road'}</span>`}${v.ferry ? '<span><i class="f"></i>Ferry</span>' : ''}${!v.rail && S.stops.some(x => x.kind === 'train') ? '<span><i class="t"></i>Train</span>' : ''}${S.done && S.gaveUp && S.rescue ? '<span><i class="s"></i>Route to learn</span>' : '<span><i class="r"></i>Range</span>'}`;
   $('sign').className = 'sign' + (S.classic ? '' : ' sign-' + (P.equip.sign || 'eroad'));
   renderSign(v); renderDash(v);
-  if (S.done) renderFinished(); else renderPlaying(v);
-  renderPostcard(); renderLog(); renderWanted();
+  $('dash').hidden = !!S.done; // once the trip is over the finish card carries the same numbers
+  if (S.done) renderFinished(); else { $('tripdetail').innerHTML = ''; renderPlaying(v); }
+  renderPostcard(); renderLog(); renderWanted(); renderDeck();
   if (HOOKS.render) HOOKS.render();
   tripMap.draw();
 }
@@ -275,6 +335,51 @@ $('start-daily').onclick = () => { opts = { ...opts, ...draft }; saveOpts(); if 
 $('btn-new').onclick = openNew;
 $('dlg-new').addEventListener('close', () => { if (S) renderBrandMode(S.opts.vehicle); });
 $('btn-help').onclick = () => $('dlg-help').showModal();
+
+// ---- the quick menu: everything that doesn't earn a place in the bar, one Tab away
+const MENU_ITEMS = [
+  { id: 'btn-new', icon: '🧭', label: 'New trip', key: 'n' },
+  { id: 'btn-online', icon: '🏁', label: 'Race', key: 'r' },
+  { id: 'btn-passport', icon: '🛂', label: 'Passport', key: 'p', badge: 'pp-count' },
+  { id: 'btn-blind', icon: '🔭', label: 'Blind spots', key: 'b', badge: 'blind-count' },
+  { id: 'btn-study', icon: '📚', label: 'Study', key: 's' },
+  { id: 'btn-shop', icon: '🛒', label: 'Shop', key: 'c' },
+  { id: 'btn-settings', icon: '⚙️', label: 'Settings', key: 'g' },
+  { id: 'btn-me', icon: '🙂', label: 'Your profile', key: 'y' },
+  { id: 'btn-theme', icon: '🌗', label: 'Day / night', key: 't' },
+  { id: 'btn-help', icon: '❓', label: 'How to play', key: '?' },
+];
+function quickMenuHtml() {
+  return MENU_ITEMS.filter(m => $(m.id)).map(m => {
+    const b = m.badge && $(m.badge), n = b && !b.hidden ? b.textContent : '';
+    return `<button type="button" role="menuitem" data-run="${m.id}" data-key="${m.key}"><span aria-hidden="true">${m.icon}</span><span>${m.label}</span><span class="count" ${n ? '' : 'hidden'}>${esc(n)}</span><kbd aria-hidden="true">${m.key === '?' ? '?' : m.key.toUpperCase()}</kbd></button>`;
+  }).join('') + '<hr><div class="foot">Tab opens this menu · Esc closes it</div>';
+}
+function quickMenu(on) {
+  const el = $('quickmenu');
+  if (on) el.innerHTML = quickMenuHtml();
+  el.hidden = !on;
+  $('btn-menu').setAttribute('aria-expanded', String(!!on));
+  if (on) el.querySelector('button').focus();
+}
+function runMenuItem(b) { quickMenu(false); const t = $(b.dataset.run); if (t) t.click(); }
+$('btn-menu').onclick = () => quickMenu($('quickmenu').hidden);
+$('quickmenu').onclick = e => { const b = e.target.closest('[data-run]'); if (b) runMenuItem(b); };
+document.addEventListener('pointerdown', e => { if (!$('quickmenu').hidden && !e.target.closest('#quickmenu, #btn-menu')) quickMenu(false); });
+document.addEventListener('keydown', e => {
+  if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+  const open = !$('quickmenu').hidden;
+  if (open) {
+    if (e.key === 'Escape') { e.preventDefault(); quickMenu(false); $('btn-menu').focus(); return; }
+    const items = [...$('quickmenu').querySelectorAll('[data-run]')];
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); const i = items.indexOf(document.activeElement); items[(Math.max(0, i) + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus(); return; }
+    const hit = items.find(b => b.dataset.key === e.key || b.dataset.key === e.key.toLowerCase());
+    if (hit) { e.preventDefault(); runMenuItem(hit); return; }
+  }
+  // Tab is the game's menu key: the name box keeps the focus while you play, so a letter would just be typed
+  if (e.key !== 'Tab' || e.shiftKey || document.querySelector('dialog[open]')) return;
+  e.preventDefault(); quickMenu(!open);
+});
 $('tier-table').innerHTML = `<thead><tr><th>Stop</th><th>Size</th><th>Points</th><th>Refill</th></tr></thead><tbody>${TIERS.map(t => `<tr><td><span class="tier ${t.id}">${t.label}</span></td><td>${t.id === 'capital' ? 'national capital' : t.note}</td><td>+${t.pts}</td><td>${Math.round(t.refill * 100)}% of tank</td></tr>`).join('')}
   <tr><td colspan="2">First visit ever</td><td>×1.5</td><td></td></tr><tr><td colspan="2">2nd, 3rd, 4th visit</td><td>×1 · ×0.75 · ×0.6</td><td></td></tr><tr><td colspan="2">5th visit onwards</td><td>×0.5 → ×0.35</td><td></td></tr>
   <tr><td colspan="2">A hop shorter than a fifth of your tank</td><td>down to ×0.25</td><td></td></tr>
@@ -390,6 +495,7 @@ function renderShop() {
   $('shop-body').querySelectorAll('[data-preview-effect]').forEach(b => b.onclick = () => { const was = P.equip.effect; P.equip.effect = b.dataset.previewEffect; $('dlg-shop').close(); playArrivalEffect(); P.equip.effect = was; });
 }
 $('btn-shop').onclick = () => { renderShop(); $('dlg-shop').showModal(); };
+$('coin-count').onclick = () => $('btn-shop').click();
 
 // ================= night mode =================
 function applyTheme(theme) {

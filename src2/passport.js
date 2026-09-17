@@ -146,9 +146,9 @@ function renderLeaderboard() {
 
 function renderLeagueChip() {
   if (!G) return; const l = leagueOf(explorerRating().total), chip = $('league-chip');
-  chip.querySelector('i').style.background = l.color; chip.querySelector('span').textContent = l.name; chip.title = 'Your league · rating ' + explorerRating().total;
+  chip.querySelector('i').style.background = l.color; chip.querySelector('span').textContent = l.name; chip.title = `Your league · rating ${explorerRating().total} · opens your passport`;
 }
-$('league-chip').onclick = () => { ppTab = 'book'; $('btn-passport').click(); };
+$('league-chip').onclick = () => { if (!P.flagsNew) ppTab = 'book'; $('btn-passport').click(); };
 
 // ---- earned country covers: know 25 places in a country (Local mastery) and its passport cover is yours
 const COVER_UNLOCK = 25;
