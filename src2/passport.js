@@ -94,8 +94,8 @@ function renderBook(body) {
         <div class="chipline"><span class="chip">Rating ${fmt(r.total)}</span><span class="chip">Trips ${fmt(r.trips)}/600</span><span class="chip">Knowledge ${fmt(r.knowledge)}/400</span><span class="chip">Flags ${fmt(r.flags)}/${FLAG_RATING_MAX}</span></div>
         <div class="levelbar"><div style="width:${next ? Math.min(100, (r.total - league.at) / (next.at - league.at) * 100) : 100}%;background:${league.color}"></div></div>
         <span class="hint">${next ? `${next.at - r.total} more rating for ${next.name}.` : 'The top document there is.'} Trips count your last 10 (${r.tripsCounted} so far), so harder rules and fewer flights raise it fastest. Your ${fmt(r.flagsHave)} flags make you a ${flagRankOf(r.flagsHave).name}.</span>
-        <label class="hint" for="pp-name" style="margin-top:4px">Name on your passport</label>
-        <input class="field" id="pp-name" maxlength="24" value="${esc(name)}">
+        ${CLOUD ? '' : `<label class="hint" for="pp-name" style="margin-top:4px">Name on your passport</label>
+        <input class="field" id="pp-name" maxlength="24" value="${esc(name)}">`}
       </div>
     </div>
     <div>
@@ -111,7 +111,7 @@ function renderBook(body) {
     <div id="leaderboard"></div>`;
   $('bk-prev').onclick = () => { bookPage--; renderBook(body); };
   $('bk-next').onclick = () => { bookPage++; renderBook(body); };
-  $('pp-name').onchange = e => { P.playerName = e.target.value.trim().slice(0, 24) || 'Traveller'; saveProfile(); renderBook(body); publishScore(); };
+  if ($('pp-name')) $('pp-name').onchange = e => { P.playerName = e.target.value.trim().slice(0, 24) || 'Traveller'; saveProfile(); renderBook(body); publishScore(); };
   renderCovers($('covers'), league);
   if (P.cover && !COVERS.data) loadCovers().then(() => renderPassport());
   renderLeaderboard();
@@ -122,6 +122,7 @@ let bookPage = 0;
 const PLAYER_ID = (() => { let id = store.get('stopover-player'); if (!id) { id = 'p' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); store.set('stopover-player', id); } return id; })();
 let boardDb = null, boardRows = null;
 async function initLeaderboard() {
+  if (HOOKS.online) return;
   try { boardDb = window.claude && window.claude.use ? await window.claude.use('db') : null; } catch { boardDb = null; }
   if (!boardDb) return;
   boardDb.collection('leaderboard').orderBy('rating', 'desc').limit(50).onSnapshot(snap => { boardRows = snap.docs.map(d => ({ id: d.id, ...d.data() })); renderLeaderboard(); }, () => { boardDb = null; renderLeaderboard(); });
@@ -129,6 +130,7 @@ async function initLeaderboard() {
 }
 let lastPublished = '';
 async function publishScore() {
+  if (HOOKS.publishScore) return HOOKS.publishScore();
   if (!boardDb) return;
   const r = explorerRating(), body = { name: P.playerName || 'Traveller', rating: r.total, league: leagueOf(r.total).id, places: r.known, trips: P.trips, updated: new Date().toISOString().slice(0, 10) };
   const sig = JSON.stringify(body); if (sig === lastPublished) return; lastPublished = sig;
@@ -136,6 +138,7 @@ async function publishScore() {
 }
 function renderLeaderboard() {
   const el = $('leaderboard'); if (!el) return;
+  if (HOOKS.renderLeaderboard) return HOOKS.renderLeaderboard(el);
   if (!boardDb) { el.innerHTML = '<div class="label" style="margin-bottom:6px">Leaderboard</div><p class="hint" style="margin:0">Only you so far. A shared leaderboard appears here once it is switched on for this page.</p>'; return; }
   const rows = boardRows || [];
   el.innerHTML = `<div class="label" style="margin-bottom:6px">Leaderboard</div><ol class="list" style="list-style:decimal;padding-left:20px">${rows.map(x => `<li style="display:list-item"><span style="display:flex;justify-content:space-between;gap:8px"><span>${esc(x.name || 'Traveller')}${x.id === PLAYER_ID ? ' (you)' : ''} · ${esc((LEAGUES.find(l => l.id === x.league) || LEAGUES[0]).name)}</span><span>${fmt(x.rating || 0)}</span></span></li>`).join('') || '<li>No one yet</li>'}</ol>`;

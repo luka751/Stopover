@@ -368,6 +368,6 @@ function finishStudy() {
     S = saved; useVoyage(S); RULES = { ...DEFAULT_RULES, ...(S.rules || {}) }; hintIds = S.scouts ? S.scouts.map(s => s.id) : []; render(); tripMap.fit(tripBounds(), true, 56, 130);
     setMsg(S.done ? lastMsg.text : `Trip resumed. You're in ${G.name[S.cur]}.`);
   } else if (!startTrip(opts, false)) startTrip({ ...opts, vehicle: opts.vehicle === 'train' ? 'car' : opts.vehicle, regions: ['EU'], length: 'short', avoid: [], from: null, to: null, via: [] }, false);
-  setTimeout(() => { buildSearch(); migrateV1(); backfillStamps(); saveProfile(); renderLeagueChip(); initLeaderboard(); checkAchievements(); bsBackfill(); renderBlindCount(); setTimeout(() => showNews(false), 900); if (S && !S.done) setMsg(lastMsg.text, lastMsg.cls); }, 30);
+  setTimeout(() => { buildSearch(); migrateV1(); backfillStamps(); saveProfile(); renderLeagueChip(); initLeaderboard(); checkAchievements(); bsBackfill(); renderBlindCount(); setTimeout(() => showNews(false), 900); if (S && !S.done) setMsg(lastMsg.text, lastMsg.cls); if (HOOKS.boot) HOOKS.boot(); }, 30);
   await flagsLoaded;
 })();

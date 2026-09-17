@@ -2,10 +2,15 @@
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const fmt = n => Math.round(n).toLocaleString('en-US');
-const store = {
+// On the website the save lives on the server (auth.js loads it before the game starts); the single-file version
+// keeps it in this browser.
+const CLOUD = window.__stopoverCloud || null; delete window.__stopoverCloud;
+const store = CLOUD ? { get: k => CLOUD.get(k), set: (k, v) => CLOUD.set(k, v) } : {
   get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
 };
+// online.js fills these in on the website: race hooks, the shared leaderboard and the map layer for rivals
+const HOOKS = {};
 // toasts queue up, so a new flag and an achievement on the same stop are both seen
 let toastTimer = 0; const toastQueue = [];
 function toast(text) { toastQueue.push(text); if (toastQueue.length === 1) showToast(); }
@@ -104,6 +109,8 @@ let TRAINS_READY = false; // true once rail.json (the OpenStreetMap rail network
 let RAIL_REGIONS = new Set();
 const railIn = regions => [].concat(regions).some(region => region === 'ALL' || region === 'UNCHARTED' ? RAIL_REGIONS.size > 0 : RAIL_REGIONS.has(region));
 let RULES = { ...DEFAULT_RULES };
+// true while a race trip is planned: races are played without upgrades, so everyone has the same tank
+let RACE_FAIR = false;
 const ruleOpt = (key, rules = RULES) => RULE_OPTIONS[key].options.find(o => o.id === rules[key]) || RULE_OPTIONS[key].options[0];
 // which rules actually change a trip in this vehicle: boats never fly or ride trains, trains never fly or take ferries
 function rulesThatApply(vehicle, regions) {

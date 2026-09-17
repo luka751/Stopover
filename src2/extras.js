@@ -37,7 +37,7 @@ const PERKS = [
   { id: 'instinct', name: "Explorer's instinct", icon: '🧠', price: 750, league: 2, blurb: 'Scout ahead also shows one reachable town you have never visited, for a bigger discovery bonus.' },
   { id: 'tank', name: 'Long-range tank', icon: '🚀', price: 1500, league: 3, blurb: 'Every vehicle carries 10% more range, on every trip.' },
 ];
-const hasPerk = id => !!(P && P.owned && P.owned.includes('perk:' + id));
+const hasPerk = id => !RACE_FAIR && !(S && S.race) && !!(P && P.owned && P.owned.includes('perk:' + id));
 const scoutCost = () => hasPerk('scouts') ? 10 : SCOUT_COST;
 const revealCost = () => hasPerk('scouts') ? 0 : REVEAL_COST;
 const helpCost = () => hasPerk('mechanic') ? 40 : HELP_COST;

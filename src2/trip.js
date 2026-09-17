@@ -260,9 +260,10 @@ let S = null;
 let opts = Object.assign({ vehicle: 'car', regions: ['EU'], length: 'short', assist: 'explorer', classic: false, avoid: [], from: null, to: null, via: [] }, store.get('stopover-opts') || {});
 opts.regions = regionsOf(opts); delete opts.region;
 const saveOpts = () => store.set('stopover-opts', opts);
-const save = () => store.set('stopover-trip', S);
+// a race trip is kept apart, so your own trip is still there when the race is over
+const save = () => store.set(S && S.race ? 'stopover-race-trip' : 'stopover-trip', S);
 const markerFor = vehicle => { const m = MARKERS.find(x => x.id === (P.equip.markers || {})[vehicle]); return m ? m.icon : VEHICLES[vehicle].icon; };
-const fuelNow = () => (P.debug && P.debug.infiniteFuel) ? 1e7 : S.fuel;
+const fuelNow = () => S.fuel;
 const tripAvoid = () => new Set(((S && S.avoid) || []).map(cc => G.ccIndex[cc]).filter(x => x != null));
 let hintIds = [];
 let lastMsg = { text: '', cls: '' };
@@ -273,6 +274,7 @@ const viaLeft = () => (S && S.via || []).filter(v => !S.stops.some(s => s.id ===
 const nextTarget = () => viaLeft()[0] ?? S.dest;
 const VIA_BONUS = 60;
 function startTrip(o, daily) {
+  if (S && S.race && !S.done) { toast('Finish or give up the race first.'); return false; }
   const today = new Date().toISOString().slice(0, 10);
   const seed = daily ? 'daily-' + today : 'trip-' + Date.now() + Math.random();
   if (daily) o = { ...o, vehicle: 'car', length: 'medium', regions: [['EU', 'NA', 'AS', 'EU', 'SA', 'AF', 'EU'][new Date().getDay()]], from: null, to: null, via: [] };
@@ -355,13 +357,14 @@ function checkTrain(to) {
   if (straight > TRAIN_MAX_KM) return { ok: false, why: `${G.name[to]} is too far for one train ride (the limit is ${TRAIN_MAX_KM} km of track).` };
   const path = railPath(S.cur, to, TRAIN_MAX_KM);
   if (!path) return { ok: false, why: `There's no rail line from ${G.name[S.cur]} to ${G.name[to]} within ${TRAIN_MAX_KM} km of track.` };
-  const free = (P.freeTrains || 0) > 0, cost = free ? 0 : trainCost(path.km);
+  // races are free to ride and fly, so coins saved up don't buy a head start
+  const free = !S.race && (P.freeTrains || 0) > 0, cost = free || S.race ? 0 : trainCost(path.km);
   if (P.coins < cost) return { ok: false, why: `A train to ${G.name[to]} costs ${cost} coins and you have ${fmt(P.coins)}.` };
   return { ok: true, info: { d: straight }, kind: 'train', fuel: 0, km: path.km, path: path.pts, cost, free };
 }
 // can you fly from where you are to this city right now?
 function checkFlight(to) {
-  const d = dist(G.lat[S.cur], G.lon[S.cur], G.lat[to], G.lon[to]), free = (P.freeFlights || 0) > 0, cost = free ? 0 : flightCost(d, S.flights);
+  const d = dist(G.lat[S.cur], G.lon[S.cur], G.lat[to], G.lon[to]), free = !S.race && (P.freeFlights || 0) > 0, cost = free || S.race ? 0 : flightCost(d, S.flights);
   const rulesText = RULES.planes === 'capitals' ? 'a capital with an airport' : RULES.planes === 'large' ? 'a city with a big airport' : 'a city with an airport';
   if (RULES.planes === 'off') return { ok: false, why: 'This trip has no planes.' };
   if (!airportOK(S.cur)) return { ok: false, why: `${G.name[S.cur]} isn't ${rulesText}, so you can't fly from here.` };
@@ -375,19 +378,21 @@ function checkFlight(to) {
 }
 function travel(id, mode = 'ground') {
   if (S.done) return;
+  if (S.race && Date.now() < S.race.startAt) { setMsg('Wait for the start!', 'bad'); return; }
   if (id === S.cur || id === S.start || S.stops.some(s => s.id === id)) { setMsg(`You've already stopped in ${G.name[id]} on this trip. Pick somewhere new.`, 'bad'); return; }
   if (id === S.dest && viaLeft().length) { setMsg(`Not yet: this trip passes through ${viaLeft().map(x => G.name[x]).join(' and ')} before ${G.name[S.dest]}.`, 'bad'); return; }
   const res = mode === 'fly' ? checkFlight(id) : mode === 'train' ? checkTrain(id) : checkLeg(S.opts.vehicle, S.cur, id, fuelNow(), S.tickets, tripAvoid());
   if (!res.ok && (mode === 'fly' || mode === 'train')) { setMsg(res.why, 'bad'); return; }
   if (!res.ok) { setMsg(explain(res, id), 'bad'); flashRange(); return; }
   const snapshot = JSON.stringify({ ...S, undo: null }), prevVisit = P.visits[placeKey(id)] ? { ...P.visits[placeKey(id)] } : null;
-  const v = VEH(S.opts.vehicle), tier = tierOf(id), before = visitsBefore(id), fam = S.classic ? { mult: 1, label: '' } : familiarity(before), arrived = id === S.dest;
+  // in a race every town scores and refuels the same for everyone, whoever has been there before
+  const v = VEH(S.opts.vehicle), tier = tierOf(id), before = visitsBefore(id), fam = S.classic || S.race ? { mult: 1, label: '' } : familiarity(before), arrived = id === S.dest;
   // a paid train ride on a road trip; on a train trip the train is your own vehicle and runs on the rail range
   const ride = res.kind === 'train' && !res.own, checkpoint = (S.via || []).includes(id);
-  S.fuel = (P.debug && P.debug.infiniteFuel) ? VEH(S.opts.vehicle).tank : Math.max(0, S.fuel - (res.fuel || 0));
+  S.fuel = Math.max(0, S.fuel - (res.fuel || 0));
   const fuelBefore = S.fuel;
   // familiar towns refuel less, so replaying a known route gets harder
-  const tired = S.classic ? 1 : refuelFactor(before);
+  const tired = S.classic || S.race ? 1 : refuelFactor(before);
   if (!arrived && !ride) S.fuel = res.kind === 'flight' ? v.tank : Math.min(v.tank, S.fuel + v.tank * tier.refill * tired);
   // after landing you're back on the ground: the next stop is driven unless you pick Fly again
   if (res.kind === 'flight') { S.mode = 'ground'; if (res.free) P.freeFlights--; else P.coins -= res.cost; renderCoins(); S.flights++; S.airKm += res.km; S.flightCoins += res.cost; }
@@ -419,6 +424,7 @@ function travel(id, mode = 'ground') {
   if (newFlags.length) celebrateFlags(newFlags);
   checkAchievements();
   save(); render(); tripMap.fit(tripBounds(), false, 56, 130);
+  if (!S.done && HOOKS.afterTravel) HOOKS.afterTravel();
 }
 function finishTrip(gaveUp) {
   S.done = true; S.gaveUp = gaveUp;
@@ -428,7 +434,7 @@ function finishTrip(gaveUp) {
     S.groundShare = groundShare;
     const disc = tripDiscovery(); S.discovery = S.classic ? 1 : disc.share;
     // the arrival bonus grows with the trip's length; a route of towns you already know pays a quarter of it
-    S.bonus = Math.round((lengthOf(S.opts.length).bonus * groundShare * (S.classic ? 1 : discoveryBonusFactor(disc.share)) + S.tickets * TICKET_BONUS) * (S.mult || 1));
+    S.bonus = Math.round((lengthOf(S.opts.length).bonus * groundShare * (S.classic || S.race ? 1 : discoveryBonusFactor(disc.share)) + S.tickets * TICKET_BONUS) * (S.mult || 1));
     S.total = Math.max(0, S.pts + S.bonus - S.penalties);
     P.trips += 1;
     const bk = `${S.opts.vehicle}-${S.opts.length}`; P.best[bk] = Math.max(P.best[bk] || 0, S.total);
@@ -451,6 +457,7 @@ function finishTrip(gaveUp) {
   }
   S.passed = passedTowns();
   checkAchievements();
+  if (HOOKS.afterFinish) HOOKS.afterFinish(gaveUp);
 }
 // a route from where you are, through any checkpoints still ahead, to the destination
 function rescueRoute() {

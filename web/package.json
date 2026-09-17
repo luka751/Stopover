@@ -1,0 +1,11 @@
+{
+  "name": "stopover-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "cd .. && node build-web.mjs",
+    "dev": "npm run build && wrangler dev",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "devDependencies": { "wrangler": "4.134.0" }
+}

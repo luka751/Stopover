@@ -40,7 +40,8 @@ function modeSwitch(v) {
   const modes = availableModes();
   if (!modes.includes(S.mode)) S.mode = 'ground';
   if (modes.length < 2) return '';
-  const label = { ground: `${markerFor(S.opts.vehicle)} ${v.coastal ? 'Sail' : S.opts.vehicle === 'bike' ? 'Ride' : 'Drive'}`, fly: `✈ Fly${P.freeFlights ? ` <small class="free">${P.freeFlights} free</small>` : ''}`, train: `🚆 Train${P.freeTrains ? ` <small class="free">${P.freeTrains} free</small>` : ''}` };
+  const free = n => S.race ? ' <small class="free">free</small>' : n ? ` <small class="free">${n} free</small>` : '';
+  const label = { ground: `${markerFor(S.opts.vehicle)} ${v.coastal ? 'Sail' : S.opts.vehicle === 'bike' ? 'Ride' : 'Drive'}`, fly: `✈ Fly${free(P.freeFlights)}`, train: `🚆 Train${free(P.freeTrains)}` };
   return `<div class="modes" role="group" aria-label="How to travel">${modes.map(m => `<button type="button" data-mode="${m}" aria-pressed="${S.mode === m}">${label[m]}</button>`).join('')}</div>`;
 }
 function renderPlaying(v) {
@@ -64,9 +65,9 @@ function renderPlaying(v) {
             ${S.avoid && S.avoid.length ? `<div class="hint">Avoiding ${S.avoid.map(cc => esc(ccName(cc))).join(', ')}</div>` : ''}
             ${RULES.hints === 'off' ? '' : `<button type="button" id="btn-scout" ${S.scouts.length ? 'disabled' : ''}><span>🔭 Scout ahead</span><span class="cost">−${scoutCost()}</span></button>
             <button type="button" id="btn-help-road" ${S.fuel >= v.tank * helpThreshold() ? `disabled title="Only when your tank is under ${helpThreshold() === 0.5 ? 'half' : Math.round(helpThreshold() * 100) + '%'}"` : ''}><span>🛟 ${v.coastal ? 'Resupply at sea' : v.rail ? 'Rail replacement' : S.opts.vehicle === 'bike' ? 'Rest stop' : 'Roadside help'}</span><span class="cost">−${helpCost()}</span></button>`}
-            ${P.consumables.jerrycan ? `<button type="button" id="use-jerry"><span>⛽ Jerrycan: +30% range</span><span class="cost">×${P.consumables.jerrycan}</span></button>` : ''}
+            ${S.race ? '' : `${P.consumables.jerrycan ? `<button type="button" id="use-jerry"><span>⛽ Jerrycan: +30% range</span><span class="cost">×${P.consumables.jerrycan}</span></button>` : ''}
             ${P.consumables.ticket && v.ferry ? `<button type="button" id="use-ticket"><span>🎫 Add a ferry ticket</span><span class="cost">×${P.consumables.ticket}</span></button>` : ''}
-            ${!S.classic && P.consumables.tow ? `<button type="button" id="use-tow" ${S.undo ? '' : 'disabled title="Nothing to undo yet"'}><span>🛻 Tow truck: undo last leg</span><span class="cost">×${P.consumables.tow}</span></button>` : ''}
+            ${!S.classic && P.consumables.tow ? `<button type="button" id="use-tow" ${S.undo ? '' : 'disabled title="Nothing to undo yet"'}><span>🛻 Tow truck: undo last leg</span><span class="cost">×${P.consumables.tow}</span></button>` : ''}`}
             <hr>
             <button type="button" id="btn-giveup" class="danger"><span>Give up and see a route</span></button>
           </div>
@@ -95,11 +96,12 @@ function renderFinished() {
           <details><summary class="hint" style="cursor:pointer">The big-city route from the start (${S.par.length - 2} stops)</summary>${routeList(S.par, 'par')}</details>`}
       ${S.passed && S.passed.length ? `<div><div class="label" style="margin-bottom:6px">Places you ${VEHICLES[S.opts.vehicle].rail ? 'rode' : VEHICLES[S.opts.vehicle].coastal ? 'sailed' : 'drove'} right past</div><ul>${S.passed.map(id => `<li>${esc(G.name[id])} <small>${fmt(G.pop[id])}</small></li>`).join('')}</ul></div>` : ''}
       ${!S.classic && bsDeck('due').length ? `<div class="news-perk"><span><strong>${bsDeck('due').length} blind spots to review.</strong><br><span class="hint">Towns you hopped over on your trips are waiting in the deck.</span></span><button class="btn small dark" type="button" id="btn-review" style="margin-left:auto">Review</button></div>` : ''}
-      <div class="tools"><button class="btn go" type="button" id="btn-again">${opts.from != null && opts.to != null ? 'Same route again' : 'Next trip'}</button><button class="btn" type="button" id="btn-change">Change trip</button></div>
+      ${S.race && HOOKS.finishedButtons ? HOOKS.finishedButtons() : `<div class="tools"><button class="btn go" type="button" id="btn-again">${opts.from != null && opts.to != null ? 'Same route again' : 'Next trip'}</button><button class="btn" type="button" id="btn-change">Change trip</button></div>`}
     </div>`;
-  $('btn-again').onclick = () => startTrip(opts, false);
+  if ($('btn-again')) $('btn-again').onclick = () => startTrip(opts, false);
   if ($('btn-review')) $('btn-review').onclick = () => openBlind();
-  $('btn-change').onclick = openNew;
+  if ($('btn-change')) $('btn-change').onclick = openNew;
+  if (S.race && HOOKS.wireFinished) HOOKS.wireFinished();
 }
 function renderPostcard() {
   if (S.classic) { $('postcard').innerHTML = ''; return; }
@@ -133,6 +135,7 @@ function render() {
   renderSign(v); renderDash(v);
   if (S.done) renderFinished(); else renderPlaying(v);
   renderPostcard(); renderLog(); renderWanted();
+  if (HOOKS.render) HOOKS.render();
   tripMap.draw();
 }
 
@@ -141,13 +144,13 @@ function wireEntry() {
   const input = $('entry-input'), list = $('sugg');
   input.addEventListener('input', () => {
     suggSel = -1;
-    if (opts.assist !== 'explorer' || !searchIndex) { list.hidden = true; return; }
+    if ((S.opts.assist || opts.assist) !== 'explorer' || !searchIndex) { list.hidden = true; return; }
     const key = fold(input.value);
     if (key.length < 2) { list.hidden = true; suggIds = []; return; }
     suggIds = prefixIds(key).filter(id => (S.mode !== 'fly' || airportOK(id)) && (S.mode !== 'train' || stationOK(id)) && (!VEHICLES[S.opts.vehicle].rail || hasStation(id))).sort((a, b) => G.pop[b] - G.pop[a]).slice(0, 8);
     if (!suggIds.length) { list.hidden = true; return; }
     list.innerHTML = suggIds.map((id, i) => { const d = dist(G.lat[S.cur], G.lon[S.cur], G.lat[id], G.lon[id]), inRange = d <= S.fuel, n = visitsBefore(id);
-      return `<li role="option" id="sg-${i}" data-i="${i}" aria-selected="false"><div>${flagHtml(ccOf(id))}${esc(G.name[id])}<small>${esc(placeLine(id))} · ${esc(tierOf(id).label)}${!S.classic && n ? ` · visited ${n}×` : ''}</small></div>${S.mode === 'train' ? `<span class="rng in">${fmt(d)} km<br>🚆 ${P.freeTrains ? 'free ride' : 'station'}</span>` : S.mode === 'fly' ? `<span class="rng ${P.freeFlights || P.coins >= flightCost(d, S.flights) ? 'in' : ''}">${fmt(d)} km<br>✈ ${P.freeFlights ? 'free' : flightCost(d, S.flights) + ' coins'}</span>` : `<span class="rng ${inRange ? 'in' : ''}">${fmt(d)} km<br>${inRange ? 'in range' : 'too far'}</span>`}</li>`; }).join('');
+      return `<li role="option" id="sg-${i}" data-i="${i}" aria-selected="false"><div>${flagHtml(ccOf(id))}${esc(G.name[id])}<small>${esc(placeLine(id))} · ${esc(tierOf(id).label)}${!S.classic && n ? ` · visited ${n}×` : ''}</small></div>${S.mode === 'train' ? `<span class="rng in">${fmt(d)} km<br>🚆 ${P.freeTrains || S.race ? 'free ride' : 'station'}</span>` : S.mode === 'fly' ? `<span class="rng ${S.race || P.freeFlights || P.coins >= flightCost(d, S.flights) ? 'in' : ''}">${fmt(d)} km<br>✈ ${S.race || P.freeFlights ? 'free' : flightCost(d, S.flights) + ' coins'}</span>` : `<span class="rng ${inRange ? 'in' : ''}">${fmt(d)} km<br>${inRange ? 'in range' : 'too far'}</span>`}</li>`; }).join('');
     list.hidden = false;
   });
   const submit = () => { if (!list.hidden && suggSel >= 0) { const id = suggIds[suggSel]; list.hidden = true; input.value = ''; travel(id, S.mode); return; } list.hidden = true; submitName(input.value); };
@@ -387,44 +390,6 @@ function renderShop() {
   $('shop-body').querySelectorAll('[data-preview-effect]').forEach(b => b.onclick = () => { const was = P.equip.effect; P.equip.effect = b.dataset.previewEffect; $('dlg-shop').close(); playArrivalEffect(); P.equip.effect = was; });
 }
 $('btn-shop').onclick = () => { renderShop(); $('dlg-shop').showModal(); };
-
-// ================= debug tools =================
-$('debug-fuel').onchange = e => { P.debug = { ...(P.debug || {}), infiniteFuel: e.target.checked }; saveProfile(); toast(e.target.checked ? 'Infinite fuel on' : 'Infinite fuel off'); if (S) render(); };
-$('debug').addEventListener('toggle', () => { $('debug-fuel').checked = !!(P.debug && P.debug.infiniteFuel); });
-document.querySelectorAll('[data-debug]').forEach(btn => btn.onclick = () => {
-  const act = btn.dataset.debug, v = S && VEH(S.opts.vehicle);
-  if (act === 'news') { $('dlg-settings').close(); showNews('all'); }
-  else if (act === 'news-train') { $('dlg-settings').close(); showNews('trains'); }
-  else if (act === 'flagdrop') {
-    const cat = flagCatalog(); if (!cat) { toast('Flags are still loading'); return; }
-    const pickR = r => cat.all.filter(f => !owns(f.key) && f.rarity === r)[0];
-    const keys = [pickR(4), pickR(1)].filter(Boolean).map(f => f.key); keys.forEach(k => { P.flagsSeen[k] = Date.now(); });
-    $('dlg-settings').close(); celebrateFlags(keys);
-  }
-  else if (act === 'blind') { bsSample(12); $('dlg-settings').close(); openBlind(); }
-  else if (act === 'coins') { P.coins += 10000; saveProfile(); renderCoins(); toast('+10,000 coins'); }
-  else if (act === 'unlock') { for (const k of Object.keys(STYLES)) P.owned.push('style:' + k); for (const m of MARKERS) P.owned.push('marker:' + m.id); for (const r of ROUTES) P.owned.push('route:' + r.id); for (const c of CURSORS) P.owned.push('cursor:' + c.id); for (const x of SIGNS) P.owned.push('sign:' + x.id); for (const k of Object.keys(THEMES)) P.owned.push('theme:' + k); for (const x of TRAILS) P.owned.push('trail:' + x.id); for (const x of EFFECTS) P.owned.push('effect:' + x.id); for (const k of Object.keys(INK_PACKS)) P.owned.push('ink:' + k); for (const k of Object.keys(SOUND_PACKS)) P.owned.push('sound:' + k); for (const p of PERKS) P.owned.push('perk:' + p.id); P.owned.push('holo:on'); P.owned = [...new Set(P.owned)]; saveProfile(); renderSettings(); toast('Everything in the shop is unlocked'); }
-  else if (act === 'supplies') { for (const c of CONSUMABLES) P.consumables[c.id] = (P.consumables[c.id] || 0) + 10; saveProfile(); if (S && !S.done) render(); toast('+10 of every supply'); }
-  else if (!S || S.done) toast('Start a trip first');
-  else if (act === 'fill') { S.fuel = v.tank; save(); render(); tripMap.fit(tripBounds(), false, 56, 130); toast('Tank filled'); }
-  else if (act === 'tickets') { S.tickets += 5; S.ticketsTotal += 5; save(); render(); toast('+5 ferry tickets'); }
-  else if (act === 'route') {
-    const taken = new Set([S.start, ...S.stops.map(s => s.id)]); taken.delete(S.cur);
-    S.rescue = rescueRoute();
-    if (!S.rescue) { toast('No route found from here'); return; }
-    S.rescuePaths = rescuePaths(S.rescue);
-    S.showRoute = true; save(); render(); tripMap.fit(tripBounds(), false, 56, 130); $('dlg-settings').close();
-    toast('Route shown on the map: ' + S.rescue.slice(1, -1).map(id => G.name[id]).join(' → '));
-  }
-  else if (act === 'finish') { $('dlg-settings').close(); const infinite = P.debug && P.debug.infiniteFuel; P.debug = { ...(P.debug || {}), infiniteFuel: true }; S.tickets += 3; for (const id of viaLeft()) travel(id); travel(S.dest); if (!infinite) P.debug.infiniteFuel = false; saveProfile(); }
-  else if (act === 'reset') {
-    if (!btn.dataset.armed) { btn.dataset.armed = '1'; btn.textContent = 'Tap again to erase everything'; return; }
-    store.set('stopover-profile', null); store.set('stopover-trip', null); store.set('stopover-passport', null); location.reload();
-  }
-});
-
-// console access for testing: stopoverDebug.checkLeg(...), stopoverDebug.find('Tirana')
-window.stopoverDebug = { get G() { return G; }, get S() { return S; }, generateTrip, generateVoyage, isles, get VOYAGE() { return VOYAGE; }, learningRoute, get RULES() { return RULES; }, checkLeg, travel, railPath, hasStation, get RAIL() { return RAIL; }, find: name => exactIds(fold(name)).map(id => ({ id, name: G.name[id], country: ccOf(id), pop: G.pop[id] })) };
 
 // ================= night mode =================
 function applyTheme(theme) {
