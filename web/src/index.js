@@ -244,13 +244,35 @@ const SETTING_CHOICES = {
   preset: ['beginner', 'standard', 'expert', 'purist'], show: ['live', 'hidden'],
 };
 // regions is a set now, so a host can race Europe + Asia. It is the one setting that isn't a single choice.
-const REGION_IDS = ['EU', 'AS', 'AF', 'NA', 'SA', 'OC', 'ALL'];
+const REGION_IDS = ['EU', 'AS', 'AF', 'NA', 'SA', 'OC', 'ALL', 'UNCHARTED'];
 const cleanRegions = v => {
   if (!Array.isArray(v)) return null;
   const r = [...new Set(v.filter(x => REGION_IDS.includes(x)))];
   if (!r.length) return null;
-  return r.includes('ALL') ? ['ALL'] : r;
+  return r.includes('UNCHARTED') ? ['UNCHARTED'] : r.includes('ALL') ? ['ALL'] : r;
 };
+// The rest of a race is everything a solo trip can be. The server doesn't plan routes, it only keeps what the
+// host picked in shape: known words, whole-number place ids, kilometres inside their slider's track.
+const gidOrNull = v => v === null ? null : Number.isInteger(v) && v > 0 && v < 2e9 ? v : undefined;
+const RULE_WORDS = { planes: ['all', 'large', 'capitals'], trains: ['all', 'capitals'], tank: ['big', 'standard', 'small'], hints: ['on', 'off'] };
+const RULE_KM = { planeKm: 9000, trainKm: 1500, ferryKm: 1200 };
+function cleanTripSettings(m) {
+  const out = {};
+  if (['coast', 'isles'].includes(m.voyage)) out.voyage = m.voyage;
+  if (typeof m.ocean === 'string' && /^[a-z]{1,16}$/.test(m.ocean)) out.ocean = m.ocean;
+  for (const k of ['isle', 'from', 'to']) { const g = gidOrNull(m[k]); if (g !== undefined) out[k] = g; }
+  if (Array.isArray(m.via) && m.via.length <= 3 && m.via.every(g => gidOrNull(g))) out.via = m.via;
+  if (Array.isArray(m.skip) && m.skip.length <= 60 && m.skip.every(x => typeof x === 'string' && /^[A-Z]{2}-[A-Z]{2,10}$/.test(x))) out.skip = [...new Set(m.skip)];
+  if (['explorer', 'navigator'].includes(m.assist)) out.assist = m.assist;
+  if (Array.isArray(m.avoid) && m.avoid.length <= 40 && m.avoid.every(x => typeof x === 'string' && /^[A-Z]{2}$/.test(x))) out.avoid = [...new Set(m.avoid)];
+  if (m.rules && typeof m.rules === 'object') {
+    const r = {};
+    for (const [k, words] of Object.entries(RULE_WORDS)) if (words.includes(m.rules[k])) r[k] = m.rules[k];
+    for (const [k, max] of Object.entries(RULE_KM)) if (Number.isFinite(m.rules[k])) r[k] = Math.max(0, Math.min(max, Math.round(m.rules[k])));
+    out.rules = r;
+  }
+  return out;
+}
 const DEFAULT_SETTINGS = { mode: 'time', limit: 15, vehicle: 'car', regions: ['EU'], length: 'short', preset: 'standard', show: 'live' };
 
 export class Lobby extends DurableObject {
@@ -316,7 +338,7 @@ export class Lobby extends DurableObject {
       case 'settings': {
         if (!isHost || st.phase === 'racing') return;
         for (const [k, choices] of Object.entries(SETTING_CHOICES)) if (msg.settings && choices.includes(msg.settings[k])) st.settings[k] = msg.settings[k];
-        if (msg.settings) { const regions = cleanRegions(msg.settings.regions); if (regions) { st.settings.regions = regions; delete st.settings.region; } }
+        if (msg.settings) { const regions = cleanRegions(msg.settings.regions); if (regions) { st.settings.regions = regions; delete st.settings.region; } Object.assign(st.settings, cleanTripSettings(msg.settings)); }
         for (const p of Object.values(st.players)) p.ready = false;
         break;
       }

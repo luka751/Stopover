@@ -114,6 +114,36 @@ dialog.news { width: min(560px, calc(100vw - 32px)); overflow: hidden; }
 .rulerow { display: grid; grid-template-columns: 70px 1fr; gap: 8px; align-items: center; }
 .rulerow .choices { margin-top: 0; }
 .rulerow .choice { padding: 5px 9px; font-size: 13px; }
+/* a continent is a split button: the name toggles the whole continent, the caret opens its areas */
+.regrow { display: flex; flex-wrap: wrap; gap: 6px; }
+.regsplit { display: inline-flex; align-items: stretch; }
+.regsplit .choice { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.regsplit .choice small { display: block; }
+.regcaret { border: 1px solid var(--line); border-left: 0; border-radius: 0 8px 8px 0; background: var(--panel-2); color: var(--muted); padding: 0 9px; cursor: pointer; font-size: 12px; line-height: 1; transition: transform .15s; }
+.regcaret:hover:not(:disabled) { color: var(--ink); border-color: var(--ink); }
+.regcaret[aria-expanded="true"] { color: var(--ink); background: color-mix(in srgb, var(--accent) 12%, var(--panel)); }
+.regcaret[aria-expanded="true"] span { display: inline-block; transform: rotate(180deg); }
+.regcaret:disabled { opacity: .45; cursor: not-allowed; }
+.regsplit .choice[aria-pressed="true"] + .regcaret { border-color: var(--accent); }
+.subpanel { margin-top: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); display: grid; gap: 8px; }
+.subhead { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.subhead .linkish { color: var(--ferry); font-size: 13px; font-weight: 600; }
+.subhead .linkish + .linkish { margin-left: 10px; }
+.subchips { display: flex; flex-wrap: wrap; gap: 6px; }
+.subchips .choice { padding: 5px 10px; font-size: 13px; }
+/* folds keep the long, rarely-touched parts of a dialog out of the way until they're wanted */
+details.fold > summary { list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 10px; cursor: pointer; padding: 4px 0; }
+details.fold > summary::-webkit-details-marker { display: none; }
+details.fold > summary::after { content: "▾"; color: var(--muted); font-size: 12px; transition: transform .15s; }
+details.fold[open] > summary::after { transform: rotate(180deg); }
+details.fold > summary .label { flex: none; }
+.foldnote { text-transform: none; letter-spacing: 0; font-family: var(--body); font-weight: 400; }
+.foldsum { flex: 1; min-width: 0; text-align: right; font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#fold-rules { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 6px; }
+.foldbody { padding-top: 8px; }
+.racesum { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.racesum li { display: grid; grid-template-columns: 84px 1fr; gap: 10px; align-items: baseline; background: var(--panel-2); border-radius: 8px; padding: 7px 10px; font-size: 14px; }
+.racesum li .label { font-size: 11px; }
 /* a range rule: the track on top, what it means and what it pays underneath */
 .rulerow .sliderrow { display: grid; gap: 5px; min-width: 0; }
 .rulerow input[type="range"] { width: 100%; margin: 0; accent-color: var(--accent); cursor: pointer; }

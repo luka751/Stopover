@@ -249,12 +249,30 @@ function choiceGroup(el, items, key, fn, onPick) {
   el.onclick = e => { const b = e.target.closest('[data-v]'); if (!b || b.disabled) return; draft[key] = b.dataset.v; el.querySelectorAll('[data-v]').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.v === draft[key]))); if (onPick) onPick(); };
 }
 const ASSISTS = [{ id: 'explorer', name: 'Explorer', blurb: 'Suggestions as you type · ×1' }, { id: 'navigator', name: 'Navigator', blurb: 'No suggestions: type it from memory · ×1.25' }];
-function openNew() {
-  draft = { ...opts, regions: regionsOf(opts), via: [...(opts.via || [])] };
-  if (draft.vehicle === 'train' && opts.classic) draft.vehicle = 'car';
+// NT.race is set while the dialog is configuring a race instead of a solo trip: same controls, so a race can be
+// anything a solo trip can be. Classic rules never apply to a race, and a race has its own avoid list.
+const NT = { race: null };
+const ntClassic = () => !NT.race && !!opts.classic;
+const ntAvoid = () => NT.race ? (draft.avoid || []) : ntClassic() ? [] : (opts.avoid || []);
+const tripSettingsOf = d => ({ vehicle: d.vehicle, voyage: d.voyage || 'coast', ocean: d.ocean || 'any', isle: d.isle ?? null, regions: regionsOf(d), skip: skipOf(d), length: d.length,
+  from: d.from ?? null, to: d.to ?? null, via: [...(d.via || [])], assist: d.assist, rules: migrateRules(d.rules), avoid: [...(d.avoid || [])] });
+function openTripDialog(race) {
+  NT.race = race || null;
+  const base = race ? race.draft : opts;
+  draft = { ...base, regions: regionsOf(base), skip: skipOf(base), via: [...(base.via || [])], avoid: race ? [...(base.avoid || [])] : base.avoid, rules: migrateRules(base.rules) };
+  if (draft.vehicle === 'train' && ntClassic()) draft.vehicle = 'car';
+  REGPICK.open = null;
+  $('nt-title').textContent = race ? 'Race settings' : 'Plan a trip';
+  $('nt-lead').textContent = race ? 'Everything a solo trip can be. Everyone in the lobby gets exactly this trip.' : 'Pick where, how, and how far. Longer trips need smaller towns to keep the tank topped up.';
+  $('start-daily').hidden = !!race;
+  $('start-trip').textContent = race ? 'Save race settings' : 'Start trip';
+  // the long, optional parts start folded unless they're already in use
+  $('fold-route').open = draft.from != null || draft.to != null || draft.via.length > 0;
+  $('fold-rules').open = !PRESETS.some(presetMatches);
   renderNewTrip();
   $('dlg-new').showModal();
 }
+function openNew() { openTripDialog(null); }
 // a place picker: type to search every settlement, pick one, or leave it on Random
 function placePicker(el, value, label, onPick, filter) {
   const id = value == null ? null : G.byGid.get(value);
@@ -280,15 +298,54 @@ function placePicker(el, value, label, onPick, filter) {
   input.onblur = () => setTimeout(() => { list.hidden = true; }, 150);
   list.onmousedown = e => { const li = e.target.closest('[data-k]'); if (li) { e.preventDefault(); onPick(G.gid[ids[+li.dataset.k]]); } };
 }
+const REGPICK = { open: null };
+function renderRegionPicker() {
+  const regs = new Set(draft.regions), skip = new Set(draft.skip || []), rail = VEHICLES[draft.vehicle].rail, noRail = id => rail && !railIn(id);
+  const count = id => { const all = SUBREGIONS[id], on = all.filter(sr => !skip.has(sr.id)).length; return regs.has(id) && on < all.length ? `<small>${on} of ${all.length} areas</small>` : ''; };
+  let html = `<div class="regrow">${REGIONS.filter(r => SUBREGIONS[r.id]).map(r => `<span class="regsplit"><button type="button" class="choice" data-region="${r.id}" aria-pressed="${regs.has(r.id)}" ${noRail(r.id) ? 'disabled title="No rail network loaded here"' : ''}>${r.name}${count(r.id)}</button><button type="button" class="regcaret" data-caret="${r.id}" aria-expanded="${REGPICK.open === r.id}" aria-label="Choose areas of ${r.name}" ${noRail(r.id) ? 'disabled' : ''}><span>▾</span></button></span>`).join('')}
+    ${REGIONS.filter(r => !SUBREGIONS[r.id]).map(r => `<button type="button" class="choice solo" data-region="${r.id}" aria-pressed="${regs.has(r.id)}">${r.name}<small>${r.id === 'UNCHARTED' ? (NT.race ? "The host's least-known countries · ×1.15" : 'The countries you know least · ×1.15') : 'Every continent'}</small></button>`).join('')}</div>`;
+  const list = REGPICK.open && SUBREGIONS[REGPICK.open];
+  if (list) {
+    const cont = REGIONS.find(r => r.id === REGPICK.open), on = regs.has(cont.id);
+    html += `<div class="subpanel"><div class="subhead"><span class="label">${cont.name} · areas</span><span><button type="button" class="linkish" data-suball="${cont.id}">All</button><button type="button" class="linkish" data-subnone="${cont.id}">None</button></span></div>
+      <div class="subchips">${list.map(sr => `<button type="button" class="choice" data-sub="${sr.id}" aria-pressed="${on && !skip.has(sr.id)}">${sr.name}</button>`).join('')}</div></div>`;
+  }
+  $('opt-region').innerHTML = html;
+}
+// Clicking a continent takes all of it; clicking an area of a continent you haven't picked takes just that area.
+// Switching off a continent's last area drops the continent, and the last area anywhere can't be switched off.
+$('opt-region').onclick = e => {
+  const t = e.target.closest('[data-region],[data-caret],[data-sub],[data-suball],[data-subnone]'); if (!t || t.disabled) return;
+  const d = t.dataset;
+  if (d.caret) { REGPICK.open = REGPICK.open === d.caret ? null : d.caret; renderNewTrip(); return; }
+  if (d.region === 'ALL' || d.region === 'UNCHARTED') { draft.regions = [d.region]; draft.skip = []; REGPICK.open = null; renderNewTrip(); return; }
+  let regs = draft.regions.filter(x => x !== 'ALL' && x !== 'UNCHARTED'); const skip = new Set(draft.skip || []);
+  const clear = c => SUBREGIONS[c].forEach(sr => skip.delete(sr.id)), keepOne = () => toast('Keep at least one area.');
+  if (d.region) { const c = d.region; clear(c); regs = regs.includes(c) ? regs.filter(x => x !== c) : [...regs, c]; if (!regs.length) regs = [c]; }
+  else if (d.suball) { clear(d.suball); if (!regs.includes(d.suball)) regs.push(d.suball); }
+  else if (d.subnone) { const c = d.subnone; if (regs.includes(c) && regs.length === 1) return keepOne(); regs = regs.filter(x => x !== c); clear(c); }
+  else if (d.sub) {
+    const sr = SUB_BY_ID.get(d.sub), c = sr.cont, all = SUBREGIONS[c];
+    if (!regs.includes(c)) { regs.push(c); all.forEach(x => { if (x.id !== sr.id) skip.add(x.id); }); }
+    else if (skip.has(sr.id)) skip.delete(sr.id);
+    else {
+      skip.add(sr.id);
+      if (all.every(x => skip.has(x.id))) { if (regs.length === 1) { skip.delete(sr.id); return keepOne(); } regs = regs.filter(x => x !== c); clear(c); }
+    }
+  }
+  draft.regions = regs; draft.skip = [...skip];
+  renderNewTrip();
+};
+const countryOptions = exclude => G.countries.map((c, i) => [c, i]).filter(([c, i]) => G.placeCount[i] > 0 && !exclude.includes(c[0])).sort((a, b) => a[0][1].localeCompare(b[0][1])).map(([c]) => `<option value="${c[0]}">${esc(c[1])}</option>`).join('');
 function renderNewTrip() {
-  const railOk = TRAINS_READY && !opts.classic;
-  choiceGroup($('opt-vehicle'), Object.values(VEHICLES).map(v => ({ ...v, disabled: v.rail && !railOk ? (opts.classic ? 'Classic rules have no train trips' : 'The rail network is still loading') : '' })), 'vehicle', v => `<b>${markerFor(v.id)} ${v.name}</b><small>${v.blurb}</small>`, () => { renderBrandMode(draft.vehicle); renderNewTrip(); });
+  const railOk = TRAINS_READY && !ntClassic();
+  choiceGroup($('opt-vehicle'), Object.values(VEHICLES).map(v => ({ ...v, disabled: v.rail && !railOk ? (ntClassic() ? 'Classic rules have no train trips' : 'The rail network is still loading') : '' })), 'vehicle', v => `<b>${markerFor(v.id)} ${v.name}</b><small>${v.blurb}</small>`, () => { renderBrandMode(draft.vehicle); renderNewTrip(); });
   renderBrandMode(draft.vehicle);
   // Far-Flung Isles: a boat voyage to a remote island outpost, picked from a list or at random
-  const voyage = draft.vehicle === 'boat' && !opts.classic && draft.voyage === 'isles';
-  $('sec-voyage').hidden = draft.vehicle !== 'boat' || opts.classic;
+  const voyage = draft.vehicle === 'boat' && !ntClassic() && draft.voyage === 'isles';
+  $('sec-voyage').hidden = draft.vehicle !== 'boat' || ntClassic();
   $('sec-regions').hidden = voyage; $('sec-length').hidden = voyage; $('pick-to').hidden = voyage; $('pick-via').hidden = voyage;
-  if (draft.vehicle === 'boat' && !opts.classic) {
+  if (draft.vehicle === 'boat' && !ntClassic()) {
     draft.voyage ||= 'coast';
     choiceGroup($('opt-voyage'), [{ id: 'coast', name: 'Coastal trip', blurb: 'Port to port along the coast' }, { id: 'isles', name: '🏝️ Far-Flung Isles', blurb: 'Sail to a remote island outpost · ×1.3' }], 'voyage', x => `${x.name}<small>${x.blurb}</small>`, renderNewTrip);
     const list = isles(), reached = new Set((P.feats || {}).isles || []);
@@ -302,16 +359,11 @@ function renderNewTrip() {
       $('isle-target').onchange = e => { draft.isle = e.target.value ? +e.target.value : null; renderNewTrip(); };
     }
   } else $('isle-pick').innerHTML = '';
-  // regions: pick any mix of continents, or Anywhere, or Uncharted
-  const regs = new Set(draft.regions);
-  $('opt-region').innerHTML = REGIONS.map(r => `<button type="button" class="choice ${r.id === 'ALL' || r.id === 'UNCHARTED' ? 'solo' : ''}" data-region="${r.id}" aria-pressed="${regs.has(r.id)}" ${VEHICLES[draft.vehicle].rail && !['ALL', 'UNCHARTED'].includes(r.id) && !railIn(r.id) ? 'disabled title="No rail network loaded here"' : ''}>${r.id === 'UNCHARTED' ? `${r.name}<small>The countries you know least · ×1.15</small>` : r.id === 'ALL' ? `${r.name}<small>Every continent</small>` : r.name}</button>`).join('');
-  $('opt-region').onclick = e => {
-    const b = e.target.closest('[data-region]'); if (!b || b.disabled) return; const id = b.dataset.region;
-    if (id === 'ALL' || id === 'UNCHARTED') draft.regions = [id];
-    else { const set = new Set(draft.regions.filter(x => x !== 'ALL' && x !== 'UNCHARTED')); if (set.has(id)) set.delete(id); else set.add(id); draft.regions = set.size ? [...set] : [id]; }
-    renderNewTrip();
-  };
-  $('region-hint').textContent = draft.regions.length > 1 ? `Trips start and end anywhere in ${regionLabel(draft.regions)}.` : draft.regions[0] === 'EU' ? 'Russia west of the Urals counts as Europe, east of them as Asia.' : '';
+  // regions: any mix of continents, each narrowed to some of its areas, or Anywhere, or Uncharted
+  draft.skip = skipOf(draft);
+  renderRegionPicker();
+  const whole = draft.regions[0] === 'ALL' || draft.regions[0] === 'UNCHARTED';
+  $('region-hint').textContent = whole ? '' : `Trips start and end anywhere in ${regionLabel(draft.regions, draft.skip)}.${REGPICK.open === 'EU' || REGPICK.open === 'AS' ? ' Russia splits at the Urals: west is Eastern Europe, east is Siberia.' : ''}`;
   // route: optional start, end and places to pass through
   const veh = VEHICLES[draft.vehicle], fits = i => (!veh.rail || hasStation(i)) && (!veh.coastal || coastal(i));
   const setPlace = (key, gid) => { draft[key] = gid; renderNewTrip(); };
@@ -320,7 +372,8 @@ function renderNewTrip() {
   $('pick-via').innerHTML = `<span class="label">Pass through</span><div class="viachips">${draft.via.map((g, k) => { const i = G.byGid.get(g); return i == null ? '' : `<span class="tag">${placeFlag(i)}${esc(G.name[i])}<button type="button" data-unvia="${k}" aria-label="Remove ${esc(G.name[i])}">×</button></span>`; }).join('')}${draft.via.length < 3 ? '<span id="pick-via-add" class="viaadd"></span>' : ''}</div>`;
   $('pick-via').querySelectorAll('[data-unvia]').forEach(b => b.onclick = () => { draft.via.splice(+b.dataset.unvia, 1); renderNewTrip(); });
   if ($('pick-via-add')) placePicker($('pick-via-add'), null, 'Pass through', gid => { if (gid != null) draft.via.push(gid); renderNewTrip(); }, i => fits(i) && G.gid[i] !== draft.from && G.gid[i] !== draft.to && !draft.via.includes(G.gid[i]));
-  const both = draft.from != null && draft.to != null;
+  const both = draft.from != null && draft.to != null, nm = g => g == null ? 'Random' : esc(G.name[G.byGid.get(g)] ?? '?');
+  $('route-sum').innerHTML = voyage ? (draft.from != null ? `From ${nm(draft.from)}` : 'Random port') : draft.from == null && draft.to == null && !draft.via.length ? 'Random' : [nm(draft.from), ...draft.via.map(nm), nm(draft.to)].join(' → ');
   $('route-hint').innerHTML = !searchIndex ? 'Place search is still loading…' : voyage ? 'Pick a port to sail from, or leave it on Random.' : both
     ? (() => { const ids = [draft.from, ...draft.via, draft.to].map(g => G.byGid.get(g)); let km = 0; for (let k = 1; k < ids.length; k++) km += dist(G.lat[ids[k - 1]], G.lon[ids[k - 1]], G.lat[ids[k]], G.lon[ids[k]]); return `${ids.map(i => esc(G.name[i])).join(' → ')}: about ${fmt(km)} km as the crow flies, so it plays as ${(n => (/^[AEIOU]/.test(n) ? 'an ' : 'a ') + `<b>${n}</b>`)(lengthForKm(km, draft.vehicle).name)} trip. Length and region are ignored.`; })()
     : draft.from != null || draft.to != null ? 'The other end is picked at random from your regions, at the trip length below.'
@@ -328,13 +381,26 @@ function renderNewTrip() {
   choiceGroup($('opt-length'), LENGTHS.map(l => ({ ...l, disabled: both ? 'The route you picked sets the length' : '' })), 'length', l => `${l.name}<small>${fmt(l.km[0] * LEN_SCALE[draft.vehicle])}–${fmt(l.km[1] * LEN_SCALE[draft.vehicle])} km · bonus ${l.bonus}</small>`);
   choiceGroup($('opt-assist'), ASSISTS, 'assist', a => `${a.name}<small>${a.blurb}</small>`, renderRules);
   renderRules();
-  $('avoid-summary').innerHTML = opts.classic ? '<span class="hint">Classic rules are on. Turn them off in Settings.</span>'
+  if (NT.race) {
+    // a race's avoid list belongs to the race: everyone plays around the same countries
+    const av = draft.avoid || [];
+    $('avoid-summary').innerHTML = `<div class="label">Avoid countries</div><p class="hint" style="margin:6px 0 0">Everyone in the race stays out of these. Your own list in Settings doesn't apply to races.</p>
+      <div class="tagrow">${av.length ? av.map(cc => `<span class="tag">${countryFlag(cc)}${esc(ccName(cc))}<button type="button" data-raceunavoid="${cc}" aria-label="Stop avoiding ${esc(ccName(cc))}">×</button></span>`).join('') : '<span class="hint">Not avoiding any countries.</span>'}</div>
+      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><select class="field" id="race-avoid-add" aria-label="Country to avoid">${countryOptions(av)}</select><button class="btn small" type="button" id="race-avoid-btn">Avoid</button></div>`;
+    $('avoid-summary').querySelectorAll('[data-raceunavoid]').forEach(b => b.onclick = () => { draft.avoid = av.filter(cc => cc !== b.dataset.raceunavoid); renderNewTrip(); });
+    $('race-avoid-btn').onclick = () => { const cc = $('race-avoid-add').value; if (cc && !av.includes(cc)) { draft.avoid = [...av, cc]; renderNewTrip(); } };
+  } else $('avoid-summary').innerHTML = ntClassic() ? '<span class="hint">Classic rules are on. Turn them off in Settings.</span>'
     : `<div class="label">Avoiding</div><p class="hint" style="margin:6px 0 0">${opts.avoid.length ? opts.avoid.map(cc => esc(ccName(cc))).join(', ') : 'No countries.'} Change this in Settings or your Passport. The daily trip ignores it.</p>`;
+  $('sec-race').hidden = !NT.race;
+  if (NT.race && HOOKS.renderRaceSection) HOOKS.renderRaceSection($('sec-race'), NT.race);
 }
-$('start-trip').onclick = () => { opts = { ...opts, ...draft }; saveOpts(); if (startTrip(opts, false)) $('dlg-new').close(); };
+$('start-trip').onclick = () => {
+  if (NT.race) { NT.race.onSave(tripSettingsOf(draft)); $('dlg-new').close(); return; }
+  opts = { ...opts, ...draft }; saveOpts(); if (startTrip(opts, false)) $('dlg-new').close();
+};
 $('start-daily').onclick = () => { opts = { ...opts, ...draft }; saveOpts(); if (startTrip(opts, true)) $('dlg-new').close(); };
 $('btn-new').onclick = openNew;
-$('dlg-new').addEventListener('close', () => { if (S) renderBrandMode(S.opts.vehicle); });
+$('dlg-new').addEventListener('close', () => { NT.race = null; REGPICK.open = null; if (S) renderBrandMode(S.opts.vehicle); });
 $('btn-help').onclick = () => $('dlg-help').showModal();
 
 // ---- the quick menu: everything that doesn't earn a place in the bar, one Tab away
@@ -525,7 +591,9 @@ const slidValHtml = key => `<span>${RULE_OPTIONS[key].slider.note(ruleKm(key, dr
 // dragging a slider must not rebuild the panel under the cursor, so only the readouts move
 function refreshRuleMeta() {
   $('opt-preset').querySelectorAll('[data-preset]').forEach(b => b.setAttribute('aria-pressed', String(presetMatches(PRESETS.find(x => x.id === b.dataset.preset)))));
-  $('mult-badge').textContent = 'Score ×' + (scoreMultiplier(draft.rules, draft.assist, opts.classic ? 0 : (opts.avoid || []).length, draft.regions, draft.vehicle) * (draft.vehicle === 'boat' && draft.voyage === 'isles' && !opts.classic ? 1.3 : 1)).toFixed(2);
+  $('mult-badge').textContent = 'Score ×' + (scoreMultiplier(draft.rules, draft.assist, ntAvoid().length, draft.regions, draft.vehicle) * (draft.vehicle === 'boat' && draft.voyage === 'isles' && !ntClassic() ? 1.3 : 1)).toFixed(2);
+  const p = PRESETS.find(presetMatches);
+  $('rules-sum').textContent = p ? `${p.name} rules` : `Custom · ${rulesThatApply(draft.vehicle, draft.regions).filter(k => RULE_OPTIONS[k].slider).map(k => { const km = ruleKm(k, draft.rules); return `${RULE_OPTIONS[k].label.split(' ')[0]} ${km ? fmt(km) + ' km' : 'off'}`; }).join(' · ')}`;
 }
 function renderRules() {
   draft.rules = migrateRules(draft.rules);

@@ -57,7 +57,67 @@ const lengthOf = id => LENGTHS.find(l => l.id === id) || LENGTHS[0];
 const hopFactor = (km, tank) => Math.max(0.25, Math.min(1, km / (tank * 0.2)));
 // trip regions are a set now: Europe + Asia, or Anywhere, or Uncharted. Old saves had a single region.
 const regionsOf = o => { const r = Array.isArray(o.regions) && o.regions.length ? o.regions : [o.region || 'EU']; return r.includes('UNCHARTED') ? ['UNCHARTED'] : r.includes('ALL') ? ['ALL'] : r; };
-const regionLabel = regions => regions.map(r => (REGIONS.find(x => x.id === r) || { name: r }).name).join(' + ');
+// Each continent splits into areas you can switch off one by one: Europe without the Balkans, Asia as just the
+// Middle East. Every country with places sits in exactly one area, so an area is the unit a trip is drawn from.
+// Russia is the one country cut in two, at the Urals (60°E), as it always has been here.
+const SUBREGIONS = {
+  EU: [
+    { id: 'EU-NORDIC', name: 'Scandinavia & Nordics', cc: 'NO SE DK FI IS FO AX SJ' },
+    { id: 'EU-BRIT', name: 'British Isles', cc: 'GB IE IM GG JE' },
+    { id: 'EU-WEST', name: 'Western Europe', cc: 'FR BE NL LU MC' },
+    { id: 'EU-IBERIA', name: 'Iberia', cc: 'ES PT AD GI' },
+    { id: 'EU-CENTRAL', name: 'Central Europe', cc: 'DE AT CH LI PL CZ SK HU SI' },
+    { id: 'EU-ITALY', name: 'Italy & Malta', cc: 'IT MT SM VA' },
+    { id: 'EU-BALKANS', name: 'Balkans & Greece', cc: 'HR BA RS ME MK AL XK GR BG CY' },
+    { id: 'EU-BALTIC', name: 'Baltics', cc: 'EE LV LT' },
+    { id: 'EU-EAST', name: 'Eastern Europe', cc: 'UA BY MD RO' },
+    { id: 'EU-CAUCASUS', name: 'Caucasus', cc: 'GE AM AZ' } ],
+  AS: [
+    { id: 'AS-MIDEAST', name: 'Middle East & Turkey', cc: 'TR SY LB IL PS JO IQ IR SA YE OM AE QA BH KW' },
+    { id: 'AS-CENTRAL', name: 'Central Asia', cc: 'KZ UZ TM KG TJ' },
+    { id: 'AS-SOUTH', name: 'South Asia', cc: 'IN PK BD NP BT LK MV AF IO' },
+    { id: 'AS-EAST', name: 'East Asia', cc: 'CN JP KR KP TW HK MO MN' },
+    { id: 'AS-SEA', name: 'Southeast Asia', cc: 'TH VN LA KH MM MY SG ID PH BN TL' },
+    { id: 'AS-SIBERIA', name: 'Siberia & Russian Far East', cc: '' } ],
+  AF: [
+    { id: 'AF-NORTH', name: 'North Africa', cc: 'MA DZ TN LY EG EH SD' },
+    { id: 'AF-WEST', name: 'West Africa', cc: 'MR ML NE SN GM GW GN SL LR CI BF GH TG BJ NG CV SH' },
+    { id: 'AF-CENTRAL', name: 'Central Africa', cc: 'TD CF CM GQ GA CG CD ST AO' },
+    { id: 'AF-EAST', name: 'East Africa', cc: 'ET ER DJ SO KE UG RW BI TZ SS' },
+    { id: 'AF-SOUTH', name: 'Southern Africa', cc: 'ZA NA BW ZW ZM MW MZ LS SZ' },
+    { id: 'AF-ISLANDS', name: 'Indian Ocean islands', cc: 'MG MU RE SC KM YT' } ],
+  NA: [
+    { id: 'NA-USA', name: 'United States', cc: 'US' },
+    { id: 'NA-CANADA', name: 'Canada & Greenland', cc: 'CA GL PM' },
+    { id: 'NA-MEXICO', name: 'Mexico', cc: 'MX' },
+    { id: 'NA-CENTRAL', name: 'Central America', cc: 'GT BZ SV HN NI CR PA' },
+    { id: 'NA-CARIB', name: 'Caribbean', cc: 'CU JM HT DO PR BS TC KY VG VI AI AG KN MS GP DM MQ LC VC BB GD TT AW CW BQ SX MF BL BM' } ],
+  SA: [
+    { id: 'SA-NORTH', name: 'Northern South America', cc: 'VE CO GY SR GF' },
+    { id: 'SA-ANDES', name: 'Andes', cc: 'EC PE BO CL' },
+    { id: 'SA-BRAZIL', name: 'Brazil', cc: 'BR' },
+    { id: 'SA-CONE', name: 'Southern Cone', cc: 'AR UY PY FK' } ],
+  OC: [
+    { id: 'OC-AUS', name: 'Australia', cc: 'AU CX CC NF' },
+    { id: 'OC-NZ', name: 'New Zealand', cc: 'NZ' },
+    { id: 'OC-MELA', name: 'Melanesia', cc: 'PG SB VU NC FJ' },
+    { id: 'OC-MICRO', name: 'Micronesia', cc: 'FM GU MP PW MH KI NR' },
+    { id: 'OC-POLY', name: 'Polynesia', cc: 'WS AS TO TV PF WF PN CK NU TK' } ],
+};
+const SUB_BY_ID = new Map(), SUB_OF_CC = new Map();
+for (const [cont, list] of Object.entries(SUBREGIONS)) for (const sr of list) { sr.cont = cont; SUB_BY_ID.set(sr.id, sr); for (const cc of sr.cc.split(' ').filter(Boolean)) SUB_OF_CC.set(cc, sr); }
+// the area a place is in; null for the few places (Antarctic outposts) no trip is drawn from
+const subOf = id => { const cc = ccOf(id); if (cc === 'RU') return SUB_BY_ID.get(G.lon[id] >= 60 ? 'AS-SIBERIA' : 'EU-EAST'); return SUB_OF_CC.get(cc) || null; };
+// the areas a trip leaves out; only areas of continents it actually uses count
+const skipOf = o => { const regs = regionsOf(o); if (regs[0] === 'ALL' || regs[0] === 'UNCHARTED') return []; return (Array.isArray(o.skip) ? o.skip : []).filter(x => SUB_BY_ID.has(x) && regs.includes(SUB_BY_ID.get(x).cont)); };
+const regionLabel = (regions, skip = []) => regions.map(r => {
+  const name = (REGIONS.find(x => x.id === r) || { name: r }).name, all = SUBREGIONS[r];
+  if (!all) return name;
+  const off = all.filter(sr => skip.includes(sr.id)).length;
+  if (!off) return name;
+  const on = all.filter(sr => !skip.includes(sr.id));
+  return on.length === 1 ? on[0].name : `${name} (${on.length} of ${all.length} areas)`;
+}).join(' + ');
 const MASTERY = [
   { at: 0, color: null, name: 'Unexplored' },
   { at: 1, color: '#D7263D', name: 'Stranger' }, { at: 3, color: '#EE6A2C', name: 'Passer-by' }, { at: 6, color: '#F2A93B', name: 'Visitor' },

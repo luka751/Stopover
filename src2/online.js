@@ -11,13 +11,22 @@ const RACE_MODES = {
   stops: { name: 'Fewest stops', blurb: 'Reach it in the fewest stops' },
 };
 const RACE_LIMITS = [0, 5, 10, 15, 20, 30];
-const RACE_REGIONS = ['EU', 'AS', 'AF', 'NA', 'SA', 'OC', 'ALL'];
+const RACE_REGIONS = ['EU', 'AS', 'AF', 'NA', 'SA', 'OC', 'ALL', 'UNCHARTED'];
 // A lobby used to carry one continent. It carries a set now, like a solo trip, so a host can race
 // Europe + Asia. Older lobbies still send the single `region`, so read either.
 const raceRegions = set => {
   const r = Array.isArray(set.regions) && set.regions.length ? set.regions.filter(x => RACE_REGIONS.includes(x)) : [set.region || 'EU'];
-  return r.includes('ALL') || !r.length ? ['ALL'] : r;
+  return !r.length ? ['EU'] : r.includes('UNCHARTED') ? ['UNCHARTED'] : r.includes('ALL') ? ['ALL'] : r;
 };
+// A lobby's settings as the options of a trip. Lobbies from before full race settings carried only a preset,
+// so anything missing falls back to what that preset meant.
+function raceDraft(set) {
+  const preset = PRESETS.find(p => p.id === set.preset) || PRESETS[1];
+  return { vehicle: set.vehicle || 'car', voyage: set.voyage || 'coast', ocean: set.ocean || 'any', isle: set.isle ?? null,
+    regions: raceRegions(set), skip: Array.isArray(set.skip) ? set.skip : [], length: set.length || 'short',
+    from: set.from ?? null, to: set.to ?? null, via: Array.isArray(set.via) ? set.via : [],
+    assist: set.assist || preset.assist, rules: migrateRules(set.rules || preset.rules), avoid: Array.isArray(set.avoid) ? set.avoid : [] };
+}
 const nameInfo = n => (CLOUD && CLOUD.names.parse(n)) || { name: String(n || '?'), color: '#5F6368', emoji: '🧳' };
 const unameHtml = (n, cls = '') => { const p = nameInfo(n); return `<span class="uname ${cls}" style="--uc:${p.color}"><i aria-hidden="true">${p.emoji}</i>${esc(p.name)}</span>`; };
 const clock = ms => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
@@ -93,24 +102,70 @@ function refreshOnline() {
   if (S && S.race) tripMap.draw();
 }
 
+// ---- race settings: a read-out in the lobby, edited in the same dialog as a solo trip
+const RACE_SHOW = { live: ['Live', 'See where everyone is'], hidden: ['Hidden', 'Revealed when you finish'] };
+function raceSummaryHtml(set) {
+  const o = raceDraft(set), v = VEHICLES[o.vehicle], isles = o.vehicle === 'boat' && o.voyage === 'isles';
+  const nm = g => { const i = g == null ? null : G.byGid.get(g); return i == null ? null : `${placeFlag(i)}${esc(G.name[i])}`; };
+  const route = [nm(o.from), ...o.via.map(nm), nm(o.to)];
+  const routeTxt = o.from == null && o.to == null && !o.via.length ? 'Random' : route.map(x => x || 'Random').join(' → ');
+  const preset = PRESETS.find(p => p.assist === o.assist && rulesThatApply(o.vehicle, o.regions).every(k => migrateRules(p.rules)[k] === o.rules[k]));
+  const mult = scoreMultiplier(o.rules, o.assist, o.avoid.length, isles ? null : o.regions, o.vehicle) * (isles ? 1.3 : 1);
+  const row = (k, val) => `<li><span class="label">${k}</span><span>${val}</span></li>`;
+  return `<ul class="racesum">
+    ${row('Win by', `${esc(RACE_MODES[set.mode || 'time'].name)} · ${set.limit ? `${set.limit} min` : 'no time limit'} · rivals ${esc(RACE_SHOW[set.show || 'live'][0].toLowerCase())}`)}
+    ${row('Trip', `${markerFor(o.vehicle)} ${esc(v.name)} · ${isles ? '🏝️ Far-Flung Isles' : `${esc(regionLabel(o.regions, skipOf(o)))} · ${esc(lengthOf(o.length).name)}`}`)}
+    ${row('Route', routeTxt)}
+    ${row('Rules', `${preset ? esc(preset.name) : 'Custom'} · ${esc((ASSISTS.find(a => a.id === o.assist) || ASSISTS[0]).name)} · <span class="mult">×${mult.toFixed(2)}</span>`)}
+    ${row('Avoiding', o.avoid.length ? o.avoid.map(cc => esc(ccName(cc))).join(', ') : 'No countries')}
+  </ul>`;
+}
+function openRaceSetup(st) {
+  const race = { draft: raceDraft(st.settings), extra: { mode: st.settings.mode || 'time', limit: st.settings.limit ?? 15, show: st.settings.show || 'live' },
+    onSave: trip => {
+      if (!amHost() || !ONLINE.state || ONLINE.state.phase === 'racing') return toast('Only the host can change the race, and not mid-race.');
+      ONLINE.state.settings = { ...ONLINE.state.settings, ...trip, ...race.extra };
+      send({ t: 'settings', settings: ONLINE.state.settings }); renderOnline(); toast('Race settings saved');
+    } };
+  openTripDialog(race);
+}
+HOOKS.renderRaceSection = (el, race) => {
+  const x = race.extra, group = (key, label, items) => `<div class="rulerow"><span class="label">${label}</span><div class="choices">${items.map(([v, name, small]) => `<button type="button" class="choice" data-raceset="${key}" data-v="${v}" aria-pressed="${String(x[key]) === String(v)}">${name}${small ? `<small>${small}</small>` : ''}</button>`).join('')}</div></div>`;
+  el.innerHTML = `<details class="fold" open><summary><span class="label">Race</span><span class="foldsum">${esc(RACE_MODES[x.mode].name)} · ${x.limit ? x.limit + ' min' : 'no limit'} · ${esc(RACE_SHOW[x.show][0])}</span></summary>
+    <div class="foldbody" style="display:grid;gap:8px">
+      ${group('mode', 'Win by', Object.entries(RACE_MODES).map(([id, m]) => [id, m.name, m.blurb]))}
+      ${group('limit', 'Time limit', RACE_LIMITS.map(l => [l, l ? `${l} min` : 'No limit']))}
+      ${group('show', 'Rivals', Object.entries(RACE_SHOW).map(([id, [n, b]]) => [id, n, b]))}
+    </div></details>`;
+  el.querySelectorAll('[data-raceset]').forEach(b => b.onclick = () => { const k = b.dataset.raceset; x[k] = k === 'limit' ? +b.dataset.v : b.dataset.v; HOOKS.renderRaceSection(el, race); });
+};
+
 // ---- the race itself
 function planRace(st) {
-  const set = st.settings, preset = PRESETS.find(p => p.id === set.preset) || PRESETS[1], veh = VEHICLES[set.vehicle];
+  const o = raceDraft(st.settings), veh = VEHICLES[o.vehicle];
   if (veh.rail && !RAIL.ready) return { error: 'The rail network is still loading. Try again in a moment.' };
   const keep = RULES;
   try {
     RACE_FAIR = true;
-    RULES = migrateRules(preset.rules);
+    RULES = migrateRules(o.rules);
     if (veh.rail || veh.coastal) RULES = { ...RULES, planeKm: 0, trainKm: 0 };
-    const regions = raceRegions(set);
-    const o = { vehicle: set.vehicle, regions, length: set.length, assist: preset.assist, avoid: [], from: null, to: null, via: [] }, seed = `race-${st.code}-${Date.now()}`;
-    let used = lengthOf(set.length), trip = generateTrip(o, seed, new Set());
-    // a length that won't fit steps down, as a solo trip does
-    for (let li = LENGTHS.indexOf(used) - 1; (!trip || trip.error) && li >= 0; li--) { const t = generateTrip({ ...o, length: LENGTHS[li].id }, `${seed}-${li}`, new Set()); if (t && !t.error) { trip = t; used = LENGTHS[li]; } }
-    if (!trip || trip.error) return { error: (trip && trip.error) || 'No route turned up for those settings. Try another region or length.' };
-    const gid = i => G.gid[i];
+    const avoid = new Set(o.avoid.map(cc => G.ccIndex[cc]).filter(x => x != null)), place = g => g == null ? null : G.byGid.get(g) ?? null;
+    const picked = { from: place(o.from), to: place(o.to), via: o.via.map(place).filter(x => x != null) };
+    const voyage = o.vehicle === 'boat' && o.voyage === 'isles', seed = `race-${st.code}-${Date.now()}`;
+    let used = lengthOf(o.length), trip = voyage ? generateVoyage(o, picked, seed, avoid) : generateTrip({ ...o, ...picked }, seed, avoid);
+    if (trip && trip.error) return { error: trip.error };
+    // a random route that won't fit steps down one length at a time, as a solo trip does
+    for (let li = LENGTHS.indexOf(used) - 1; !trip && !voyage && li >= 0 && picked.from == null && picked.to == null; li--) {
+      const t = generateTrip({ ...o, ...picked, length: LENGTHS[li].id }, `${seed}-${li}`, avoid);
+      if (t && t.error) return { error: t.error };
+      if (t) { trip = t; used = LENGTHS[li]; }
+    }
+    if (!trip) return { error: 'No route turned up for those settings. Try other regions or a different length, or avoid fewer countries.' };
+    if (voyage || picked.from != null || picked.to != null || trip.via.length) used = lengthForKm(trip.km, o.vehicle);
+    const gid = i => G.gid[i], regions = regionsOf(o), skip = skipOf(o);
     return { trip: { start: gid(trip.start), dest: gid(trip.dest), via: trip.via.map(gid), par: trip.par.map(gid), km: Math.round(trip.km), tickets: trip.tickets, rules: { ...RULES },
-      opts: { vehicle: set.vehicle, regions, length: used.id, assist: preset.assist }, mult: scoreMultiplier(RULES, preset.assist, 0, regions, set.vehicle) } };
+      opts: { vehicle: o.vehicle, regions, skip, length: used.id, assist: o.assist, voyage: voyage ? 'isles' : null }, avoid: o.avoid, voyage: trip.voyage || null,
+      mult: Math.round(scoreMultiplier(RULES, o.assist, o.avoid.length, voyage ? null : regions, o.vehicle) * (voyage ? 1.3 : 1) * 100) / 100 } };
   } finally { RACE_FAIR = false; RULES = keep; }
 }
 function buildRaceTrip(m) {
@@ -118,10 +173,13 @@ function buildRaceTrip(m) {
   const start = at(spec.start), dest = at(spec.dest), via = (spec.via || []).map(at);
   if (start == null || dest == null || via.some(x => x == null)) { toast('This race uses places your copy of the game does not have. Reload the page.'); return null; }
   RULES = migrateRules(spec.rules);
+  // a voyage stocks the boat for its crossing, so the tank has to be read with the voyage in place
+  const avoid = Array.isArray(spec.avoid) ? spec.avoid : [];
+  useVoyage({ voyage: spec.voyage || null, dest });
   RACE_FAIR = true; const v = VEH(spec.opts.vehicle); RACE_FAIR = false;
-  return { v: 2, classic: false, daily: null, race: { code: m.code, n: r.n, mode: r.mode }, opts: { ...spec.opts, classic: false, avoid: [], from: null, to: null, via: [] }, avoid: [],
+  return { v: 2, classic: false, daily: null, race: { code: m.code, n: r.n, mode: r.mode }, opts: { ...spec.opts, classic: false, avoid, from: null, to: null, via: [] }, avoid,
     start, dest, via, par: (spec.par || []).map(at).filter(x => x != null), routeKm: spec.km, cur: start, fuel: v.tank, tickets: spec.tickets, ticketsTotal: spec.tickets,
-    stops: [], pts: 0, penalties: 0, scouts: [], helps: 0, done: false, gaveUp: false, km: 0, rules: { ...RULES }, mult: spec.mult, mode: 'ground', flights: 0, airKm: 0, flightCoins: 0, voyage: null };
+    stops: [], pts: 0, penalties: 0, scouts: [], helps: 0, done: false, gaveUp: false, km: 0, rules: { ...RULES }, mult: spec.mult, mode: 'ground', flights: 0, airKm: 0, flightCoins: 0, voyage: spec.voyage || null };
 }
 function enterRace(m) {
   const r = m.race, saved = store.get('stopover-race-trip');
@@ -129,7 +187,7 @@ function enterRace(m) {
   let next = saved && saved.race && saved.race.code === m.code && saved.race.n === r.n ? saved : buildRaceTrip(m);
   if (!next) return;
   S = next; S.race.startAt = r.startAt - ONLINE.offset; S.race.endAt = r.endAt ? r.endAt - ONLINE.offset : null;
-  useVoyage(null); RULES = migrateRules(S.rules); hintIds = S.scouts ? S.scouts.map(s => s.id) : [];
+  useVoyage(S); RULES = migrateRules(S.rules); hintIds = S.scouts ? S.scouts.map(s => s.id) : [];
   if (!S.stops.length && !S.done) lastMsg = { text: `Race to ${G.name[S.dest]}${S.via.length ? ` through ${S.via.map(x => G.name[x]).join(', ')}` : ''}. ${RACE_MODES[r.mode].blurb}.`, cls: '' };
   save();
   document.querySelectorAll('dialog[open]').forEach(d => d.close());
@@ -267,8 +325,7 @@ function renderLobby(body) {
   }
   if (!st) { body.innerHTML = `<section><p class="hint">Connecting to lobby ${esc(ONLINE.code)}…</p><button class="btn small" type="button" id="lob-leave">Cancel</button></section>`; $('lob-leave').onclick = leaveLobby; return; }
   const host = amHost(), set = st.settings, racing = st.phase === 'racing', ready = st.players.filter(p => p.ready || p.id === st.host).length;
-  const me = st.players.find(p => p.id === st.me) || {}, preset = PRESETS.find(p => p.id === set.preset) || PRESETS[1];
-  const group = (key, label, items) => `<div class="rulerow"><span class="label">${label}</span><div class="choices">${items.map(([v, name, small]) => `<button type="button" class="choice" data-set="${key}" data-v="${v}" aria-pressed="${String(set[key]) === String(v)}" ${host && !racing ? '' : 'disabled'}>${name}${small ? `<small>${small}</small>` : ''}</button>`).join('')}</div></div>`;
+  const me = st.players.find(p => p.id === st.me) || {};
   body.innerHTML = `
     <section class="lobbyhead"><div><div class="label">Lobby code</div><div class="lobbycode">${esc(st.code)}</div><p class="hint" style="margin:4px 0 0">Friends join with this code in Online → Race.${ONLINE.ws ? '' : ' <b>Reconnecting…</b>'}</p></div>
       <div class="tools"><button class="btn small" type="button" id="lob-copy">Copy code</button><button class="btn small" type="button" id="lob-leave">Leave lobby</button></div></section>
@@ -277,33 +334,17 @@ function renderLobby(body) {
       <span class="lobbytags">${p.id === st.host ? '<span class="chip">👑 Host</span>' : ''}${!p.online ? '<span class="chip">Offline</span>' : p.id === st.host ? '' : p.ready ? '<span class="chip good">✓ Ready</span>' : '<span class="chip">Not ready</span>'}${host && p.id !== st.me && !racing ? `<button class="btn small" type="button" data-kick="${p.id}">Remove</button>` : ''}</span></li>`).join('')}</ul></section>
     ${racing ? `<section><div class="label">Race in progress</div><p class="hint" style="margin:6px 0 0">${st.race && st.race.progress[st.me] ? 'You are in this race.' : "You joined after the start, so you'll be in the next race."}</p></section>` : ''}
     ${st.phase === 'results' && st.results ? `<section><div class="label">Last race</div>${resultsHtml(st).replace(/^<section>|<\/section>$/g, '')}</section>` : ''}
-    <section><div class="label">Race settings${host ? '' : ' · the host picks'}</div>
-      ${group('mode', 'Win by', Object.entries(RACE_MODES).map(([id, x]) => [id, x.name, x.blurb]))}
-      ${group('limit', 'Time limit', RACE_LIMITS.map(l => [l, l ? `${l} min` : 'No limit']))}
-      ${group('vehicle', 'Vehicle', Object.values(VEHICLES).map(v => [v.id, `${v.icon} ${v.name}`]))}
-      <div class="rulerow"><span class="label">Regions · pick one or more</span><div class="choices">${RACE_REGIONS.map(id => `<button type="button" class="choice ${id === 'ALL' ? 'solo' : ''}" data-region="${id}" aria-pressed="${raceRegions(set).includes(id)}" ${host && !racing ? '' : 'disabled'}>${esc(REGIONS.find(r => r.id === id).name)}${id === 'ALL' ? '<small>Every continent</small>' : ''}</button>`).join('')}</div></div>
-      ${group('length', 'Length', LENGTHS.map(l => [l.id, l.name, l.blurb]))}
-      ${group('preset', 'Difficulty', PRESETS.map(p => [p.id, p.name, p.blurb]))}
-      ${group('show', 'Rivals on the map', [['live', 'Live', 'See where everyone is'], ['hidden', 'Hidden', 'Revealed when you finish']])}
+    <section><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><div class="label">Race settings${host ? '' : ' · the host picks'}</div>${host && !racing ? '<button class="btn small" type="button" id="lob-edit">Edit race settings</button>' : ''}</div>
+      ${raceSummaryHtml(set)}
     </section>
     <footer>
       ${racing ? (st.race && st.race.progress[st.me] ? `<button class="btn go" type="button" id="lob-go">Back to the race</button>${host ? '<button class="btn" type="button" id="lob-end">End the race now</button>' : ''}` : '')
-        : host ? `<span class="hint" style="margin-right:auto">${ready}/${st.players.length} ready · ${esc(preset.name)} ${esc(VEHICLES[set.vehicle].name.toLowerCase())} race</span><button class="btn go" type="button" id="lob-start" ${ONLINE.planning ? 'disabled' : ''}>${ONLINE.planning ? 'Planning the route…' : st.phase === 'results' ? 'Start another race' : 'Start the race'}</button>`
+        : host ? `<span class="hint" style="margin-right:auto">${ready}/${st.players.length} ready</span><button class="btn go" type="button" id="lob-start" ${ONLINE.planning ? 'disabled' : ''}>${ONLINE.planning ? 'Planning the route…' : st.phase === 'results' ? 'Start another race' : 'Start the race'}</button>`
         : `<span class="hint" style="margin-right:auto">Waiting for the host to start</span><button class="btn ${me.ready ? '' : 'go'}" type="button" id="lob-ready">${me.ready ? 'Not ready' : "I'm ready"}</button>`}
     </footer>`;
   $('lob-leave').onclick = leaveLobby;
   $('lob-copy').onclick = async () => { try { await navigator.clipboard.writeText(st.code); toast('Code copied'); } catch { toast(`The code is ${st.code}`); } };
-  body.querySelectorAll('[data-set]').forEach(b => b.onclick = () => { const k = b.dataset.set, v = k === 'limit' ? +b.dataset.v : b.dataset.v; st.settings = { ...st.settings, [k]: v }; send({ t: 'settings', settings: st.settings }); renderOnline(); });
-  body.querySelectorAll('[data-region]').forEach(b => b.onclick = () => {
-    if (b.disabled) return;
-    const id = b.dataset.region, cur = new Set(raceRegions(st.settings));
-    let next;
-    if (id === 'ALL') next = ['ALL'];
-    else { cur.delete('ALL'); cur.has(id) ? cur.delete(id) : cur.add(id); next = [...cur]; }
-    if (!next.length) next = ['ALL'];
-    st.settings = { ...st.settings, regions: next };
-    send({ t: 'settings', settings: st.settings }); renderOnline();
-  });
+  if ($('lob-edit')) $('lob-edit').onclick = () => openRaceSetup(st);
   body.querySelectorAll('[data-kick]').forEach(b => b.onclick = () => send({ t: 'kick', id: +b.dataset.kick }));
   if ($('lob-ready')) $('lob-ready').onclick = () => send({ t: 'ready', on: !me.ready });
   if ($('lob-go')) $('lob-go').onclick = () => $('dlg-online').close();

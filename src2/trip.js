@@ -221,13 +221,12 @@ function learningRoute(vehicleId, from, dest, fuelNow, tickets, avoid, taken = n
 function generateTrip(o, seed, avoid) {
   const r = rng(seed), v = VEH(o.vehicle), len = lengthOf(o.length), regions = regionsOf(o), rail = !!v.rail;
   const [kmMin, kmMax] = len.km.map(k => k * LEN_SCALE[o.vehicle]), minPop = o.vehicle === 'bike' || rail ? Math.min(len.minPop, 100000) : len.minPop;
-  const uncharted = regions[0] === 'UNCHARTED' ? unchartedCountries() : null, want = new Set(regions);
+  const uncharted = regions[0] === 'UNCHARTED' ? unchartedCountries() : null, want = new Set(regions), skip = new Set(skipOf(o));
+  // a place belongs to one area (subOf), and the area to one continent: Russia splits at the Urals there
   const inRegion = id => {
     if (uncharted) return uncharted.has(G.cc[id]);
-    const c = G.contOf[G.cc[id]]; if (c === 'AN') return false; if (want.has('ALL')) return true;
-    // GeoNames files all of Russia under Europe: west of the Urals it is Europe, east of them Asia
-    if (c === 'EU' && G.lon[id] >= 60) return want.has('AS');
-    return want.has(c);
+    const sr = subOf(id); if (!sr || skip.has(sr.id)) return false;
+    return want.has('ALL') || want.has(sr.cont);
   };
   const usable = id => !avoid.has(G.cc[id]) && (!v.coastal || coastal(id) || (o.isles && id === o.to)) && (!rail || hasStation(id));
   const via = (o.via || []).filter(x => x != null), fixedS = o.from ?? null, fixedD = o.to ?? null, both = fixedS != null && fixedD != null;
@@ -335,11 +334,11 @@ function startTrip(o, daily) {
   for (let li = LENGTHS.indexOf(used) - 1; !trip && !voyage && li >= 0 && picked.from == null && picked.to == null; li--) {
     trip = generateTrip({ ...o, ...picked, length: LENGTHS[li].id }, seed + '-' + li, avoid);
     if (trip && trip.error) { toast(trip.error); return false; }
-    if (trip) { toast(`No ${used.name} route turned up in ${regionLabel(regionsOf(o))}, so this one is ${LENGTHS[li].name}.`); used = LENGTHS[li]; }
+    if (trip) { toast(`No ${used.name} route turned up in ${regionLabel(regionsOf(o), skipOf(o))}, so this one is ${LENGTHS[li].name}.`); used = LENGTHS[li]; }
   }
   if (!trip) { toast("No route found with those settings. Try another region or length, or avoid fewer countries."); return false; }
   if (voyage || picked.from != null || picked.to != null || trip.via.length) used = lengthForKm(trip.km, o.vehicle);
-  const tripOpts = { ...o, length: used.id, regions: regionsOf(o), voyage: voyage ? 'isles' : null };
+  const tripOpts = { ...o, length: used.id, regions: regionsOf(o), skip: skipOf(o), voyage: voyage ? 'isles' : null };
   useVoyage({ voyage: trip.voyage, dest: trip.dest }); const v = VEH(o.vehicle);
   S = { v: 2, classic: !!o.classic, daily: daily ? today : null, opts: tripOpts, avoid: avoidList, start: trip.start, dest: trip.dest, via: trip.via, par: trip.par, routeKm: trip.km, cur: trip.start, fuel: v.tank, tickets: trip.tickets + seasonTickets(o), ticketsTotal: trip.tickets + seasonTickets(o),
     stops: [], pts: 0, penalties: 0, scouts: [], helps: 0, done: false, gaveUp: false, km: 0,
@@ -571,11 +570,43 @@ function scout() {
 }
 const maskName = s => s.split('').map((ch, i) => i === 0 || /[\s\-']/.test(ch) ? ch : '·').join('');
 function lev(a, b) { const m = a.length, n = b.length; if (!m) return n; if (!n) return m; let prev = Array.from({ length: n + 1 }, (_, i) => i); for (let i = 1; i <= m; i++) { const cur = [i]; for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); prev = cur; } return prev[n]; }
+// Many names repeat: three Tripolis, a dozen Springfields. Typing "Tripoli, Libya", "Tripoli Libya", "Tripoli LY"
+// or "Tripoli (Lebanon)" narrows the name to one country, region or area. A bare name still means the nearest.
+const PLACE_ALIASES = { uk: 'GB', britain: 'GB', 'great britain': 'GB', england: 'GB', usa: 'US', us: 'US', america: 'US', uae: 'AE', drc: 'CD', car: 'CF' };
+function placeMatches(id, where) {
+  const alias = PLACE_ALIASES[where];
+  if (alias) return ccOf(id) === alias;
+  if (where.length === 2) return fold(ccOf(id)) === where;
+  const names = [countryName(id), admOf(id)[0], areaName(id)].filter(Boolean).map(fold);
+  return names.some(n => n === where || (where.length >= 3 && n.startsWith(where)));
+}
+function namedIds(raw) {
+  const ids = exactIds(fold(raw));
+  if (ids.length) return ids;
+  const words = fold(raw).split(' ');
+  // shortest qualifier first, so "San Jose Costa Rica" tries "Rica" and then "Costa Rica"
+  for (let k = 1; k < words.length; k++) {
+    const where = words.slice(-k).join(' '), cand = exactIds(words.slice(0, -k).join(' '));
+    const hit = cand.filter(id => placeMatches(id, where));
+    if (hit.length) return hit;
+  }
+  return [];
+}
+// the example echoes what the player typed: a match can come through an alternate name ("Valencia" finds France's
+// Valence), and "Valence, Venezuela" is a place that doesn't exist
+const typedName = raw => raw.trim().replace(/\s+/g, ' ').replace(/(^|[\s-])(\p{L})/gu, (m, a, c) => a + c.toUpperCase());
+// the other countries a name turns up in, largest first, so the error can say what to type
+function namesakes(ids, except) {
+  const out = [];
+  for (const id of [...ids].sort((a, b) => G.pop[b] - G.pop[a])) { const c = countryName(id); if (c !== countryName(except) && !out.includes(c)) out.push(c); }
+  return out;
+}
 function submitName(raw) {
   if (!searchIndex) { setMsg('Still loading the gazetteer, one moment…'); return; }
   const key = fold(raw);
   if (!key) { setMsg('Type the name of a city, town or village.', 'bad'); return; }
-  let ids = exactIds(key);
+  let ids = namedIds(raw);
+  const allNamed = ids;
   if (!ids.length) {
     const near = nearby(G.lat[S.cur], G.lon[S.cur], Math.max(600, S.fuel * 1.5)).filter(id => Math.abs(fold(G.name[id]).length - key.length) <= 2);
     const close = near.filter(id => lev(fold(G.name[id]), key) <= (key.length > 6 ? 2 : 1)).sort((a, b) => G.pop[b] - G.pop[a]);
@@ -609,6 +640,8 @@ function submitName(raw) {
   }
   if (best != null) { $('entry-input').value = ''; travel(best); return; }
   const res = checkLeg(S.opts.vehicle, S.cur, nearest, fuelNow(), S.tickets, avoid);
-  setMsg((ids.length > 1 ? `The nearest ${G.name[nearest]} is in ${countryName(nearest)}. ` : '') + explain(res, nearest), 'bad');
+  const others = namesakes(allNamed, nearest).slice(0, 3);
+  setMsg((ids.length > 1 ? `The nearest ${G.name[nearest]} is in ${countryName(nearest)}. ` : '') + explain(res, nearest)
+    + (others.length ? ` There's also one in ${others.join(', ')}: add the country to pick it, like “${typedName(raw)}, ${others[0]}”.` : ''), 'bad');
   flashRange();
 }

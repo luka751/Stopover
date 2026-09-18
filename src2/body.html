@@ -58,22 +58,30 @@
 
 <dialog id="dlg-new">
   <div class="dlg">
-    <header><div><h2>Plan a trip</h2><p>Pick where, how, and how far. Longer trips need smaller towns to keep the tank topped up.</p></div><button class="x" type="button" data-close aria-label="Close">×</button></header>
+    <header><div><h2 id="nt-title">Plan a trip</h2><p id="nt-lead">Pick where, how, and how far. Longer trips need smaller towns to keep the tank topped up.</p></div><button class="x" type="button" data-close aria-label="Close">×</button></header>
+    <section id="sec-race" hidden></section>
     <section><div class="label">Vehicle</div><div class="vehicles" id="opt-vehicle"></div></section>
     <section id="sec-voyage" hidden><div class="label">Voyage</div><div class="choices" id="opt-voyage"></div><div id="isle-pick"></div></section>
-    <section id="sec-regions"><div class="label">Regions <span class="hint" style="text-transform:none;letter-spacing:0;font-family:var(--body);font-weight:400">· pick one or more</span></div><div class="choices" id="opt-region"></div><p class="hint" id="region-hint" style="margin:6px 0 0"></p></section>
+    <section id="sec-regions"><div class="label">Regions <span class="hint" style="text-transform:none;letter-spacing:0;font-family:var(--body);font-weight:400">· pick one or more, ▾ to choose areas</span></div><div id="opt-region"></div><p class="hint" id="region-hint" style="margin:6px 0 0"></p></section>
     <section>
-      <div class="label">Route <span class="hint" style="text-transform:none;letter-spacing:0;font-family:var(--body);font-weight:400">· optional</span></div>
-      <div class="routepick"><div id="pick-from"></div><div id="pick-to"></div></div>
-      <div class="viapick" id="pick-via"></div>
-      <p class="hint" id="route-hint" style="margin:8px 0 0"></p>
+      <details class="fold" id="fold-route">
+        <summary><span class="label">Route <span class="hint foldnote">· optional</span></span><span class="foldsum" id="route-sum">Random</span></summary>
+        <div class="foldbody">
+          <div class="routepick"><div id="pick-from"></div><div id="pick-to"></div></div>
+          <div class="viapick" id="pick-via"></div>
+          <p class="hint" id="route-hint" style="margin:8px 0 0"></p>
+        </div>
+      </details>
     </section>
     <section id="sec-length"><div class="label">Trip length</div><div class="choices" id="opt-length"></div></section>
     <section><div class="label">Typing help</div><div class="choices" id="opt-assist"></div></section>
     <section>
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div class="label">Difficulty</div><span class="mult" id="mult-badge">Score ×1.00</span></div>
       <div class="choices" id="opt-preset"></div>
-      <div id="opt-rules" style="display:grid;gap:8px;margin-top:10px"></div>
+      <details class="fold" id="fold-rules">
+        <summary><span class="label">Fine-tune rules</span><span class="foldsum" id="rules-sum"></span></summary>
+        <div class="foldbody"><div id="opt-rules" style="display:grid;gap:8px"></div></div>
+      </details>
     </section>
     <section id="avoid-summary"></section>
     <footer>
@@ -116,7 +124,7 @@
     <header><div><h2>How to play</h2><p>Get from the start to the destination by naming real places along the way.</p></div><button class="x" type="button" data-close aria-label="Close">×</button></header>
     <section>
       <ol>
-        <li><b>Name a settlement within range.</b> The dashed circle shows how far your tank takes you. Any real city, town or village of 500+ people counts.</li>
+        <li><b>Name a settlement within range.</b> The dashed circle shows how far your tank takes you. Any real city, town or village of 500+ people counts. A bare name means the nearest one; for another, add where it is, like <b>Tripoli, Libya</b> or <b>Portland, Maine</b>.</li>
         <li><b>Every stop refuels you.</b> Big cities fill the tank. Villages only top it up, but they score far more. A hop shorter than a fifth of your tank scores less, so make every leg count.</li>
         <li><b>Plan your own route, or let the atlas pick.</b> In New trip, choose one or more regions, and optionally a start, a destination and up to three places to pass through, like Munich to Grozny by way of Budapest. Checkpoints must be reached before the destination and pay a bonus.</li>
         <li><b>Familiar places pay less.</b> Your first visit to a place earns a 1.5× bonus. After that, each return visit pays less, down to 0.35×, and refuels less too: half from the 4th visit, a quarter from the 6th.</li>
