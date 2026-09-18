@@ -98,15 +98,48 @@ function checkLeg(vehicleId, a, b, fuel, tickets, avoid, fast) {
   // the straight line crosses water or an avoided country: look for a way round by land
   const road = fast ? null : gridPath(a, b, 'land', cap, v.road, hasAvoid ? avoid : null);
   if (road && road.km <= fuel) return { ok: true, info, kind: 'road', fuel: road.km, km: road.km, path: road.pts };
-  const ferryPossible = RULES.ferries !== 'off' && !crossesAvoid && info.waterRun > v.road && info.waterRun <= FERRY_MAX && coastal(a) && coastal(b);
+  const ferryCap = ferryLimit();
+  const ferryPossible = ferryCap > 0 && !crossesAvoid && info.waterRun > v.road && info.waterRun <= ferryCap && coastal(a) && coastal(b);
   if (ferryPossible && tickets > 0 && info.land <= fuel) return { ok: true, info, kind: 'ferry', fuel: info.land, km: info.d, ticket: 1 };
   if (road) return { ok: false, info, why: 'range', need: road.km, via: 'road', ferry: ferryPossible && tickets <= 0 };
   if (crossesAvoid != null) return { ok: false, info, why: 'avoid-cross', country: crossesAvoid };
-  if (info.waterRun > FERRY_MAX) return { ok: false, info, why: 'ocean' };
+  if (info.waterRun > ferryCap) return { ok: false, info, why: 'ocean' };
   if (!coastal(a) || !coastal(b)) return { ok: false, info, why: 'port', inland: !coastal(a) ? a : b };
-  if (RULES.ferries === 'off') return { ok: false, info, why: 'noferries' };
+  if (ferryCap <= 0) return { ok: false, info, why: 'noferries' };
   if (tickets <= 0) return { ok: false, info, why: 'tickets' };
   return { ok: false, info, why: 'range', need: info.land };
+}
+// What the entry list can honestly say about a leg without paying for pathfinding. It mirrors the
+// cheap half of checkLeg: a ferry burns only the land approach at each end, so a sea crossing that
+// looks hopeless against the fuel gauge is usually one ticket away, not "too far".
+function legOutlook(id, mode) {
+  const v = VEH(S.opts.vehicle), avoid = tripAvoid();
+  if (avoid.has(G.cc[id])) return { text: 'avoided', cls: '' };
+  if (mode === 'fly') {
+    const cap = planeLimit(), d = dist(G.lat[S.cur], G.lon[S.cur], G.lat[id], G.lon[id]);
+    if (d > cap) return { text: '✈ too far', cls: '' };
+    if (d < 150) return { text: '✈ too close', cls: '' };
+    const free = S.race || (P.freeFlights || 0) > 0, cost = free ? 0 : flightCost(d, S.flights);
+    return { text: `✈ ${free ? 'free' : cost + ' coins'}`, cls: free || P.coins >= cost ? 'in' : '' };
+  }
+  if (mode === 'train') {
+    const cap = trainLimit(), d = dist(G.lat[S.cur], G.lon[S.cur], G.lat[id], G.lon[id]);
+    if (d > cap) return { text: '🚆 too far', cls: '' };
+    return { text: `🚆 ${P.freeTrains || S.race ? 'free ride' : 'station'}`, cls: 'in' };
+  }
+  const info = legInfo(S.cur, id, false);
+  if (v.coastal) {
+    if (!coastal(id) && id !== VOYAGE.inland) return { text: 'inland', cls: '' };
+    if (info.landRun <= (id === VOYAGE.inland ? 150 : v.land)) return info.d <= S.fuel ? { text: 'in range', cls: 'in' } : { text: 'too far', cls: '' };
+    return { text: 'round the coast', cls: 'maybe' }; // only gridPath knows, and that is too slow to type against
+  }
+  if (info.waterRun <= v.road) return info.d <= S.fuel ? { text: 'in range', cls: 'in' } : { text: 'too far', cls: '' };
+  if (info.waterRun > ferryLimit()) return { text: 'ocean', cls: '' };
+  if (v.ferry && ferryLimit() > 0 && coastal(S.cur) && coastal(id)) {
+    if (info.land > S.fuel) return { text: '⛴ too far', cls: '' };
+    return S.tickets > 0 ? { text: '⛴ 1 ticket', cls: 'in' } : { text: '⛴ no tickets', cls: 'maybe' };
+  }
+  return { text: 'round the bay', cls: 'maybe' };
 }
 function explain(res, id) {
   const nm = G.name[id], i = res.info;
@@ -118,7 +151,7 @@ function explain(res, id) {
     case 'rail-loading': return 'The rail network is still loading. Try again in a moment.';
     case 'inland': return `${nm} is inland, and your boat can only moor in coastal places.`;
     case 'overland': return `There's no sea route to ${nm} from here that a boat can follow.`;
-    case 'ocean': return `${fmt(i.waterRun)} km of open water is too far even for a ferry (the limit is ${fmt(FERRY_MAX)} km).`;
+    case 'ocean': return `${fmt(i.waterRun)} km of open water is past this trip's ferry range of ${fmt(ferryLimit())} km.`;
     case 'port': return `There's no way to ${nm} by land from here, and a ferry needs a port at both ends. ${G.name[res.inland]} is too far inland.`;
     case 'tickets': return `Getting to ${nm} means crossing ${fmt(i.waterRun)} km of water, and you're out of ferry tickets.`;
     case 'noferries': return `Getting to ${nm} needs a ferry, and this trip's rules have no ferries.`;
@@ -206,7 +239,7 @@ function generateTrip(o, seed, avoid) {
   const pool = [];
   for (let i = 0; i < G.n && G.pop[i] >= 50000; i++) if ((G.pop[i] >= minPop || G.fc[i] === G.capital) && inRegion(i) && usable(i)) pool.push(i);
   const chainKm = ids => { let t = 0; for (let i = 1; i < ids.length; i++) t += dist(G.lat[ids[i - 1]], G.lon[ids[i - 1]], G.lat[ids[i]], G.lon[ids[i]]); return t; };
-  const tickets = RULES.ferries === 'off' || !v.ferry ? 0 : 3, routeMinPop = o.isles ? 300 : o.vehicle === 'bike' ? 2000 : rail ? 5000 : 15000;
+  const tickets = ferryLimit() <= 0 || !v.ferry ? 0 : 3, routeMinPop = o.isles ? 300 : o.vehicle === 'bike' ? 2000 : rail ? 5000 : 15000;
   // one learning route through every point in order, never stopping early at a later checkpoint
   const routeThrough = (pts, fast) => {
     let path = [pts[0]];
@@ -243,7 +276,7 @@ function generateTrip(o, seed, avoid) {
     if (!path || (!both && path.length < 3)) continue;
     if ((rail || v.coastal) && !legsWork(path)) { if (both) break; continue; }
     let ferries = 0; if (v.ferry) for (let i = 1; i < path.length; i++) if (checkLeg(o.vehicle, path[i - 1], path[i], v.tank, 9, avoid, true).kind === 'ferry') ferries++;
-    return { start: s, dest: d, via, par: path, km: chainKm([s, ...via, d]), tickets: v.ferry && RULES.ferries !== 'off' ? Math.max(2, ferries + 1) : 0 };
+    return { start: s, dest: d, via, par: path, km: chainKm([s, ...via, d]), tickets: v.ferry && ferryLimit() > 0 ? Math.max(2, ferries + 1) : 0 };
   }
   if (both) return { error: `No ${v.name.toLowerCase()} route from ${G.name[fixedS]} to ${G.name[fixedD]}${via.length ? ' through ' + via.map(x => G.name[x]).join(', ') : ''} could be found${rail ? ' along the railway' : ''}. ${avoid.size ? 'Try avoiding fewer countries, or ' : 'Try '}${rail ? 'a car, or' : v.coastal ? 'a car, or' : 'other'} places.` };
   return null;
@@ -266,8 +299,16 @@ const markerFor = vehicle => { const m = MARKERS.find(x => x.id === (P.equip.mar
 const fuelNow = () => S.fuel;
 const tripAvoid = () => new Set(((S && S.avoid) || []).map(cc => G.ccIndex[cc]).filter(x => x != null));
 let hintIds = [];
-let lastMsg = { text: '', cls: '' };
-function setMsg(text, cls = '') { const el = $('msg'); if (el) { el.textContent = text; el.className = 'msg ' + cls; } lastMsg = { text, cls }; }
+let lastMsg = { text: '', cls: '', act: null };
+// a message can offer the one thing that would unblock you, so being stranded is never a dead end
+const MSG_ACTIONS = { ticket: () => buyTicketNow() };
+const msgActHtml = () => lastMsg.act ? `<button class="btn small msgact" type="button" id="msg-act">${esc(lastMsg.act.label)}</button>` : '';
+function wireMsgAct() { const b = $('msg-act'); if (b && lastMsg.act) b.onclick = MSG_ACTIONS[lastMsg.act.id]; }
+function setMsg(text, cls = '', act = null) {
+  lastMsg = { text, cls, act };
+  const el = $('msg'); if (!el) return;
+  el.className = 'msg ' + cls; el.innerHTML = esc(text) + msgActHtml(); wireMsgAct();
+}
 
 const viaLeft = () => (S && S.via || []).filter(v => !S.stops.some(s => s.id === v));
 // where the sign points: the next place you have to pass through, then the destination
@@ -280,8 +321,8 @@ function startTrip(o, daily) {
   if (daily) o = { ...o, vehicle: 'car', length: 'medium', regions: [['EU', 'NA', 'AS', 'EU', 'SA', 'AF', 'EU'][new Date().getDay()]], from: null, to: null, via: [] };
   const avoidList = daily || o.classic ? [] : [...(o.avoid || [])];
   // classic keeps the original rules: no planes or trains; the daily trip uses the default rules so everyone plays the same
-  RULES = o.classic ? { ...DEFAULT_RULES, planes: 'off', trains: 'off' } : daily ? { ...DEFAULT_RULES } : { ...DEFAULT_RULES, ...(o.rules || {}) };
-  if (VEHICLES[o.vehicle].rail || VEHICLES[o.vehicle].coastal) RULES = { ...RULES, planes: 'off', trains: 'off' };
+  RULES = o.classic ? migrateRules({ planeKm: 0, trainKm: 0 }) : daily ? { ...DEFAULT_RULES } : migrateRules(o.rules);
+  if (VEHICLES[o.vehicle].rail || VEHICLES[o.vehicle].coastal) RULES = { ...RULES, planeKm: 0, trainKm: 0 };
   if (o.classic && VEHICLES[o.vehicle].rail) { toast('Classic rules have no train trips. Turn Classic off in Settings.'); return false; }
   const avoid = new Set(avoidList.map(cc => G.ccIndex[cc]).filter(x => x != null));
   // picked places are saved by GeoNames id, so they survive a data rebuild
@@ -345,18 +386,19 @@ function railPath(a, b, capKm) {
   if (railCache.size > 2000) railCache.clear();
   railCache.set(key, { cap: capKm, result }); return result;
 }
-const TRAIN_MAX_KM = 900;
+
 function checkTrain(to) {
   const rulesText = RULES.trains === 'capitals' ? 'a capital with a station' : 'a town with a station';
-  if (RULES.trains === 'off') return { ok: false, why: 'This trip has no trains.' };
+  const railCap = trainLimit();
+  if (railCap <= 0) return { ok: false, why: 'This trip has no trains.' };
   if (!RAIL.ready) return { ok: false, why: 'The rail network is still loading.' };
   if (!stationOK(S.cur)) return { ok: false, why: `${G.name[S.cur]} isn't ${rulesText}, so you can't take a train from here.` };
   if (!stationOK(to)) return { ok: false, why: `${G.name[to]} isn't ${rulesText}.` };
   if (tripAvoid().has(G.cc[to])) return { ok: false, why: `${G.name[to]} is in ${countryName(to)}, which you're avoiding.` };
   const straight = dist(G.lat[S.cur], G.lon[S.cur], G.lat[to], G.lon[to]);
-  if (straight > TRAIN_MAX_KM) return { ok: false, why: `${G.name[to]} is too far for one train ride (the limit is ${TRAIN_MAX_KM} km of track).` };
-  const path = railPath(S.cur, to, TRAIN_MAX_KM);
-  if (!path) return { ok: false, why: `There's no rail line from ${G.name[S.cur]} to ${G.name[to]} within ${TRAIN_MAX_KM} km of track.` };
+  if (straight > railCap) return { ok: false, why: `${G.name[to]} is too far for one train ride on this trip (the rail range is ${fmt(railCap)} km of track).` };
+  const path = railPath(S.cur, to, railCap);
+  if (!path) return { ok: false, why: `There's no rail line from ${G.name[S.cur]} to ${G.name[to]} within ${fmt(railCap)} km of track.` };
   // races are free to ride and fly, so coins saved up don't buy a head start
   const free = !S.race && (P.freeTrains || 0) > 0, cost = free || S.race ? 0 : trainCost(path.km);
   if (P.coins < cost) return { ok: false, why: `A train to ${G.name[to]} costs ${cost} coins and you have ${fmt(P.coins)}.` };
@@ -366,7 +408,9 @@ function checkTrain(to) {
 function checkFlight(to) {
   const d = dist(G.lat[S.cur], G.lon[S.cur], G.lat[to], G.lon[to]), free = !S.race && (P.freeFlights || 0) > 0, cost = free || S.race ? 0 : flightCost(d, S.flights);
   const rulesText = RULES.planes === 'capitals' ? 'a capital with an airport' : RULES.planes === 'large' ? 'a city with a big airport' : 'a city with an airport';
-  if (RULES.planes === 'off') return { ok: false, why: 'This trip has no planes.' };
+  const airCap = planeLimit();
+  if (airCap <= 0) return { ok: false, why: 'This trip has no planes.' };
+  if (d > airCap) return { ok: false, why: `${G.name[to]} is ${fmt(d)} km away, past this trip's flight range of ${fmt(airCap)} km.` };
   if (!airportOK(S.cur)) return { ok: false, why: `${G.name[S.cur]} isn't ${rulesText}, so you can't fly from here.` };
   if (to === S.dest) return { ok: false, why: `You can't fly straight into ${G.name[S.dest]}. Land somewhere else and finish on the ground.` };
   if ((S.via || []).includes(to)) return { ok: false, why: `You can't fly straight into ${G.name[to]}. You have to pass through it on the ground.` };
@@ -383,7 +427,11 @@ function travel(id, mode = 'ground') {
   if (id === S.dest && viaLeft().length) { setMsg(`Not yet: this trip passes through ${viaLeft().map(x => G.name[x]).join(' and ')} before ${G.name[S.dest]}.`, 'bad'); return; }
   const res = mode === 'fly' ? checkFlight(id) : mode === 'train' ? checkTrain(id) : checkLeg(S.opts.vehicle, S.cur, id, fuelNow(), S.tickets, tripAvoid());
   if (!res.ok && (mode === 'fly' || mode === 'train')) { setMsg(res.why, 'bad'); return; }
-  if (!res.ok) { setMsg(explain(res, id), 'bad'); flashRange(); return; }
+  if (!res.ok) {
+    const ticketWouldHelp = VEHICLES[S.opts.vehicle].ferry && ferryLimit() > 0 && (res.why === 'tickets' || (res.why === 'range' && res.ferry));
+    setMsg(explain(res, id), 'bad', ticketWouldHelp ? { id: 'ticket', label: P.consumables.ticket ? `Use a ticket (${P.consumables.ticket})` : `Buy a ticket · ${TICKET_PRICE}` } : null);
+    flashRange(); return;
+  }
   const snapshot = JSON.stringify({ ...S, undo: null }), prevVisit = P.visits[placeKey(id)] ? { ...P.visits[placeKey(id)] } : null;
   // in a race every town scores and refuels the same for everyone, whoever has been there before
   const v = VEH(S.opts.vehicle), tier = tierOf(id), before = visitsBefore(id), fam = S.classic || S.race ? { mult: 1, label: '' } : familiarity(before), arrived = id === S.dest;
@@ -556,7 +604,7 @@ function submitName(raw) {
   for (const id of ids.slice(0, VEHICLES[S.opts.vehicle].rail ? 6 : 300)) {
     const d = dist(G.lat[S.cur], G.lon[S.cur], G.lat[id], G.lon[id]);
     if (d < nearestD) { nearestD = d; nearest = id; }
-    if (d > fuelNow() + FERRY_MAX) continue;
+    if (d > fuelNow() + ferryLimit()) continue;
     if (checkLeg(S.opts.vehicle, S.cur, id, fuelNow(), S.tickets, avoid).ok) { best = id; break; }
   }
   if (best != null) { $('entry-input').value = ''; travel(best); return; }

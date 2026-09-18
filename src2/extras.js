@@ -42,7 +42,7 @@ const scoutCost = () => hasPerk('scouts') ? 10 : SCOUT_COST;
 const revealCost = () => hasPerk('scouts') ? 0 : REVEAL_COST;
 const helpCost = () => hasPerk('mechanic') ? 40 : HELP_COST;
 const helpThreshold = () => hasPerk('mechanic') ? 0.6 : 0.5;
-const seasonTickets = o => hasPerk('season') && VEHICLES[o.vehicle].ferry && RULES.ferries !== 'off' ? 1 : 0;
+const seasonTickets = o => hasPerk('season') && VEHICLES[o.vehicle].ferry && ferryLimit() > 0 ? 1 : 0;
 // Retired shop items are paid back at the price they sold for, once.
 const RETIRED_SUPPLIES = { compass: 30, airmiles: 60, guide: 60, booster: 70, spare: 80, freeze: 100 };
 const RETIRED_PERKS = { scholar: 450, tutor: 450, eye: 600, railcard: 300, flyer: 400 };
@@ -62,6 +62,17 @@ function settleRetiredItems() {
   if (P.equip.sign === 'japan') P.equip.sign = 'asphalt';
   P.owned = [...new Set(P.owned)]; P.econ = 2; P.coins += refund; saveProfile();
   if (refund) setTimeout(() => toast(`The shop was reworked: ${fmt(refund)} coins paid back for retired items`), 1500);
+}
+// Stranded with no ticket is not a lost trip: spend one you own, or buy one here at the shop price.
+function buyTicketNow() {
+  if (!S || S.done) return;
+  if (P.consumables.ticket > 0) P.consumables.ticket--;
+  else if (P.coins >= TICKET_PRICE) { P.coins -= TICKET_PRICE; renderCoins(); }
+  else { setMsg(`A ferry ticket costs ${TICKET_PRICE} coins and you have ${fmt(P.coins)}. Score a few more stops first.`, 'bad'); return; }
+  S.tickets++; S.ticketsTotal++;
+  saveProfile(); save();
+  setMsg('🎫 Ferry ticket added. Name the port on the far side again.', 'good');
+  render();
 }
 function useJerrycan() { const v = VEH(S.opts.vehicle); P.consumables.jerrycan--; S.fuel = Math.min(v.tank, S.fuel + v.tank * 0.3); saveProfile(); setMsg(`⛽ Jerrycan used: +${fmt(v.tank * 0.3)} km.`, 'good'); save(); render(); tripMap.fit(tripBounds(), false, 56, 130); }
 
@@ -170,7 +181,7 @@ function useTow() {
   if (u.freeFlight) P.freeFlights = (P.freeFlights || 0) + 1;
   P.km = Math.max(0, P.km - (last ? last.km : 0));
   P.consumables.tow--;
-  S = restored; useVoyage(S); RULES = { ...DEFAULT_RULES, ...(S.rules || {}) }; hintIds = [];
+  S = restored; useVoyage(S); RULES = migrateRules(S.rules); hintIds = [];
   saveProfile(); renderCoins(); save();
   setMsg(`🛻 Towed back to ${G.name[S.cur]}. That leg never happened${u.refund ? ` and ${u.refund} coins came back` : ''}. Flags you collected stay yours.`, 'good');
   render(); tripMap.fit(tripBounds(), false, 56, 130);

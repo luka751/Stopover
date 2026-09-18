@@ -240,10 +240,18 @@ export class Accounts extends DurableObject {
 const MODES = ['time', 'points', 'distance', 'stops'];
 const SETTING_CHOICES = {
   mode: MODES, limit: [0, 5, 10, 15, 20, 30], vehicle: ['car', 'bike', 'boat', 'train'],
-  region: ['EU', 'AS', 'AF', 'NA', 'SA', 'OC', 'ALL'], length: ['short', 'medium', 'long', 'epic'],
+  length: ['short', 'medium', 'long', 'epic'],
   preset: ['beginner', 'standard', 'expert', 'purist'], show: ['live', 'hidden'],
 };
-const DEFAULT_SETTINGS = { mode: 'time', limit: 15, vehicle: 'car', region: 'EU', length: 'short', preset: 'standard', show: 'live' };
+// regions is a set now, so a host can race Europe + Asia. It is the one setting that isn't a single choice.
+const REGION_IDS = ['EU', 'AS', 'AF', 'NA', 'SA', 'OC', 'ALL'];
+const cleanRegions = v => {
+  if (!Array.isArray(v)) return null;
+  const r = [...new Set(v.filter(x => REGION_IDS.includes(x)))];
+  if (!r.length) return null;
+  return r.includes('ALL') ? ['ALL'] : r;
+};
+const DEFAULT_SETTINGS = { mode: 'time', limit: 15, vehicle: 'car', regions: ['EU'], length: 'short', preset: 'standard', show: 'live' };
 
 export class Lobby extends DurableObject {
   constructor(ctx, env) {
@@ -308,6 +316,7 @@ export class Lobby extends DurableObject {
       case 'settings': {
         if (!isHost || st.phase === 'racing') return;
         for (const [k, choices] of Object.entries(SETTING_CHOICES)) if (msg.settings && choices.includes(msg.settings[k])) st.settings[k] = msg.settings[k];
+        if (msg.settings) { const regions = cleanRegions(msg.settings.regions); if (regions) { st.settings.regions = regions; delete st.settings.region; } }
         for (const p of Object.values(st.players)) p.ready = false;
         break;
       }

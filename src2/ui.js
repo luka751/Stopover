@@ -32,8 +32,8 @@ function availableModes() {
   // boats can't be flown or put on rails, so a sailing trip only ever sails
   if (!S || S.classic || VEHICLES[S.opts.vehicle].coastal || VEHICLES[S.opts.vehicle].rail) return ['ground'];
   const modes = ['ground'];
-  if (RULES.planes !== 'off') modes.push('fly');
-  if (RULES.trains !== 'off' && RAIL.ready && G.lat[S.cur] >= RAIL.lat1 - RAIL.h * RAIL.res && G.lon[S.cur] >= RAIL.lon0 && G.lon[S.cur] <= RAIL.lon0 + RAIL.w * RAIL.res) modes.push('train');
+  if (planeLimit() > 0) modes.push('fly');
+  if (trainLimit() > 0 && RAIL.ready && G.lat[S.cur] >= RAIL.lat1 - RAIL.h * RAIL.res && G.lon[S.cur] >= RAIL.lon0 && G.lon[S.cur] <= RAIL.lon0 + RAIL.w * RAIL.res) modes.push('train');
   return modes;
 }
 function modeSwitch(v) {
@@ -58,16 +58,16 @@ function renderPlaying(v) {
         <ul class="sugg" id="sugg" role="listbox" hidden></ul>
       </form>
       <div class="entryfoot">
-        <div class="msg ${lastMsg.cls}" id="msg" aria-live="polite">${esc(lastMsg.text)}</div>
+        <div class="msg ${lastMsg.cls}" id="msg" aria-live="polite">${esc(lastMsg.text)}${msgActHtml()}</div>
         <div class="toolbox">
           <button class="btn small" type="button" id="tools-btn" aria-expanded="false" aria-controls="tools-menu">Tools ▾</button>
           <div class="toolsmenu" id="tools-menu" hidden>
             ${S.avoid && S.avoid.length ? `<div class="hint">Avoiding ${S.avoid.map(cc => esc(ccName(cc))).join(', ')}</div>` : ''}
             ${RULES.hints === 'off' ? '' : `<button type="button" id="btn-scout" ${S.scouts.length ? 'disabled' : ''}><span>🔭 Scout ahead</span><span class="cost">−${scoutCost()}</span></button>
             <button type="button" id="btn-help-road" ${S.fuel >= v.tank * helpThreshold() ? `disabled title="Only when your tank is under ${helpThreshold() === 0.5 ? 'half' : Math.round(helpThreshold() * 100) + '%'}"` : ''}><span>🛟 ${v.coastal ? 'Resupply at sea' : v.rail ? 'Rail replacement' : S.opts.vehicle === 'bike' ? 'Rest stop' : 'Roadside help'}</span><span class="cost">−${helpCost()}</span></button>`}
-            ${S.race ? '' : `${P.consumables.jerrycan ? `<button type="button" id="use-jerry"><span>⛽ Jerrycan: +30% range</span><span class="cost">×${P.consumables.jerrycan}</span></button>` : ''}
-            ${P.consumables.ticket && v.ferry ? `<button type="button" id="use-ticket"><span>🎫 Add a ferry ticket</span><span class="cost">×${P.consumables.ticket}</span></button>` : ''}
-            ${!S.classic && P.consumables.tow ? `<button type="button" id="use-tow" ${S.undo ? '' : 'disabled title="Nothing to undo yet"'}><span>🛻 Tow truck: undo last leg</span><span class="cost">×${P.consumables.tow}</span></button>` : ''}`}
+            ${P.consumables.jerrycan ? `<button type="button" id="use-jerry"><span>⛽ Jerrycan: +30% range</span><span class="cost">×${P.consumables.jerrycan}</span></button>` : ''}
+            ${v.ferry && ferryLimit() > 0 ? `<button type="button" id="use-ticket" ${!P.consumables.ticket && P.coins < TICKET_PRICE ? `disabled title="A ticket costs ${TICKET_PRICE} coins"` : ''}><span>🎫 ${P.consumables.ticket ? 'Add a ferry ticket' : 'Buy a ferry ticket'}</span><span class="cost">${P.consumables.ticket ? '×' + P.consumables.ticket : '−' + TICKET_PRICE}</span></button>` : ''}
+            ${!S.classic && P.consumables.tow ? `<button type="button" id="use-tow" ${S.undo ? '' : 'disabled title="Nothing to undo yet"'}><span>🛻 Tow truck: undo last leg</span><span class="cost">×${P.consumables.tow}</span></button>` : ''}
             <hr>
             <button type="button" id="btn-giveup" class="danger"><span>Give up and see a route</span></button>
           </div>
@@ -209,8 +209,8 @@ function wireEntry() {
     if (key.length < 2) { list.hidden = true; suggIds = []; return; }
     suggIds = prefixIds(key).filter(id => (S.mode !== 'fly' || airportOK(id)) && (S.mode !== 'train' || stationOK(id)) && (!VEHICLES[S.opts.vehicle].rail || hasStation(id))).sort((a, b) => G.pop[b] - G.pop[a]).slice(0, 8);
     if (!suggIds.length) { list.hidden = true; return; }
-    list.innerHTML = suggIds.map((id, i) => { const d = dist(G.lat[S.cur], G.lon[S.cur], G.lat[id], G.lon[id]), inRange = d <= S.fuel, n = visitsBefore(id);
-      return `<li role="option" id="sg-${i}" data-i="${i}" aria-selected="false"><div>${flagHtml(ccOf(id))}${esc(G.name[id])}<small>${esc(placeLine(id))} · ${esc(tierOf(id).label)}${!S.classic && n ? ` · visited ${n}×` : ''}</small></div>${S.mode === 'train' ? `<span class="rng in">${fmt(d)} km<br>🚆 ${P.freeTrains || S.race ? 'free ride' : 'station'}</span>` : S.mode === 'fly' ? `<span class="rng ${S.race || P.freeFlights || P.coins >= flightCost(d, S.flights) ? 'in' : ''}">${fmt(d)} km<br>✈ ${S.race || P.freeFlights ? 'free' : flightCost(d, S.flights) + ' coins'}</span>` : `<span class="rng ${inRange ? 'in' : ''}">${fmt(d)} km<br>${inRange ? 'in range' : 'too far'}</span>`}</li>`; }).join('');
+    list.innerHTML = suggIds.map((id, i) => { const d = dist(G.lat[S.cur], G.lon[S.cur], G.lat[id], G.lon[id]), out = legOutlook(id, S.mode), n = visitsBefore(id);
+      return `<li role="option" id="sg-${i}" data-i="${i}" aria-selected="false"><div>${flagHtml(ccOf(id))}${esc(G.name[id])}<small>${esc(placeLine(id))} · ${esc(tierOf(id).label)}${!S.classic && n ? ` · visited ${n}×` : ''}</small></div><span class="rng ${out.cls}">${fmt(d)} km<br>${out.text}</span></li>`; }).join('');
     list.hidden = false;
   });
   const submit = () => { if (!list.hidden && suggSel >= 0) { const id = suggIds[suggSel]; list.hidden = true; input.value = ''; travel(id, S.mode); return; } list.hidden = true; submitName(input.value); };
@@ -223,11 +223,12 @@ function wireEntry() {
   input.addEventListener('blur', () => setTimeout(() => { list.hidden = true; }, 150));
   list.addEventListener('mousedown', e => { const li = e.target.closest('li[data-i]'); if (li) { e.preventDefault(); list.hidden = true; input.value = ''; travel(suggIds[+li.dataset.i], S.mode); } });
   $('entry-form').addEventListener('submit', e => { e.preventDefault(); submit(); });
+  wireMsgAct();
   const menu = $('tools-menu');
   $('tools-btn').onclick = e => { e.stopPropagation(); menu.hidden = !menu.hidden; $('tools-btn').setAttribute('aria-expanded', String(!menu.hidden)); };
   menu.onclick = e => e.stopPropagation();
   if ($('btn-scout')) $('btn-scout').onclick = scout;
-  document.querySelectorAll('.modes [data-mode]').forEach(b => b.onclick = () => { S.mode = b.dataset.mode; save(); lastMsg = S.mode === 'fly' && P.freeFlights && airportOK(S.cur) ? { text: `Your next ${P.freeFlights === 1 ? 'flight is' : P.freeFlights + ' flights are'} on us. After that, flights cost coins by distance. Landing refills your tank but scores nothing.`, cls: 'good' } : S.mode === 'train' ? { text: stationOK(S.cur) ? `Trains follow real track up to ${TRAIN_MAX_KM} km and cost a few coins${P.freeTrains ? ` (your next ${P.freeTrains === 1 ? 'ride is' : P.freeTrains + ' rides are'} free)` : ''}. They don't use fuel, and the town you arrive in scores half.` : `${G.name[S.cur]} has no ${RULES.trains === 'capitals' ? 'capital station' : 'station'}. Drive to one first.`, cls: '' } : S.mode === 'fly' ? { text: airportOK(S.cur) ? `Flights cost coins by distance: about ${flightCost(1000, S.flights)} coins for 1,000 km. Landing refills your tank but scores nothing.` : `${G.name[S.cur]} has no ${RULES.planes === 'capitals' ? 'capital airport' : RULES.planes === 'large' ? 'big airport' : 'airport'}. Drive to one first.`, cls: '' } : { text: '', cls: '' }; render(); $('entry-input').focus(); });
+  document.querySelectorAll('.modes [data-mode]').forEach(b => b.onclick = () => { S.mode = b.dataset.mode; save(); lastMsg = S.mode === 'fly' && P.freeFlights && airportOK(S.cur) ? { text: `Your next ${P.freeFlights === 1 ? 'flight is' : P.freeFlights + ' flights are'} on us. After that, flights cost coins by distance. Landing refills your tank but scores nothing.`, cls: 'good' } : S.mode === 'train' ? { text: stationOK(S.cur) ? `Trains follow real track up to ${fmt(trainLimit())} km and cost a few coins${P.freeTrains ? ` (your next ${P.freeTrains === 1 ? 'ride is' : P.freeTrains + ' rides are'} free)` : ''}. They don't use fuel, and the town you arrive in scores half.` : `${G.name[S.cur]} has no ${RULES.trains === 'capitals' ? 'capital station' : 'station'}. Drive to one first.`, cls: '' } : S.mode === 'fly' ? { text: airportOK(S.cur) ? `Flights cost coins by distance: about ${flightCost(1000, S.flights)} coins for 1,000 km. Landing refills your tank but scores nothing.` : `${G.name[S.cur]} has no ${RULES.planes === 'capitals' ? 'capital airport' : RULES.planes === 'large' ? 'big airport' : 'airport'}. Drive to one first.`, cls: '' } : { text: '', cls: '' }; render(); $('entry-input').focus(); });
   if ($('btn-help-road')) $('btn-help-road').onclick = () => { const v = VEH(S.opts.vehicle); S.fuel = Math.max(S.fuel, v.tank * helpThreshold()); S.penalties += helpCost(); S.helps++; setMsg(`Help arrived: ${v.gauge.toLowerCase()} is back to ${Math.round(helpThreshold() * 100)}%. −${helpCost()} pts.`); save(); render(); tripMap.fit(tripBounds(), false, 56, 130); };
   $('btn-giveup').onclick = e => {
     const b = e.currentTarget;
@@ -236,7 +237,7 @@ function wireEntry() {
   };
   if ($('use-jerry')) $('use-jerry').onclick = useJerrycan;
   if ($('use-tow')) $('use-tow').onclick = useTow;
-  if ($('use-ticket')) $('use-ticket').onclick = () => { P.consumables.ticket--; S.tickets++; S.ticketsTotal++; saveProfile(); setMsg('Extra ferry ticket added.', 'good'); save(); render(); };
+  if ($('use-ticket')) $('use-ticket').onclick = buyTicketNow;
   document.querySelectorAll('[data-reveal]').forEach(b => b.onclick = () => { S.scouts[+b.dataset.reveal].revealed = true; bsNote(S.scouts[+b.dataset.reveal].id, 'miss'); S.penalties += revealCost(); save(); render(); });
 }
 
@@ -510,21 +511,42 @@ $('btn-theme').onclick = () => { const next = isDarkUI() ? 'light' : 'dark'; sto
 
 // ================= difficulty presets and rules =================
 const PRESETS = [
-  { id: 'beginner', name: 'Beginner', blurb: 'Fly anywhere, big tank', rules: { planes: 'all', trains: 'all', ferries: 'on', tank: 'big', hints: 'on' }, assist: 'explorer' },
+  { id: 'beginner', name: 'Beginner', blurb: 'Fly anywhere, big tank', rules: { ...DEFAULT_RULES, planes: 'all', tank: 'big' }, assist: 'explorer' },
   { id: 'standard', name: 'Standard', blurb: 'Big airports, normal tank', rules: { ...DEFAULT_RULES }, assist: 'explorer' },
-  { id: 'expert', name: 'Expert', blurb: 'Capitals only, from memory', rules: { planes: 'capitals', trains: 'capitals', ferries: 'on', tank: 'standard', hints: 'on' }, assist: 'navigator' },
-  { id: 'purist', name: 'Purist', blurb: 'No planes, trains or hints', rules: { planes: 'off', trains: 'off', ferries: 'on', tank: 'small', hints: 'off' }, assist: 'navigator' },
+  { id: 'expert', name: 'Expert', blurb: 'Capitals only, from memory', rules: { ...DEFAULT_RULES, planes: 'capitals', trains: 'capitals' }, assist: 'navigator' },
+  { id: 'purist', name: 'Purist', blurb: 'No planes, trains or hints', rules: { ...DEFAULT_RULES, planeKm: 0, trainKm: 0, tank: 'small', hints: 'off' }, assist: 'navigator' },
 ];
+const presetRules = p => migrateRules(p.rules);
+function presetMatches(p) {
+  const live = rulesThatApply(draft.vehicle, draft.regions), pr = presetRules(p);
+  return p.assist === draft.assist && live.every(k => pr[k] === draft.rules[k]);
+}
+const slidValHtml = key => `<span>${RULE_OPTIONS[key].slider.note(ruleKm(key, draft.rules))}</span><b>×${ruleMult(key, draft.rules).toFixed(2)}</b>`;
+// dragging a slider must not rebuild the panel under the cursor, so only the readouts move
+function refreshRuleMeta() {
+  $('opt-preset').querySelectorAll('[data-preset]').forEach(b => b.setAttribute('aria-pressed', String(presetMatches(PRESETS.find(x => x.id === b.dataset.preset)))));
+  $('mult-badge').textContent = 'Score ×' + (scoreMultiplier(draft.rules, draft.assist, opts.classic ? 0 : (opts.avoid || []).length, draft.regions, draft.vehicle) * (draft.vehicle === 'boat' && draft.voyage === 'isles' && !opts.classic ? 1.3 : 1)).toFixed(2);
+}
 function renderRules() {
-  draft.rules = { ...DEFAULT_RULES, ...(draft.rules || {}) };
+  draft.rules = migrateRules(draft.rules);
   // only the rules that change a trip in this vehicle are shown and counted: a boat has no use for planes
   const live = rulesThatApply(draft.vehicle, draft.regions);
-  const same = p => p.assist === draft.assist && live.every(k => p.rules[k] === draft.rules[k]);
-  $('opt-preset').innerHTML = PRESETS.map(p => `<button type="button" class="choice" data-preset="${p.id}" aria-pressed="${same(p)}">${p.name} <span class="mult" style="font-size:12px">×${scoreMultiplier(p.rules, p.assist, 0, draft.regions, draft.vehicle).toFixed(2)}</span><small>${p.blurb}</small></button>`).join('');
-  $('opt-rules').innerHTML = Object.entries(RULE_OPTIONS).filter(([key]) => live.includes(key)).map(([key, r]) => `<div class="rulerow"><span class="label">${r.label}</span><div class="choices">${r.options.map(o => `<button type="button" class="choice" data-rule="${key}" data-v="${o.id}" aria-pressed="${draft.rules[key] === o.id}">${o.name} <small>${o.note} · ×${o.mult}</small></button>`).join('')}</div></div>`).join('');
-  $('mult-badge').textContent = 'Score ×' + (scoreMultiplier(draft.rules, draft.assist, opts.classic ? 0 : (opts.avoid || []).length, draft.regions, draft.vehicle) * (draft.vehicle === 'boat' && draft.voyage === 'isles' && !opts.classic ? 1.3 : 1)).toFixed(2);
-  $('opt-preset').onclick = e => { const b = e.target.closest('[data-preset]'); if (!b) return; const p = PRESETS.find(x => x.id === b.dataset.preset); draft.rules = { ...p.rules }; draft.assist = p.assist; choiceGroup($('opt-assist'), ASSISTS, 'assist', a => `${a.name}<small>${a.blurb}</small>`, renderRules); renderRules(); };
+  $('opt-preset').innerHTML = PRESETS.map(p => `<button type="button" class="choice" data-preset="${p.id}" aria-pressed="${presetMatches(p)}">${p.name} <span class="mult" style="font-size:12px">×${scoreMultiplier(presetRules(p), p.assist, 0, draft.regions, draft.vehicle).toFixed(2)}</span><small>${p.blurb}</small></button>`).join('');
+  $('opt-rules').innerHTML = Object.entries(RULE_OPTIONS).filter(([key]) => live.includes(key)).map(([key, r]) => r.slider
+    ? `<div class="rulerow"><span class="label">${r.label}</span><div class="sliderrow">
+        <input type="range" data-slider="${key}" id="rk-${key}" min="${r.slider.min}" max="${r.slider.max}" step="${r.slider.step}" value="${ruleKm(key, draft.rules)}" aria-label="${r.label} in kilometres">
+        <span class="slidval" id="rv-${key}">${slidValHtml(key)}</span></div></div>`
+    : `<div class="rulerow"><span class="label">${r.label}</span><div class="choices">${r.options.map(o => `<button type="button" class="choice" data-rule="${key}" data-v="${o.id}" aria-pressed="${draft.rules[key] === o.id}">${o.name} <small>${o.note} · ×${o.mult}</small></button>`).join('')}</div></div>`).join('');
+  refreshRuleMeta();
+  $('opt-preset').onclick = e => { const b = e.target.closest('[data-preset]'); if (!b) return; const p = PRESETS.find(x => x.id === b.dataset.preset); draft.rules = presetRules(p); draft.assist = p.assist; choiceGroup($('opt-assist'), ASSISTS, 'assist', a => `${a.name}<small>${a.blurb}</small>`, renderRules); renderRules(); };
   $('opt-rules').onclick = e => { const b = e.target.closest('[data-rule]'); if (!b || b.disabled) return; draft.rules[b.dataset.rule] = b.dataset.v; renderRules(); };
+  $('opt-rules').oninput = e => {
+    const inp = e.target.closest('[data-slider]'); if (!inp) return;
+    const key = inp.dataset.slider;
+    draft.rules[key] = +inp.value;
+    $('rv-' + key).innerHTML = slidValHtml(key);
+    refreshRuleMeta();
+  };
 }
 
 // ================= announcements =================

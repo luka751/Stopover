@@ -82,19 +82,22 @@ const CONTESTED_SET = ['Crimea', 'Abkhazia', 'South Ossetia', 'Northern Cyprus',
 
 // ================= travel rules (difficulty) =================
 // Every trip is played under a rule set. Harder rules multiply everything the trip scores.
+// Two kinds: a choice between named options, and a slider over kilometres. A slider at zero
+// shuts the mode off entirely, which is why there is no separate "no planes" option any more.
 const RULE_OPTIONS = {
   planes: { label: 'Planes', options: [
     { id: 'all', name: 'Any airport', note: 'Big and regional airports', mult: 0.8 },
     { id: 'large', name: 'Big airports', note: 'Major airports only', mult: 1 },
-    { id: 'capitals', name: 'Capitals only', note: 'Fly between capital cities', mult: 1.15 },
-    { id: 'off', name: 'No planes', note: 'Stay on the ground', mult: 1.3 } ] },
+    { id: 'capitals', name: 'Capitals only', note: 'Fly between capital cities', mult: 1.15 } ] },
+  planeKm: { label: 'Flight range', slider: { min: 0, max: 9000, step: 250, def: 9000, offMult: 1.3,
+    note: km => km ? `One hop up to ${fmt(km)} km` : 'No planes · stay on the ground' } },
   trains: { label: 'Trains', options: [
     { id: 'all', name: 'Any station', note: 'Every passenger line', mult: 1 },
-    { id: 'capitals', name: 'Capitals only', note: 'Rail between capitals', mult: 1.1 },
-    { id: 'off', name: 'No trains', note: 'Roads and ferries only', mult: 1.2 } ] },
-  ferries: { label: 'Ferries', options: [
-    { id: 'on', name: 'Ferries', note: 'Island hopping allowed', mult: 1 },
-    { id: 'off', name: 'No ferries', note: 'Mainland trips only', mult: 1.1 } ] },
+    { id: 'capitals', name: 'Capitals only', note: 'Rail between capitals', mult: 1.1 } ] },
+  trainKm: { label: 'Rail range', slider: { min: 0, max: 1500, step: 50, def: 900, offMult: 1.2, maxMult: 0.95,
+    note: km => km ? `One ride up to ${fmt(km)} km of track` : 'No trains · roads and ferries only' } },
+  ferryKm: { label: 'Ferry range', slider: { min: 0, max: FERRY_MAX, step: 50, def: FERRY_MAX, offMult: 1.1,
+    note: km => km ? `Crossings up to ${fmt(km)} km of open water` : 'No ferries · mainland trips only' } },
   tank: { label: 'Tank', options: [
     { id: 'big', name: 'Big tank', note: '+30% range', mult: 0.85, scale: 1.3 },
     { id: 'standard', name: 'Standard', note: 'Normal range', mult: 1, scale: 1 },
@@ -103,7 +106,16 @@ const RULE_OPTIONS = {
     { id: 'on', name: 'Hints on', note: 'Scout, reveal and roadside help', mult: 1 },
     { id: 'off', name: 'No hints', note: 'You are on your own', mult: 1.15 } ] },
 };
-const DEFAULT_RULES = { planes: 'large', trains: 'all', ferries: 'on', tank: 'standard', hints: 'on' };
+const DEFAULT_RULES = { planes: 'large', planeKm: 9000, trains: 'all', trainKm: 900, ferryKm: FERRY_MAX, tank: 'standard', hints: 'on' };
+// Saves and races from before the sliders stored planes/trains/ferries as on-off words. An "off" becomes a
+// zero-kilometre slider, which plays and scores the same, so old trips resume under the rules they started with.
+function migrateRules(rules) {
+  const r = { ...(rules || {}) };
+  if (r.ferries !== undefined) { if (r.ferryKm === undefined) r.ferryKm = r.ferries === 'off' ? 0 : FERRY_MAX; delete r.ferries; }
+  if (r.planes === 'off') { r.planes = 'large'; if (r.planeKm === undefined) r.planeKm = 0; }
+  if (r.trains === 'off') { r.trains = 'all'; if (r.trainKm === undefined) r.trainKm = 0; }
+  return { ...DEFAULT_RULES, ...r };
+}
 let TRAINS_READY = false; // true once rail.json (the OpenStreetMap rail network) has loaded
 // continents where the rail download has enough stations to play; rail.json lists them
 let RAIL_REGIONS = new Set();
@@ -112,17 +124,31 @@ let RULES = { ...DEFAULT_RULES };
 // true while a race trip is planned: races are played without upgrades, so everyone has the same tank
 let RACE_FAIR = false;
 const ruleOpt = (key, rules = RULES) => RULE_OPTIONS[key].options.find(o => o.id === rules[key]) || RULE_OPTIONS[key].options[0];
+// a slider rule's value, clamped to its track, and the multiplier it earns: 1.00 wide open, rising to
+// offMult when it is wound all the way down
+const ruleKm = (key, rules = RULES) => { const s = RULE_OPTIONS[key].slider, v = rules[key]; return Math.max(s.min, Math.min(s.max, v == null ? s.def : Math.round(+v))); };
+// ×1.00 sits at the slider's default, so leaving a rule alone scores exactly what it always did.
+// Winding it down earns up to offMult; opening it past the default is easier and pays maxMult.
+const ruleMult = (key, rules = RULES) => {
+  const s = RULE_OPTIONS[key].slider; if (!s) return ruleOpt(key, rules).mult;
+  const km = ruleKm(key, rules);
+  if (km <= s.def) return s.def === s.min ? 1 : s.offMult + (1 - s.offMult) * ((km - s.min) / (s.def - s.min));
+  return 1 + ((s.maxMult == null ? 1 : s.maxMult) - 1) * ((km - s.def) / (s.max - s.def));
+};
+const ferryLimit = () => ruleKm('ferryKm');
+const planeLimit = () => ruleKm('planeKm');
+const trainLimit = () => ruleKm('trainKm');
 // which rules actually change a trip in this vehicle: boats never fly or ride trains, trains never fly or take ferries
 function rulesThatApply(vehicle, regions) {
-  const keys = Object.keys(RULE_OPTIONS);
-  if (vehicle === 'boat') return keys.filter(k => k !== 'planes' && k !== 'trains' && k !== 'ferries');
-  if (vehicle === 'train') return keys.filter(k => k !== 'planes' && k !== 'trains' && k !== 'ferries');
-  // the train rule only counts where there is a rail network to refuse
-  return keys.filter(k => k !== 'trains' || (TRAINS_READY && (!regions || railIn(regions))));
+  const drop = new Set();
+  if (vehicle === 'boat' || vehicle === 'train') for (const k of ['planes', 'planeKm', 'trains', 'trainKm', 'ferryKm']) drop.add(k);
+  // the train rules only count where there is a rail network to refuse
+  else if (!(TRAINS_READY && (!regions || railIn(regions)))) { drop.add('trains'); drop.add('trainKm'); }
+  return Object.keys(RULE_OPTIONS).filter(k => !drop.has(k));
 }
 function scoreMultiplier(rules, assist, avoidCount, regions, vehicle = 'car') {
   let m = 1;
-  for (const key of rulesThatApply(vehicle, regions)) m *= ruleOpt(key, rules).mult;
+  for (const key of rulesThatApply(vehicle, regions)) m *= ruleMult(key, rules);
   if (assist === 'navigator') m *= 1.25;
   if (regions && [].concat(regions).includes('UNCHARTED')) m *= 1.15;
   m *= 1 + Math.min(0.2, 0.04 * (avoidCount || 0));
@@ -184,6 +210,7 @@ const MARKERS = [
 const ROUTES = [{ id: 'red', name: 'Road red', color: '#D7263D', price: 0 }, { id: 'cobalt', name: 'Cobalt', color: '#2F5BEA', price: 40 }, { id: 'violet', name: 'Violet', color: '#8A3FFC', price: 40 }, { id: 'gold', name: 'Gold', color: '#E0A100', price: 60 }, { id: 'neon', name: 'Neon', color: '#18C964', price: 60 }];
 const CURSORS = [{ id: 'default', name: 'Standard', emoji: '', price: 0 }, { id: 'compass', name: 'Compass', emoji: '🧭', price: 30 }, { id: 'pin', name: 'Map pin', emoji: '📍', price: 30 }, { id: 'plane', name: 'Paper plane', emoji: '✈️', price: 40 }];
 const CONSUMABLES = [{ id: 'jerrycan', name: 'Jerrycan', icon: '⛽', price: 40, blurb: 'Use during a trip: +25% of your tank.' }, { id: 'ticket', name: 'Ferry ticket', icon: '🎫', price: 50, blurb: 'Use during a trip: one extra ferry crossing.' }];
+const TICKET_PRICE = CONSUMABLES.find(c => c.id === 'ticket').price;
 
 // ================= geometry =================
 const R = 6371, rad = d => d * Math.PI / 180, deg = r => r * 180 / Math.PI;
