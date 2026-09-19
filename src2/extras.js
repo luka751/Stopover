@@ -92,6 +92,7 @@ const TRAILS = [
   { id: 'rainbow', name: 'Rainbow', price: 150, blurb: 'Colours that flow along your route.' },
 ];
 const EFFECTS = [
+  { id: 'puff', name: 'Confetti puff', price: 0, blurb: 'A short burst of confetti when you arrive.' },
   { id: 'none', name: 'No effect', price: 0, blurb: 'Arrive quietly.' },
   { id: 'fireworks', name: 'Fireworks', price: 120, blurb: 'Fireworks over the map when you arrive.' },
   { id: 'confetti', name: 'Confetti stamp', price: 100, blurb: 'An ARRIVED stamp and a shower of confetti.' },
@@ -113,7 +114,7 @@ function ensureEquipDefaults() {
   // Winter was retired (it looked like Satellite): anyone who owned it gets Satellite
   if (P.owned.includes('style:winter')) { P.owned = P.owned.filter(x => x !== 'style:winter'); if (!P.owned.includes('style:satellite')) P.owned.push('style:satellite'); }
   if (P.equip.style === 'winter') P.equip.style = 'satellite';
-  const e = P.equip; e.sign ||= 'eroad'; e.trail ||= 'solid'; e.effect ||= 'none'; e.ink ||= 'classic'; e.sound ||= 'bells'; e.theme ||= 'field';
+  const e = P.equip; e.sign ||= 'eroad'; e.trail ||= 'solid'; e.effect ||= 'puff'; if (e.effect === 'none' && !P.effectChosen) e.effect = 'puff'; e.ink ||= 'classic'; e.sound ||= 'bells'; e.theme ||= 'field';
   if (!THEMES[e.theme]) e.theme = 'field';
   document.documentElement.classList.toggle('holo', !!e.holo);
   applyInterfaceTheme();
@@ -140,16 +141,19 @@ setInterval(() => {
 
 // ---- arrival effects, drawn on a canvas over the trip map
 function playArrivalEffect() {
-  const kind = P.equip.effect; if (!kind || kind === 'none' || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const kind = P.equip.effect || 'puff'; if (kind === 'none' || !juiceOn('fx') || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   const wrap = $('map').parentElement; let cv = $('fx');
   if (!cv) { cv = document.createElement('canvas'); cv.id = 'fx'; cv.setAttribute('aria-hidden', 'true'); wrap.appendChild(cv); }
   const r = wrap.getBoundingClientRect(), dpr = window.devicePixelRatio || 1, ctx = cv.getContext('2d');
   cv.width = r.width * dpr; cv.height = r.height * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const W = r.width, H = r.height, parts = [], t0 = performance.now(), dur = 3200;
+  const W = r.width, H = r.height, parts = [], t0 = performance.now(), dur = kind === 'puff' ? 2200 : 3200;
   const colors = ['#FFD166', '#EF476F', '#06D6A0', '#118AB2', '#F2622A', '#FFFFFF'];
   if (kind === 'fireworks') {
     for (let b = 0; b < 6; b++) { const x = W * (0.2 + Math.random() * 0.6), y = H * (0.15 + Math.random() * 0.35), delay = b * 380, c = colors[b % colors.length];
       for (let i = 0; i < 46; i++) { const a = Math.random() * 7, s = 1.5 + Math.random() * 3; parts.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, c, delay, life: 1100 + Math.random() * 500, size: 2.2 }); } }
+  } else if (kind === 'puff') {
+    // the free one: a single burst from the bottom of the map, lighter than the paid confetti and without its stamp
+    for (let i = 0; i < 70; i++) { const a = -Math.PI / 2 + (Math.random() - 0.5) * 1.3, s = 7 + Math.random() * 6; parts.push({ x: W / 2 + (Math.random() - 0.5) * 60, y: H + 10, vx: Math.cos(a) * s, vy: Math.sin(a) * s, c: colors[i % colors.length], delay: 0, life: dur, size: 4 + Math.random() * 3, spin: Math.random() * 6, puff: true }); }
   } else {
     for (let i = 0; i < 160; i++) parts.push({ x: Math.random() * W, y: -20 - Math.random() * H * 0.6, vx: (Math.random() - 0.5) * 1.5, vy: 2 + Math.random() * 3, c: colors[i % colors.length], delay: 0, life: dur, size: 4 + Math.random() * 4, spin: Math.random() * 6 });
     const stamp = document.createElement('div'); stamp.className = 'arrivedstamp'; stamp.textContent = 'Arrived'; stamp.setAttribute('aria-hidden', 'true'); wrap.appendChild(stamp); setTimeout(() => stamp.remove(), dur);
@@ -159,8 +163,9 @@ function playArrivalEffect() {
     for (const p of parts) {
       const t = el - p.delay; if (t < 0 || t > p.life) continue;
       const k = t / 16;
-      const x = p.x + p.vx * k, y = p.y + p.vy * k + (kind === 'fireworks' ? 0.02 * k * k : 0);
-      ctx.globalAlpha = kind === 'fireworks' ? 1 - t / p.life : 1; ctx.fillStyle = p.c;
+      // the puff is thrown up and falls back under gravity, easing sideways as it slows
+      const x = p.x + (p.puff ? p.vx * 30 * (1 - Math.exp(-k / 30)) : p.vx * k), y = p.y + p.vy * k + (kind === 'fireworks' ? 0.02 * k * k : p.puff ? 0.13 * k * k : 0);
+      ctx.globalAlpha = kind === 'fireworks' ? 1 - t / p.life : p.puff ? Math.min(1, (1 - t / p.life) / 0.35) : 1; ctx.fillStyle = p.c;
       if (kind === 'fireworks') { ctx.beginPath(); ctx.arc(x, y, p.size, 0, 7); ctx.fill(); }
       else { ctx.save(); ctx.translate(x, y); ctx.rotate(p.spin * t / 400); ctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2); ctx.restore(); }
     }

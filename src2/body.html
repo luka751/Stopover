@@ -1,7 +1,7 @@
 
 <div class="app">
   <header class="bar">
-    <div class="brand"><span class="shield" aria-hidden="true">E2</span><span class="wordmark">Stopover</span><span class="brandmode" id="brand-mode" aria-hidden="true"></span><span class="ver" id="ver-badge">V3</span></div>
+    <div class="brand"><span class="shield" aria-hidden="true">E2</span><span class="wordmark">Stopover</span><span class="brandmode" id="brand-mode" aria-hidden="true"></span><span class="ver" id="ver-badge">V3</span><div class="ticker" id="ticker" aria-live="polite" hidden></div></div>
     <nav>
       <button class="btn cta" id="btn-new" type="button">New trip</button>
       <div class="status">
@@ -86,6 +86,7 @@
     <section id="avoid-summary"></section>
     <footer>
       <button class="btn" type="button" id="start-daily">Today’s daily trip</button>
+      <button class="btn" type="button" id="start-weekly" title="An Epic trip from memory under hard rules, the same for everyone this week">🏔️ Weekly challenge</button>
       <button class="btn go" type="button" id="start-trip">Start trip</button>
     </footer>
   </div>
@@ -97,6 +98,7 @@
     <section>
       <div class="switchrow"><div><b>Classic rules (v1)</b><small>The original game: every visit scores the same, no avoided countries, no flag postcards and the original map. Your passport and coins still count.</small></div><label class="toggle"><input type="checkbox" id="set-classic" aria-label="Classic rules"><span></span></label></div>
       <div class="switchrow"><div><b>Sound effects</b><small>A chime when you collect a flag. Rarer flags ring longer.</small></div><label class="toggle"><input type="checkbox" id="set-sound" aria-label="Sound effects"><span></span></label></div>
+      <div id="juice-settings"></div>
       <div class="switchrow"><div><b>Flag pop-ups</b><small>The card that drops in when you collect flags. Off shows a short message instead.</small></div><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end"><div class="seg" id="set-popup" role="group" aria-label="Flag pop-up size"></div><button class="btn small" type="button" id="popup-preview">Preview</button></div></div>
     </section>
     <section>

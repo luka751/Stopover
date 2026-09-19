@@ -6,7 +6,7 @@ function renderSign(v) {
   const goal = S.done ? S.dest : nextTarget(), toVia = goal !== S.dest, arrived = S.done && !S.gaveUp;
   const dLeft = dist(G.lat[S.cur], G.lon[S.cur], G.lat[goal], G.lon[goal]), brg = bearing(G.lat[S.cur], G.lon[S.cur], G.lat[goal], G.lon[goal]);
   $('sign').innerHTML = `
-    <div class="from"><span>From ${flagHtml(ccOf(S.start))}${esc(G.name[S.start])}</span><span>${S.daily ? 'Daily · ' + S.daily : esc(markerFor(S.opts.vehicle) + ' ' + v.name + ' · ' + (S.voyage ? 'Far-Flung Isles' : LENGTHS.find(l => l.id === S.opts.length).name))}${S.classic ? ' · Classic' : ''}</span></div>
+    <div class="from"><span>From ${flagHtml(ccOf(S.start))}${esc(G.name[S.start])}</span><span>${S.weekly ? '🏔️ Weekly challenge · ' + S.weekly : S.daily ? 'Daily · ' + S.daily : esc(markerFor(S.opts.vehicle) + ' ' + v.name + ' · ' + (S.voyage ? 'Far-Flung Isles' : LENGTHS.find(l => l.id === S.opts.length).name))}${S.classic ? ' · Classic' : ''}</span></div>
     <div class="to">
       <div class="arrow" style="transform: rotate(${Math.round(brg)}deg)" aria-hidden="true"><svg width="30" height="30" viewBox="0 0 30 30"><path d="M15 2 L25 16 H18 V28 H12 V16 H5 Z" fill="currentColor"/></svg></div>
       <div class="dest">${toVia ? '<span class="via-tag">Via</span>' : ''}${flagHtml(ccOf(goal))}${esc(G.name[goal])}<small>${esc(placeLine(goal))}</small></div>
@@ -116,9 +116,13 @@ function renderFinished() {
               ? `<div class="stat"><span class="label">Countries</span><b>${countries}</b></div>`
               : `<div class="stat" title="The share of your stops that were places you had never been · it paid ${paid}% of the arrival bonus"><span class="label">Discovery</span><b>${disc}%</b></div>`}
           </div>`}
+      ${S.boosted ? `<p class="hint" style="margin:0">👋 Welcome-back boost: the arrival bonus paid double, +${fmt(S.boosted)} extra.</p>` : ''}
+      ${(S.daily || S.weekly) && !S.gaveUp && HOOKS.challengeLine ? `<p class="chalrank" id="chal-rank">${HOOKS.challengeLine()}</p>` : ''}
+      ${S.gaveUp ? '' : nudgesHtml([...new Set(S.stops.map(s => ccOf(s.id)))], 3)}
       ${!S.classic && bsDeck('due').length ? `<div class="news-perk"><span><strong>${bsDeck('due').length} blind spots to review.</strong><br><span class="hint">Towns you hopped over on your trips are waiting in the deck.</span></span><button class="btn small dark" type="button" id="btn-review" style="margin-left:auto">Review</button></div>` : ''}
-      ${S.race && HOOKS.finishedButtons ? HOOKS.finishedButtons() : `<div class="tools"><button class="btn go" type="button" id="btn-again">${opts.from != null && opts.to != null ? 'Same route again' : 'Next trip'}</button><button class="btn" type="button" id="btn-change">Change trip</button></div>`}
+      ${S.race && HOOKS.finishedButtons ? HOOKS.finishedButtons() : `<div class="tools"><button class="btn go" type="button" id="btn-again">${opts.from != null && opts.to != null ? 'Same route again' : 'Next trip'}</button><button class="btn" type="button" id="btn-change">Change trip</button>${S.gaveUp ? '' : '<button class="btn sharebtn" type="button" id="btn-share">↗ Share</button>'}</div>`}
     </div>`;
+  if ($('btn-share')) $('btn-share').onclick = shareTrip;
   if ($('btn-again')) $('btn-again').onclick = () => startTrip(opts, false);
   if ($('btn-review')) $('btn-review').onclick = () => openBlind();
   if ($('btn-change')) $('btn-change').onclick = openNew;
@@ -132,6 +136,7 @@ function renderPostcard() {
     ${stack.length ? `<div class="flagrow">${stack.map(f => `<div class="flagcard"><img src="${flagSrc(f.key)}" alt="Flag of ${esc(f.label)}"><em class="${fresh.has(f.key) ? 'newflag' : ''}">${fresh.has(f.key) ? 'New flag' : esc(f.kind)}</em><span>${esc(f.label)}</span></div>`).join('')}</div>` : `<div class="hint">${FLAGS.ready ? 'No flags on file for this place.' : FLAGS.failed ? 'Flags could not be loaded.' : 'Flags are loading…'}</div>`}
     ${S.voyage && last === S.dest && isleOf(last) ? `<div class="disputed-note isle-note"><b>🏝️ Outpost reached: ${esc(ccName(ccOf(last)))}</b><span>${esc(isleOf(last).note)}</span></div>` : ''}
     ${G.area[last] && DISPUTED[areaName(last)] ? `<div class="disputed-note"><b>⚑ Disputed territory: ${esc(areaName(last))}</b><span>${esc(DISPUTED[areaName(last)])}</span></div>` : ''}
+    ${(() => { const n = juiceOn('nudges') && nudges([ccOf(last)], 5).find(x => x.cc === ccOf(last)); return n ? `<div class="postnudge">${n.icon} ${esc(n.text)}</div>` : ''; })()}
     <div class="chipline"><span class="chip">${esc(tierOf(last).label)}</span><span class="chip">${n ? `Visited ${n}×` : 'Not visited yet'}</span>${n ? `<span class="chip">Next visit ×${familiarity(n).mult}</span>` : ''}</div>
   </div>`;
 }
@@ -264,7 +269,7 @@ function openTripDialog(race) {
   REGPICK.open = null;
   $('nt-title').textContent = race ? 'Race settings' : 'Plan a trip';
   $('nt-lead').textContent = race ? 'Everything a solo trip can be. Everyone in the lobby gets exactly this trip.' : 'Pick where, how, and how far. Longer trips need smaller towns to keep the tank topped up.';
-  $('start-daily').hidden = !!race;
+  $('start-daily').hidden = !!race; $('start-weekly').hidden = !!race;
   $('start-trip').textContent = race ? 'Save race settings' : 'Start trip';
   // the long, optional parts start folded unless they're already in use
   $('fold-route').open = draft.from != null || draft.to != null || draft.via.length > 0;
@@ -399,6 +404,7 @@ $('start-trip').onclick = () => {
   opts = { ...opts, ...draft }; saveOpts(); if (startTrip(opts, false)) $('dlg-new').close();
 };
 $('start-daily').onclick = () => { opts = { ...opts, ...draft }; saveOpts(); if (startTrip(opts, true)) $('dlg-new').close(); };
+$('start-weekly').onclick = () => { if (startTrip(opts, 'weekly')) $('dlg-new').close(); };
 $('btn-new').onclick = openNew;
 $('dlg-new').addEventListener('close', () => { NT.race = null; REGPICK.open = null; if (S) renderBrandMode(S.opts.vehicle); });
 $('btn-help').onclick = () => $('dlg-help').showModal();
@@ -460,6 +466,7 @@ function setAvoid(cc, on) {
 }
 function renderSettings() {
   $('set-classic').checked = !!opts.classic; $('set-sound').checked = P.sound !== false;
+  renderJuiceSettings();
   $('set-popup').innerHTML = POPUP_SIZES.map(x => `<button type="button" data-popup="${x.id}" aria-pressed="${(P.flagPopup || 'medium') === x.id}">${x.name}</button>`).join('');
   $('avoid-tags').innerHTML = opts.avoid.length ? opts.avoid.map(cc => `<span class="tag">${countryFlag(cc)}${esc(ccName(cc))}<button type="button" data-unavoid="${cc}" aria-label="Stop avoiding ${esc(ccName(cc))}">×</button></span>`).join('') : '<span class="hint">Not avoiding any countries.</span>';
   $('avoid-add').innerHTML = G.countries.map((c, i) => [c, i]).filter(([c, i]) => G.placeCount[i] > 0 && !opts.avoid.includes(c[0])).sort((a, b) => a[0][1].localeCompare(b[0][1])).map(([c]) => `<option value="${c[0]}">${esc(c[1])}</option>`).join('');
@@ -478,7 +485,7 @@ function renderSettings() {
     <div class="switchrow"><span>Sound pack</span><select class="field" id="eq-sound">${Object.entries(SOUND_PACKS).filter(([k, x]) => !x.price || P.owned.includes('sound:' + k)).map(([k, x]) => opt(k, `${x.icon} ${x.name}`, P.equip.sound === k)).join('')}</select></div>
     ${P.owned.includes('holo:on') ? `<div class="switchrow"><span>Holo shine on legendary flags</span><label class="toggle"><input type="checkbox" id="eq-holo" ${P.equip.holo ? 'checked' : ''} aria-label="Holo shine"><span></span></label></div>` : ''}
     <p class="hint">Buy more in the shop.</p>`;
-  ['theme', 'sign', 'trail', 'effect', 'ink', 'sound'].forEach(k => { $('eq-' + k).onchange = e => { P.equip[k] = e.target.value; saveProfile(); ensureEquipDefaults(); render(); if (k === 'sound') chime(2, false); }; });
+  ['theme', 'sign', 'trail', 'effect', 'ink', 'sound'].forEach(k => { $('eq-' + k).onchange = e => { P.equip[k] = e.target.value; if (k === 'effect') P.effectChosen = true; saveProfile(); ensureEquipDefaults(); render(); if (k === 'sound') chime(2, false); }; });
   if ($('eq-holo')) $('eq-holo').onchange = e => { P.equip.holo = e.target.checked; saveProfile(); ensureEquipDefaults(); };
   $('eq-style').onchange = e => { P.equip.style = e.target.value; saveProfile(); tripMap.draw(); };
   $('eq-route').onchange = e => { P.equip.route = e.target.value; saveProfile(); applyCosmetics(); tripMap.draw(); };
@@ -543,7 +550,7 @@ function renderShop() {
   const equip = key => {
     const [kind, id] = key.split(':');
     if (kind === 'style') P.equip.style = id; else if (kind === 'route') P.equip.route = id; else if (kind === 'cursor') P.equip.cursor = id; else if (kind === 'marker') P.equip.markers[MARKERS.find(m => m.id === id).vehicle] = id;
-    else if (kind === 'holo') P.equip.holo = true; else if (['theme', 'sign', 'trail', 'effect', 'ink', 'sound'].includes(kind)) P.equip[kind] = id;
+    else if (kind === 'holo') P.equip.holo = true; else if (['theme', 'sign', 'trail', 'effect', 'ink', 'sound'].includes(kind)) { P.equip[kind] = id; if (kind === 'effect') P.effectChosen = true; }
   };
   $('shop-body').querySelectorAll('[data-buy]').forEach(b => b.onclick = () => {
     const price = +b.dataset.price; if (P.coins < price) return;

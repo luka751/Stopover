@@ -79,6 +79,7 @@
 #profile-body .flaggrid { grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); }
 @media (max-width: 520px) { .profilehead { grid-template-columns: 1fr; } .profilecover { width: 110px; } .profilestats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
+.boardseg { display: flex; gap: 6px; margin: 0 0 12px; flex-wrap: wrap; }
 .pfpassport { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .pfpassport .hint { flex: 1; min-width: 200px; }
 .nickrow { display: flex; gap: 8px; flex-wrap: wrap; }

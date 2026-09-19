@@ -134,6 +134,11 @@ const ppMap = new MapView($('pp-map'), {
   click: p => { const ci = countryAt(p.lat, p.lon); if (ci >= 0 && G.placeCount[ci]) { ppSel = ci; ppTab = 'country'; renderPassport(); ppMap.draw(); } },
   layer: (m, ctx) => {
     if (ppSel != null) { const sh = G.shapes[ppSel]; if (sh) { ctx.beginPath(); m.trace(sh.rings); ctx.strokeStyle = '#16221D'; ctx.lineWidth = 2; ctx.stroke(); } }
+    if (HOOKS.crownsOf) {
+      const held = new Set(HOOKS.crownsOf(PV.other ? PV.other.name : CLOUD.user.name));
+      if (held.size) { ctx.font = '18px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+        for (const a of G.anchors) if (held.has(G.countries[a.i][0])) { const [x, y] = m.px(a.lon, a.lat); ctx.fillText('👑', x, y - 8); } }
+    }
     if (ppTab !== 'trips') return;
     ctx.globalAlpha = .75;
     for (const h of pp().history || []) { const ids = h.route.concat([h.dest]).map(g => G.byGid.get(g)).filter(x => x != null); ctx.beginPath(); ids.forEach((id, i) => { const [x, y] = m.px(G.lon[id], G.lat[id]); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }); ctx.strokeStyle = routeColor(); ctx.lineWidth = 2; ctx.stroke(); }
@@ -161,6 +166,7 @@ function renderPassport() {
     const study = (p.study || {})[c[0]] || {}, avoided = !view && opts.avoid.includes(c[0]);
     body.innerHTML = `<div class="cstat">
         <h3>${countryFlag(c[0])}${esc(c[1])}</h3>
+        ${(() => { const cr = HOOKS.crownOf && HOOKS.crownOf(c[0]); if (!cr) return ''; const theirs = view ? cr.name === PV.other.name : cr.mine; return `<div class="hint" style="margin-top:6px">👑 ${theirs ? `${view ? esc(who) + ' holds' : 'You hold'} the crown` : `Crown: <b>${esc(cr.who)}</b>`} · ${fmt(cr.n)} places known</div>`; })()}
         <div class="chipline" style="margin-top:8px"><span class="chip" style="background:${MASTERY[Math.max(1, lv)].color}33">${MASTERY[lv].name}</span><span class="chip">${fmt(score)} places known</span><span class="chip">${fmt(G.placeCount[ci])} in the gazetteer</span>${avoided ? '<span class="chip warn">Avoided</span>' : ''}</div>
         <div class="levelbar" style="margin-top:10px"><div style="width:${next ? Math.min(100, (score - MASTERY[lv].at) / (next.at - MASTERY[lv].at) * 100) : 100}%;background:${MASTERY[Math.max(1, lv)].color}"></div></div>
         <div class="hint" style="margin-top:4px">${next ? `${next.at - score} more to reach ${next.name}` : 'Top level reached'}</div>
@@ -379,6 +385,7 @@ function finishStudy() {
     S = saved; useVoyage(S); RULES = migrateRules(S.rules); hintIds = S.scouts ? S.scouts.map(s => s.id) : []; render(); tripMap.fit(tripBounds(), true, 56, 130);
     setMsg(S.done ? lastMsg.text : `Trip resumed. You're in ${G.name[S.cur]}.`);
   } else if (!startTrip(opts, false)) startTrip({ ...opts, vehicle: opts.vehicle === 'train' ? 'car' : opts.vehicle, regions: ['EU'], length: 'short', avoid: [], from: null, to: null, via: [] }, false);
+  setTimeout(() => setTimeout(greetOnBoot, 1400), 30);
   setTimeout(() => { buildSearch(); migrateV1(); backfillStamps(); saveProfile(); renderLeagueChip(); initLeaderboard(); checkAchievements(); bsBackfill(); renderBlindCount(); setTimeout(() => showNews(false), 900); if (S && !S.done) setMsg(lastMsg.text, lastMsg.cls); if (HOOKS.boot) HOOKS.boot(); }, 30);
   await flagsLoaded;
 })();

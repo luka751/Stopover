@@ -18,6 +18,13 @@ const lobby = (env, code) => env.LOBBY.get(env.LOBBY.idFromName('lobby:' + code)
 // the browser never sends the password: it sends a key stretched from it (PBKDF2, 200k rounds), always 64 hex digits
 const validKey = k => typeof k === 'string' && /^[0-9a-f]{64}$/.test(k);
 const int = (v, max) => Math.max(0, Math.min(max, Math.round(+v || 0)));
+// periods a score may be posted for: today or yesterday (UTC), this ISO week or last, so a trip finished just
+// after midnight still lands on the board it was started on
+const dayId = t => new Date(t).toISOString().slice(0, 10);
+function weekId(t) { const d = new Date(t), day = d.getUTCDay() || 7; d.setUTCHours(0, 0, 0, 0); d.setUTCDate(d.getUTCDate() + 4 - day); const y = d.getUTCFullYear(); return `${y}-W${String(Math.ceil(((d - Date.UTC(y, 0, 1)) / 864e5 + 1) / 7)).padStart(2, '0')}`; }
+const recentPeriod = (kind, p) => typeof p === 'string' && (kind === 'daily' ? [dayId(Date.now()), dayId(Date.now() - 864e5)] : [weekId(Date.now()), weekId(Date.now() - 7 * 864e5)]).includes(p);
+// places known per country (ISO code → count), sent with each save; it is what crowns are decided by
+const cleanKnown = v => { if (!v || typeof v !== 'object') return null; const out = {}; for (const [cc, n] of Object.entries(v).slice(0, 300)) if (/^[A-Z]{2}$/.test(cc) && Number.isFinite(n) && n > 0) out[cc] = Math.min(100000, Math.round(n)); return JSON.stringify(out); };
 // A nickname is what other players see. It isn't unique and isn't used to log in, so it can be anything
 // readable: letters in any script, digits, spaces and a little punctuation. The one thing it may not be is
 // someone else's fruit username, or a player could pass themselves off as them.
@@ -100,7 +107,8 @@ async function api(req, env, url) {
         changes[k] = text;
         const s = body.summary || {};
         stats = { flags: Object.keys(val.flagsSeen || {}).length, coins: int(val.coins, 1e9), trips: int(val.trips, 1e6), km: int(val.km, 1e9),
-          rating: int(s.rating, 1e5), league: /^[a-z-]{1,20}$/.test(s.league) ? s.league : 'travel-doc', places: int(s.places, 1e7), countries: int(s.countries, 400) };
+          rating: int(s.rating, 1e5), league: /^[a-z-]{1,20}$/.test(s.league) ? s.league : 'travel-doc', places: int(s.places, 1e7), countries: int(s.countries, 400),
+          known: cleanKnown(s.known) };
       } else changes[k] = v;
     }
     const res = await acct.save(u.id, int(body.rev, 1e12), changes, stats);
@@ -120,6 +128,15 @@ async function api(req, env, url) {
     return json({ ok: true, nick: c.nick });
   }
   if (method === 'GET' && path === '/api/leaderboard') { await who(); return json({ rows: await acct.leaderboard() }); }
+  if (method === 'GET' && path === '/api/crowns') { await who(); return json({ crowns: await acct.crowns() }); }
+  // daily trip and weekly challenge: a finished run posts its score; the first finish in each period is the one that counts
+  if (method === 'POST' && path === '/api/score') {
+    const u = await who(), b = await readJson(req, 4000);
+    if (!['daily', 'weekly'].includes(b.kind) || !recentPeriod(b.kind, b.period)) return fail(400, 'That trip is not on the board any more');
+    const r = { total: int(b.total, 60000), km: int(b.km, 60000), stops: int(b.stops, 500), squares: typeof b.squares === 'string' ? b.squares.slice(0, 400) : '' };
+    return json(await acct.postScore(u.id, b.kind, b.period, r));
+  }
+  if (method === 'GET' && (m = /^\/api\/board\/(daily|weekly)\/([0-9W-]{7,10})$/.exec(path))) { const u = await who(); return json(await acct.board(m[1], m[2], u.id)); }
   if (method === 'GET' && (m = /^\/api\/profile\/([A-Za-z]{4,30})$/.exec(path))) {
     await who();
     const p = parseName(m[1]), data = p && await acct.profile(p.name);
@@ -130,7 +147,7 @@ async function api(req, env, url) {
     const study = {}; for (const [cc, v] of Object.entries(prof.study || {})) if (v && typeof v === 'object') study[cc] = { known: Array.isArray(v.known) ? v.known : [], bestPct: v.bestPct ?? null, correct: int(v.correct, 1e7), answered: int(v.answered, 1e7) };
     const pick = { flagsSeen: prof.flagsSeen || {}, stamps: prof.stamps || {}, history: (prof.history || []).slice(0, 30), best: prof.best || {},
       achievements: prof.achievements || {}, trips: prof.trips || 0, km: prof.km || 0, ferries: prof.ferries || 0, cover: prof.cover || null, feats: prof.feats || {},
-      visits, study, flagSets: prof.flagSets || {}, flagStreak: prof.flagStreak || null, equip: { ink: ((prof.equip || {}).ink) || null } };
+      visits, study, holo: prof.holo || {}, flagSets: prof.flagSets || {}, flagStreak: prof.flagStreak || null, equip: { ink: ((prof.equip || {}).ink) || null } };
     return json({ ...data, profile: pick });
   }
   if (method === 'POST' && path === '/api/lobby') {
@@ -166,6 +183,9 @@ export class Accounts extends DurableObject {
     ]) this.sql.exec(stmt);
     // added after launch: databases from before nicknames get the column on their next start
     try { this.sql.exec('ALTER TABLE users ADD COLUMN nick TEXT'); } catch { /* already there */ }
+    try { this.sql.exec('ALTER TABLE stats ADD COLUMN known TEXT'); } catch { /* already there */ }
+    this.sql.exec('CREATE TABLE IF NOT EXISTS scores (kind TEXT NOT NULL, period TEXT NOT NULL, user_id INTEGER NOT NULL, total INTEGER NOT NULL, km INTEGER NOT NULL, stops INTEGER NOT NULL, squares TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (kind, period, user_id))');
+    this.crownCache = null;
   }
   row(query, ...args) { return this.sql.exec(query, ...args).toArray()[0] || null; }
 
@@ -231,12 +251,45 @@ export class Accounts extends DurableObject {
         return { status: 422, error: 'That progress jumped too fast to be real, so it was not saved. Reload to go back to your last save.' };
     }
     for (const [k, v] of Object.entries(changes)) this.sql.exec('INSERT INTO save_keys (user_id, k, v) VALUES (?, ?, ?) ON CONFLICT (user_id, k) DO UPDATE SET v = excluded.v', userId, k, v);
-    if (stats) this.sql.exec('UPDATE stats SET rev = rev + 1, updated = ?, flags = ?, coins = ?, trips = ?, km = ?, rating = ?, league = ?, places = ?, countries = ? WHERE user_id = ?',
-      now, stats.flags, stats.coins, stats.trips, stats.km, stats.rating, stats.league, stats.places, stats.countries, userId);
+    if (stats) {
+      this.sql.exec('UPDATE stats SET rev = rev + 1, updated = ?, flags = ?, coins = ?, trips = ?, km = ?, rating = ?, league = ?, places = ?, countries = ? WHERE user_id = ?',
+        now, stats.flags, stats.coins, stats.trips, stats.km, stats.rating, stats.league, stats.places, stats.countries, userId);
+      if (stats.known) { this.sql.exec('UPDATE stats SET known = ? WHERE user_id = ?', stats.known, userId); this.crownCache = null; }
+    }
     else this.sql.exec('UPDATE stats SET rev = rev + 1 WHERE user_id = ?', userId);
     return { rev: cur.rev + 1 };
   }
 
+  // Crowns: for each country, the player who knows the most of its places holds it (10 at least, so an early
+  // visit isn't a crown). Ties go to whoever got there first, which here is the older account.
+  crowns() {
+    if (this.crownCache && Date.now() - this.crownCache.at < 30000) return this.crownCache.data;
+    const best = {};
+    for (const r of this.sql.exec('SELECT u.id, u.name, u.nick, s.known FROM users u JOIN stats s ON s.user_id = u.id WHERE s.known IS NOT NULL ORDER BY u.id')) {
+      let k; try { k = JSON.parse(r.known); } catch { continue; }
+      for (const [cc, n] of Object.entries(k)) {
+        if (n < 10) continue;
+        const b = best[cc];
+        if (!b) best[cc] = { name: r.name, nick: r.nick || null, n, next: 0 };
+        else if (n > b.n) best[cc] = { name: r.name, nick: r.nick || null, n, next: b.n };
+        else if (n > b.next) b.next = n;
+      }
+    }
+    this.crownCache = { at: Date.now(), data: best };
+    return best;
+  }
+  postScore(userId, kind, period, r) {
+    this.sql.exec('INSERT OR IGNORE INTO scores (kind, period, user_id, total, km, stops, squares, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', kind, period, userId, r.total, r.km, r.stops, r.squares, Date.now());
+    return this.board(kind, period, userId);
+  }
+  board(kind, period, userId) {
+    const rows = this.sql.exec(`SELECT u.name, u.nick, s.total, s.km, s.stops, s.squares, s.user_id = ? AS me FROM scores s JOIN users u ON u.id = s.user_id
+      WHERE s.kind = ? AND s.period = ? ORDER BY s.total DESC, s.at ASC LIMIT 100`, userId, kind, period).toArray();
+    const mine = this.row('SELECT total, at FROM scores WHERE kind = ? AND period = ? AND user_id = ?', kind, period, userId);
+    const rank = mine ? this.row('SELECT COUNT(*) + 1 AS r FROM scores WHERE kind = ? AND period = ? AND (total > ? OR (total = ? AND at < ?))', kind, period, mine.total, mine.total, mine.at).r : null;
+    const players = this.row('SELECT COUNT(*) AS n FROM scores WHERE kind = ? AND period = ?', kind, period).n;
+    return { kind, period, rows: rows.map(x => ({ ...x, me: !!x.me })), rank, players, mine: mine ? mine.total : null };
+  }
   leaderboard() {
     return this.sql.exec(`SELECT u.name, u.nick, s.flags, s.rating, s.league, s.trips, s.places, s.countries, s.km, u.last_seen AS seen,
         (SELECT COUNT(*) FROM race_players p WHERE p.user_id = u.id) AS races,

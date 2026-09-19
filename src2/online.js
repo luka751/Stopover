@@ -374,11 +374,76 @@ async function loadBoard(force) {
   if (r.ok) { ONLINE.board = r.body.rows; ONLINE.boardAt = Date.now(); noteNicks(r.body.rows); }
   return ONLINE.board;
 }
+// ---- daily and weekly boards
+const CHAL = { kind: 'flags', boards: {}, posted: {} };
+const periodOf = kind => kind === 'daily' ? new Date().toISOString().slice(0, 10) : isoWeek();
+async function loadChallenge(kind, force) {
+  const period = periodOf(kind), key = kind + ':' + period, have = CHAL.boards[key];
+  if (have && !force && Date.now() - have.at < 20000) return have;
+  const r = await api(`/api/board/${kind}/${period}`);
+  if (r.ok) { noteNicks(r.body.rows); CHAL.boards[key] = { ...r.body, at: Date.now() }; }
+  return CHAL.boards[key];
+}
+async function postChallenge() {
+  const kind = S.weekly ? 'weekly' : 'daily', period = S.weekly || S.daily, key = kind + ':' + period;
+  CHAL.posted[key] = 'posting'; refreshChallengeLine();
+  const squares = shareText().split('\n')[2] || '';
+  const r = await api('/api/score', { method: 'POST', body: JSON.stringify({ kind, period, total: S.total, km: Math.round(S.km), stops: S.stops.length, squares }) });
+  if (r.ok) { noteNicks(r.body.rows); CHAL.boards[key] = { ...r.body, at: Date.now() }; CHAL.posted[key] = 'done'; } else CHAL.posted[key] = r.body.error || 'failed';
+  refreshChallengeLine();
+}
+function challengeLine() {
+  const kind = S.weekly ? 'weekly' : 'daily', key = kind + ':' + (S.weekly || S.daily), st = CHAL.posted[key], b = CHAL.boards[key];
+  const label = kind === 'weekly' ? 'this week' : 'today';
+  if (st === 'posting') return 'Posting your score to the board…';
+  if (st === 'done' && b && b.rank) return `${b.rank <= 3 ? medal(b.rank) : '📊'} #${b.rank} of ${b.players} ${label}${b.mine !== S.total ? ` · your first run (${fmt(b.mine)} pts) is the one that counts` : ''} · <button type="button" class="linkish" data-openboard="${kind}">see the board</button>`;
+  if (st && st !== 'done') return `The board didn't take this one: ${esc(st)}`;
+  return '';
+}
+function refreshChallengeLine() { const el = $('chal-rank'); if (el) el.innerHTML = challengeLine(); }
+// the finish card is redrawn often, so its "see the board" link is handled once, here
+document.addEventListener('click', e => { const b = e.target.closest('[data-openboard]'); if (b) { CHAL.kind = b.dataset.openboard; openOnline('board'); } });
 function renderBoard(body) {
+  if (CHAL.kind !== 'flags') return renderChallengeBoard(body);
   const rows = ONLINE.board, me = CLOUD.user.name;
-  body.innerHTML = `<section><p class="hint" style="margin:0 0 10px">Ranked by flags collected. Tap a name to see their profile.</p>
+  body.innerHTML = `${boardSwitch()}<section><p class="hint" style="margin:0 0 10px">Ranked by flags collected. Tap a name to see their profile.</p>
     ${rows ? `<table class="board"><thead><tr><th>#</th><th>Player</th><th>🚩 Flags</th><th class="wide">League</th><th>Races won</th></tr></thead><tbody>${rows.map((x, i) => `<tr class="${x.name === me ? 'me' : ''}"><td>${i < 3 ? medal(i + 1) : i + 1}</td><td><button type="button" class="linkish" data-profile="${esc(x.name)}">${unameHtml(x.name)}</button></td><td><b>${fmt(x.flags)}</b></td><td class="wide">${esc((LEAGUES.find(l => l.id === x.league) || LEAGUES[0]).name)}</td><td>${fmt(x.wins)}<small class="hint"> / ${fmt(x.races)}</small></td></tr>`).join('')}</tbody></table>` : '<p class="hint">Loading…</p>'}</section>`;
   loadBoard().then(b => { if (b !== rows && $('dlg-online').open && ONLINE.tab === 'board') renderBoard(body); });
+  wireBoardSwitch(body);
+}
+const boardSwitch = () => `<div class="seg boardseg" role="group" aria-label="Which board">${[['flags', '🚩 Flags'], ['daily', '📅 Today'], ['weekly', '🏔️ This week']].map(([k, n]) => `<button type="button" data-board="${k}" aria-pressed="${CHAL.kind === k}">${n}</button>`).join('')}</div>`;
+function wireBoardSwitch(body) { body.querySelectorAll('[data-board]').forEach(b => b.onclick = () => { CHAL.kind = b.dataset.board; renderBoard(body); }); }
+function renderChallengeBoard(body) {
+  const kind = CHAL.kind, period = periodOf(kind), b = CHAL.boards[kind + ':' + period], weekly = kind === 'weekly';
+  const played = weekly ? P.lastWeekly === period : P.lastDaily === period;
+  body.innerHTML = `${boardSwitch()}<section>
+    <p class="hint" style="margin:0 0 10px">${weekly ? `The weekly challenge, ${period}: an Epic car trip from memory under hard rules, the same for everyone until Monday.` : `Today's daily trip, ${period}: the same trip for everyone.`} Your first finished run is the one that counts.</p>
+    ${played ? '' : `<div class="tools" style="margin-bottom:10px"><button class="btn go" type="button" id="board-play">${weekly ? "Play this week's challenge" : "Play today's trip"}</button></div>`}
+    ${!b ? '<p class="hint">Loading…</p>' : !b.rows.length ? `<p class="hint">Nobody has finished it yet. The top spot is open.</p>` : `<table class="board"><thead><tr><th>#</th><th>Player</th><th>Points</th><th class="wide">Route</th></tr></thead><tbody>${b.rows.map((x, i) => `<tr class="${x.me ? 'me' : ''}"><td>${i < 3 ? medal(i + 1) : i + 1}</td><td><button type="button" class="linkish" data-profile="${esc(x.name)}">${unameHtml(x.name)}</button></td><td><b>${fmt(x.total)}</b><small class="hint"> · ${fmt(x.km)} km</small></td><td class="wide" style="letter-spacing:1px">${esc(x.squares || '')}</td></tr>`).join('')}</tbody></table>`}
+    ${b && b.rank ? `<p class="hint" style="margin:8px 0 0">You're #${b.rank} of ${b.players}.</p>` : ''}</section>`;
+  wireBoardSwitch(body);
+  if ($('board-play')) $('board-play').onclick = () => { $('dlg-online').close(); startTrip(opts, weekly ? 'weekly' : true); };
+  body.querySelectorAll('[data-profile]').forEach(x => x.onclick = () => openProfile(x.dataset.profile));
+  if (!b || Date.now() - b.at > 20000) loadChallenge(kind).then(() => { if ($('dlg-online').open && ONLINE.tab === 'board' && CHAL.kind === kind) renderChallengeBoard(body); });
+}
+
+// ---- crowns: who knows each country best
+const CROWNS = { data: null, at: 0 };
+async function loadCrowns(force) {
+  if (!force && CROWNS.data && Date.now() - CROWNS.at < 60000) return;
+  const r = await api('/api/crowns'); if (!r.ok) return;
+  CROWNS.data = r.body.crowns; CROWNS.at = Date.now();
+  noteNicks(Object.values(CROWNS.data));
+  // tell the player what changed since they last looked: crowns won, and crowns taken from them
+  const me = CLOUD.user.name, held = Object.keys(CROWNS.data).filter(cc => CROWNS.data[cc].name === me), before = P.crownsHeld;
+  if (Array.isArray(before)) {
+    const won = held.filter(cc => !before.includes(cc)), lost = before.filter(cc => !held.includes(cc));
+    for (const cc of won) tick(`👑 You now hold the crown of <b>${esc(ccName(cc))}</b>`);
+    for (const cc of lost) { const c = CROWNS.data[cc]; tick(`👑 ${c ? `<b>${esc(c.nick || nameInfo(c.name).name)}</b> took` : 'You lost'} your crown of <b>${esc(ccName(cc))}</b>`); }
+    if (won.length) sfx('crown');
+  }
+  if (JSON.stringify(before) !== JSON.stringify(held)) { P.crownsHeld = held; saveProfile(); }
+  if ($('dlg-passport').open) { renderPassport(); ppMap.draw(); }
 }
 function renderAccount(body) {
   const u = CLOUD.user;
@@ -407,7 +472,7 @@ function renderAccount(body) {
 // what the profile endpoint sends back, shaped like the parts of a save the Passport reads
 const passportOf = pr => ({ visits: pr.visits || {}, study: pr.study || {}, flagsSeen: pr.flagsSeen || {}, stamps: pr.stamps || {}, history: pr.history || [],
   achievements: pr.achievements || {}, trips: pr.trips || 0, km: pr.km || 0, ferries: pr.ferries || 0, feats: pr.feats || {}, cover: pr.cover || null,
-  equip: pr.equip || {}, flagStreak: pr.flagStreak || null, flagSets: pr.flagSets || {} });
+  equip: pr.equip || {}, flagStreak: pr.flagStreak || null, flagSets: pr.flagSets || {}, holo: pr.holo || {} });
 function nickEditorHtml(id) {
   const u = CLOUD.user;
   return `<section class="nickedit"><div class="label">Nickname</div>
@@ -456,6 +521,7 @@ function renderProfile(x, showAll) {
     <section class="profilehead"><div class="profilecover">${coverSvg({ ...((pr.cover && COVERS.data && countryCover(pr.cover, league)) || { color: league.color, ink: league.ink, emblem: league.emblem, title: league.title, top: 'STOPOVER' }), bottom: displayName(x.name).toUpperCase() })}
         <span class="pfleague" style="--lc:${league.color}" title="League · rating ${fmt(x.rating)}"><i></i>${esc(league.name)}</span></div>
       <div class="stats profilestats">${stat('🚩 Flags', fmt(x.flags))}${stat('League', esc(league.name))}${stat('Rating', fmt(x.rating))}${stat('Trips', fmt(pr.trips))}${stat('Distance', fmt(pr.km) + ' km')}${stat('Places known', fmt(x.places))}${stat('Countries', fmt(countries.length))}${stat('Races won', `${fmt(x.wins)}<small class="hint"> / ${fmt(x.races)}</small>`)}${stat('Achievements', fmt(Object.keys(pr.achievements || {}).length))}</div></section>
+    ${HOOKS.crownsOf(x.name).length ? `<section><div class="label">👑 Crowns · ${HOOKS.crownsOf(x.name).length}</div><p class="hint" style="margin:4px 0 8px">Countries where nobody knows more places.</p><div class="tagrow">${HOOKS.crownsOf(x.name).sort((a, b) => ccName(a).localeCompare(ccName(b))).map(cc => `<span class="tag">${countryFlag(cc)}${esc(ccName(cc))} <small class="hint">${fmt(CROWNS.data[cc].n)}</small></span>`).join('')}</div></section>` : ''}
     <section class="pfpassport"><button class="btn go big" type="button" id="pf-passport">📖 Open ${mine ? 'your' : `${esc(displayName(x.name))}'s`} passport</button><span class="hint">Mastery map, stamps, country covers, the full flag collection, stats and trips${mine ? '' : ', just as they see them'}.</span></section>
     ${mine ? nickEditorHtml('pf') : ''}
     <section><div class="label">Flag collection · ${esc(flagRankOf(keys.length).name)}</div>
@@ -469,7 +535,7 @@ function renderProfile(x, showAll) {
     ${x.recentRaces.length ? `<section><div class="label">Recent races</div><ul class="list profiletrips">${x.recentRaces.map(r => `<li><span>${esc((RACE_MODES[r.mode] || RACE_MODES.time).name)} <small class="hint">${new Date(r.finished).toLocaleDateString()}</small></span><b>${r.place ? `${medal(r.place)} of ${r.players}` : 'Did not finish'}</b></li>`).join('')}</ul></section>` : ''}`;
   if (pr.cover && !COVERS.data) loadCovers().then(() => { if ($('dlg-profile').open && $('pf-passport')) renderProfile(x, showAll); });
   if ($('pf-all')) $('pf-all').onclick = () => renderProfile(x, true);
-  $('pf-passport').onclick = () => mine ? openPassport(null) : openPassport({ label: displayName(x.name), data: passportOf(pr) });
+  $('pf-passport').onclick = () => mine ? openPassport(null) : openPassport({ name: x.name, label: displayName(x.name), data: passportOf(pr) });
   if (mine) wireNickEditor('pf', () => openProfile(x.name));
 }
 
@@ -477,7 +543,16 @@ function renderProfile(x, showAll) {
 if (CLOUD) {
   HOOKS.online = true;
   HOOKS.afterTravel = () => { if (S.race) sendProgress(); };
-  HOOKS.afterFinish = gaveUp => { if (S.race) { if (gaveUp) send({ t: 'giveup' }); else sendFinish(); } CLOUD.flush(); };
+  HOOKS.afterFinish = gaveUp => {
+    if (S.race) { if (gaveUp) send({ t: 'giveup' }); else sendFinish(); }
+    if (!gaveUp && (S.daily || S.weekly)) postChallenge();
+    // the save carries this trip's knowledge; crowns are re-read once it has landed
+    Promise.resolve(CLOUD.flush()).then(() => loadCrowns(true));
+  };
+  HOOKS.greetName = () => CLOUD.user.nick || nameInfo(CLOUD.user.name).name;
+  HOOKS.challengeLine = challengeLine;
+  HOOKS.crownOf = cc => { const c = CROWNS.data && CROWNS.data[cc]; return c ? { who: c.nick || nameInfo(c.name).name, name: c.name, n: c.n, mine: c.name === CLOUD.user.name } : null; };
+  HOOKS.crownsOf = name => CROWNS.data ? Object.keys(CROWNS.data).filter(cc => CROWNS.data[cc].name === name) : [];
   HOOKS.publishScore = () => CLOUD.flush();
   HOOKS.render = () => {
     renderRacePanel();
@@ -516,7 +591,9 @@ if (CLOUD) {
     const drawSetNick = () => { $('set-nicksec').innerHTML = nickEditorHtml('set'); wireNickEditor('set', drawSetNick); };
     if (setDlg && !$('set-nicksec')) { setDlg.insertAdjacentHTML('afterend', '<div id="set-nicksec"></div>'); drawSetNick(); }
     P.playerName = CLOUD.user.name; saveProfile();
-    CLOUD.summary = () => { const r = explorerRating(); return { rating: r.total, league: leagueOf(r.total).id, places: r.known, countries: Object.keys(P.stamps || {}).filter(k => !k.startsWith('area:')).length }; };
+    CLOUD.summary = () => { const r = explorerRating(), k = countryKnowledge(), known = {}; k.forEach((n, i) => { if (n > 0) known[G.countries[i][0]] = n; });
+      return { rating: r.total, league: leagueOf(r.total).id, places: r.known, countries: Object.keys(P.stamps || {}).filter(k => !k.startsWith('area:')).length, known }; };
+    loadCrowns();
     const nav = document.querySelector('header.bar nav');
     nav.insertAdjacentHTML('afterbegin', `<button class="btn go icon" id="btn-online" type="button" title="Race your friends" aria-label="Race">🏁<span class="count" id="online-count" hidden></span></button>`);
     nav.insertAdjacentHTML('beforeend', `<button class="btn mebtn" id="btn-me" type="button" title="Your profile">${unameHtml(CLOUD.user.name)}</button>`);

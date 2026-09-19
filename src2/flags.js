@@ -140,14 +140,14 @@ function flagsBackfill() {
   renderFlagBadge();
 }
 // the reward moment: coins by rarity, streak, bounties, album and continent milestones, rank-ups
-function celebrateFlags(fresh) {
+function celebrateFlags(fresh, holo = []) {
   const cat = flagCatalog(); if (!cat || !fresh.length) return;
   const flags = fresh.map(k => cat.byKey.get(k)).filter(Boolean); if (!flags.length) return;
   const c = flagCounts(), rankBefore = flagRankOf(c.have - flags.length), rankAfter = flagRankOf(c.have);
   // streak: one collecting day after another
   const day = localDay(), yesterday = localDay(new Date(Date.now() - 864e5)), st = P.flagStreak = P.flagStreak || { day: null, n: 0, best: 0 };
   let streakUp = false;
-  if (st.day !== day) { st.n = st.day === yesterday ? st.n + 1 : 1; st.day = day; st.best = Math.max(st.best || 0, st.n); streakUp = st.n > 1; }
+  if (st.day !== day) { st.n = st.day === yesterday ? st.n + 1 : 1; if (st.n === 1) st.start = day; st.day = day; st.best = Math.max(st.best || 0, st.n); streakUp = st.n > 1; }
   const mult = 1 + 0.1 * (Math.min(6, st.n) - 1);
   const lines = []; let coins = 0;
   for (const f of flags) coins += RARITY[f.rarity].coins;
@@ -171,21 +171,25 @@ function celebrateFlags(fresh) {
     const cont = G.contOf[G.ccIndex[f.cc]], list = cat.byCont.get(cont) || [], have = list.filter(x => owns(x.key)).length;
     [0.5, 1].forEach((fr, s) => { const key = 'cont:' + cont + '#' + s; if (have >= Math.ceil(list.length * fr) && !P.flagSets[key]) { P.flagSets[key] = Date.now(); const pay = s ? 400 : 100; coins += pay; lines.push({ icon: '🌍', text: `${s ? 'Every' : 'Half of the'} country flag${s ? '' : 's'} of ${REGION_NAME(cont)}`, coins: pay, big: !!s }); } });
   }
+  // holo: a foil copy pays three times its rarity
+  for (const key of holo) { const f = cat.byKey.get(key); if (!f) continue; const pay = RARITY[f.rarity].coins * HOLO_PAY; coins += pay; lines.push({ icon: '✨', text: `Holo ${f.label}`, coins: pay, big: true }); }
+  if (streakUp) { const ms = streakMilestone(st.n); if (ms) { coins += ms.coins; lines.push(ms); } }
   if (rankAfter !== rankBefore) lines.push({ icon: '⭐', text: `New rank: ${rankAfter.name}`, big: true });
   if (streakUp) lines.push({ icon: '🔥', text: `${st.n}-day flag streak · coins ×${mult.toFixed(1)}` });
   else if (st.n === 1 && st.day === day && !P.flagStreakToldDay?.startsWith(day)) { P.flagStreakToldDay = day; lines.push({ icon: '🔥', text: 'Streak started · collect a flag tomorrow for coins ×1.1' }); }
   P.coins += coins; renderCoins(); bumpCoins();
   P.flagsNew = (P.flagsNew || 0) + flags.length;
   saveProfile(); renderFlagBadge(); renderLeagueChip(); publishScore();
-  showFlagDrop(flags, coins, albums, lines);
+  showFlagDrop(flags, coins, albums, lines, { holo: new Set(holo) });
+  if (holo.length) setTimeout(() => sfx('holo'), 350);
 }
 
 // ---- the flag drop: a card that lands over the map
 let dropTimer = 0;
 // the card's size is a setting: small, medium (default), large, or off (a one-line toast instead)
 const POPUP_SIZES = [{ id: 'small', name: 'Small' }, { id: 'medium', name: 'Medium' }, { id: 'large', name: 'Large' }, { id: 'off', name: 'Off' }];
-function showFlagDrop(flags, coins, albums, lines) {
-  const el = $('flagdrop'), best = Math.max(...flags.map(f => f.rarity)), r = RARITY[best], big = best >= 3 || lines.some(l => l.big), size = P.flagPopup || 'medium';
+function showFlagDrop(flags, coins, albums, lines, o = {}) {
+  const el = $('flagdrop'), best = Math.max(...flags.map(f => f.rarity)), r = RARITY[best], big = best >= 3 || lines.some(l => l.big), size = P.flagPopup || 'medium', holo = o.holo || new Set();
   if (size === 'off') {
     el.hidden = true; chime(best, big);
     toast(`${flags.length > 1 ? `${flags.length} new flags` : `New ${r.name.toLowerCase()} flag`}: ${flags.map(f => f.label).join(', ')}${coins ? ` · +${coins} coins` : ''}${lines.filter(l => l.big).map(l => ' · ' + l.text).join('')}`);
@@ -196,8 +200,8 @@ function showFlagDrop(flags, coins, albums, lines) {
   el.className = 'flagdrop size-' + size + (big ? ' big' : '');
   el.innerHTML = `
     ${big && size !== 'small' ? `<div class="sparks" aria-hidden="true">${Array.from({ length: 18 }, (_, i) => `<i style="--a:${i * 20}deg;--d:${60 + (i * 37) % 50}px"></i>`).join('')}</div>` : ''}
-    <div class="fd-top"><span>${flags.length > 1 ? `${flags.length} new flags` : 'New flag'} · <b>${r.name}</b></span><span class="fd-coins">+<span id="fd-coins">0</span> <i></i></span></div>
-    <div class="fd-flags">${flags.map((f, i) => { const src = flagSrc(f.key); return `<figure class="r${f.rarity}" style="--rc:${RARITY[f.rarity].color};--i:${i}">${f.rarity === 4 ? '<span class="shine"></span>' : ''}${src ? `<img src="${src}" alt="">` : `<span class="unknown">${emojiFlag(f.cc) || '?'}</span>`}<figcaption><em>${RARITY[f.rarity].name} · ${f.disputed ? 'Disputed · ' + esc(f.disputed) : FLAG_KINDS.find(k => k.id === f.kind).one}</em>${esc(f.label)}</figcaption></figure>`; }).join('')}</div>
+    <div class="fd-top"><span>${o.title ? `✨ ${esc(o.title)}` : flags.length > 1 ? `${flags.length} new flags` : 'New flag'} · <b>${r.name}</b></span><span class="fd-coins">+<span id="fd-coins">0</span> <i></i></span></div>
+    <div class="fd-flags">${flags.map((f, i) => { const src = flagSrc(f.key); return `<figure class="r${f.rarity}" style="--rc:${RARITY[f.rarity].color};--i:${i}">${f.rarity === 4 ? '<span class="shine"></span>' : ''}${holoWrap(src ? `<img src="${src}" alt="">` : `<span class="unknown">${emojiFlag(f.cc) || '?'}</span>`, holo.has(f.key))}<figcaption><em>${RARITY[f.rarity].name} · ${f.disputed ? 'Disputed · ' + esc(f.disputed) : FLAG_KINDS.find(k => k.id === f.kind).one}</em>${esc(f.label)}</figcaption></figure>`; }).join('')}</div>
     ${a ? `<div class="fd-album"><div class="fd-albumhead"><span>${countryFlag(a.cc)}${esc(ccName(a.cc))} album</span><span>${a.have} / ${a.total}</span></div><div class="levelbar"><div id="fd-bar" style="width:${a.before / a.total * 100}%;background:var(--rc)"></div></div></div>` : ''}
     ${lines.length ? `<ul class="fd-lines">${lines.map(l => `<li class="${l.big ? 'big' : ''}"><span>${l.icon} ${esc(l.text)}</span>${l.coins ? `<b>+${l.coins}</b>` : ''}</li>`).join('')}</ul>` : ''}`;
   el.hidden = false;
@@ -236,7 +240,7 @@ function flagSummaryHtml(withButton, p = P) {
   const gap = st.day ? dayNumber(localDay()) - dayNumber(st.day) : Infinity, live = gap <= 1, streak = live ? st.n : 0, atRisk = live && gap >= 1;
   const bar = (have, total, color = 'var(--sign)') => `<div class="levelbar"><div style="width:${total ? Math.max(have ? 1.5 : 0, have / total * 100) : 0}%;background:${color}"></div></div>`;
   return `<div style="display:grid;gap:10px">
-    <div class="flaghead"><span class="big">${fmt(c.have)}</span><b style="font:800 22px/1 var(--display);text-transform:uppercase">🚩 ${rank.name}</b><span class="of">of ${c.total ? fmt(c.total) : '…'} flags · +${flagRating(c.have)} explorer rating</span></div>
+    <div class="flaghead"><span class="big">${fmt(c.have)}</span><b style="font:800 22px/1 var(--display);text-transform:uppercase">🚩 ${rank.name}</b><span class="of">of ${c.total ? fmt(c.total) : '…'} flags · +${flagRating(c.have)} explorer rating${holoCount(p) ? ` · ✨ ${fmt(holoCount(p))} holo` : ''}</span></div>
     <div class="chipline">${view ? (streak ? `<span class="chip good">🔥 ${streak}-day streak</span>` : '') : streak ? `<span class="chip ${atRisk ? 'warn' : 'good'}">🔥 ${streak}-day streak${atRisk ? ' · collect a flag today to keep it' : streak === 1 ? ' · come back tomorrow for coins ×1.1' : ` · coins ×${(1 + 0.1 * (Math.min(6, streak) - 1)).toFixed(1)}`}</span>` : '<span class="chip">🔥 Collect a flag today to start a streak</span>'}${st.best > 1 ? `<span class="chip">Best streak ${st.best} days</span>` : ''}</div>
     ${next ? `<div>${bar(c.have - rank.at, next.at - rank.at)}<div class="hint" style="margin-top:4px">${fmt(next.at - c.have)} more for ${next.name}</div></div>` : ''}
     ${c.total ? `<div class="flagbars">${FLAG_KINDS.map(k => `<div class="flagbar"><span>${k.name}</span>${bar(c.kinds[k.id].have, c.kinds[k.id].total)}<span>${fmt(c.kinds[k.id].have)} / ${fmt(c.kinds[k.id].total)}</span></div>`).join('')}</div>
@@ -281,7 +285,7 @@ function renderFlagTab(body, p = P) {
   const shown = list.slice(0, 300), ownedShown = list.filter(f => owns(f.key)).length;
   const tile = f => {
     const src = flagSrc(f.key), have = owns(f.key), fresh = !view && have && p.flagsSeen[f.key] > FL.seenBefore, r = RARITY[f.rarity];
-    return `<button type="button" class="flagtile ${have ? '' : 'locked'} r${f.rarity} ${have && complete.has(f.cc) ? 'gold' : ''}" style="--rc:${r.color}" data-fcc="${f.cc}" title="${esc(f.label)} · ${r.name}${have ? ' · collected ' + new Date(p.flagsSeen[f.key]).toLocaleDateString() : ' · not collected yet'}">${fresh ? '<span class="ribbon">New</span>' : ''}${have && f.rarity === 4 ? '<span class="shine"></span>' : ''}${src ? `<img src="${src}" alt="" loading="lazy">` : '<span class="unknown">?</span>'}<em><i></i>${have ? r.name : 'Not yet'}</em><span>${esc(f.label)}</span></button>`;
+    return `<button type="button" class="flagtile ${have ? '' : 'locked'} r${f.rarity} ${have && complete.has(f.cc) ? 'gold' : ''}" style="--rc:${r.color}" data-fcc="${f.cc}" title="${esc(f.label)} · ${r.name}${have ? ' · collected ' + new Date(p.flagsSeen[f.key]).toLocaleDateString() : ' · not collected yet'}">${fresh ? '<span class="ribbon">New</span>' : ''}${have && f.rarity === 4 ? '<span class="shine"></span>' : ''}${holoWrap(src ? `<img src="${src}" alt="" loading="lazy">` : '<span class="unknown">?</span>', have && isHolo(f.key, p))}<em><i></i>${have ? r.name : 'Not yet'}</em><span>${esc(f.label)}</span></button>`;
   };
   const album = FL.cc ? albumOf(FL.cc, p) : null;
   body.innerHTML = `${flagSummaryHtml(false, p)}

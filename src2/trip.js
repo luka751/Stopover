@@ -313,21 +313,34 @@ const viaLeft = () => (S && S.via || []).filter(v => !S.stops.some(s => s.id ===
 // where the sign points: the next place you have to pass through, then the destination
 const nextTarget = () => viaLeft()[0] ?? S.dest;
 const VIA_BONUS = 60;
+// The weekly challenge: an Epic car trip from memory under hard rules, on a continent that turns over each week.
+const WEEKLY_RULES = { planes: 'capitals', planeKm: 2500, trains: 'capitals', trainKm: 500, ferryKm: 500, tank: 'small', hints: 'off' };
+const WEEKLY_REGIONS = ['EU', 'AS', 'NA', 'AF', 'SA', 'EU', 'AS'];
+function isoWeek(t = new Date()) {
+  const d = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate())), day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - day);
+  const y = d.getUTCFullYear(), n = Math.ceil(((d - Date.UTC(y, 0, 1)) / 864e5 + 1) / 7);
+  return `${y}-W${String(n).padStart(2, '0')}`;
+}
+const weeklyTrip = week => ({ vehicle: 'car', length: 'epic', assist: 'navigator', regions: [WEEKLY_REGIONS[+week.slice(-2) % WEEKLY_REGIONS.length]] });
 function startTrip(o, daily) {
   if (S && S.race && !S.done) { toast('Finish or give up the race first.'); return false; }
-  const today = new Date().toISOString().slice(0, 10);
-  const seed = daily ? 'daily-' + today : 'trip-' + Date.now() + Math.random();
+  const weekly = daily === 'weekly'; if (weekly) daily = false;
+  const today = new Date().toISOString().slice(0, 10), week = isoWeek();
+  const seed = daily ? 'daily-' + today : weekly ? 'weekly-' + week : 'trip-' + Date.now() + Math.random();
   if (daily) o = { ...o, vehicle: 'car', length: 'medium', regions: [['EU', 'NA', 'AS', 'EU', 'SA', 'AF', 'EU'][new Date().getDay()]], from: null, to: null, via: [] };
-  const avoidList = daily || o.classic ? [] : [...(o.avoid || [])];
-  // classic keeps the original rules: no planes or trains; the daily trip uses the default rules so everyone plays the same
-  RULES = o.classic ? migrateRules({ planeKm: 0, trainKm: 0 }) : daily ? { ...DEFAULT_RULES } : migrateRules(o.rules);
+  if (weekly) o = { ...o, ...weeklyTrip(week), classic: false, from: null, to: null, via: [], skip: [] };
+  const fixed = daily || weekly, avoidList = fixed || o.classic ? [] : [...(o.avoid || [])];
+  // classic keeps the original rules: no planes or trains; the daily trip uses the default rules and the weekly
+  // challenge its own hard ones, so everyone on the same board plays the same trip
+  RULES = o.classic ? migrateRules({ planeKm: 0, trainKm: 0 }) : daily ? { ...DEFAULT_RULES } : weekly ? migrateRules(WEEKLY_RULES) : migrateRules(o.rules);
   if (VEHICLES[o.vehicle].rail || VEHICLES[o.vehicle].coastal) RULES = { ...RULES, planeKm: 0, trainKm: 0 };
   if (o.classic && VEHICLES[o.vehicle].rail) { toast('Classic rules have no train trips. Turn Classic off in Settings.'); return false; }
   const avoid = new Set(avoidList.map(cc => G.ccIndex[cc]).filter(x => x != null));
   // picked places are saved by GeoNames id, so they survive a data rebuild
   const place = gid => gid == null ? null : G.byGid.get(gid) ?? null;
-  const picked = daily || o.classic ? {} : { from: place(o.from), to: place(o.to), via: (o.via || []).map(place).filter(x => x != null) };
-  const voyage = !daily && !o.classic && o.vehicle === 'boat' && o.voyage === 'isles';
+  const picked = fixed || o.classic ? {} : { from: place(o.from), to: place(o.to), via: (o.via || []).map(place).filter(x => x != null) };
+  const voyage = !fixed && !o.classic && o.vehicle === 'boat' && o.voyage === 'isles';
   let trip = voyage ? generateVoyage(o, picked, seed, avoid) : generateTrip({ ...o, ...picked }, seed, avoid), used = lengthOf(o.length);
   if (trip && trip.error) { toast(trip.error); return false; }
   // a random route that won't fit steps down one length at a time, and says so
@@ -340,9 +353,9 @@ function startTrip(o, daily) {
   if (voyage || picked.from != null || picked.to != null || trip.via.length) used = lengthForKm(trip.km, o.vehicle);
   const tripOpts = { ...o, length: used.id, regions: regionsOf(o), skip: skipOf(o), voyage: voyage ? 'isles' : null };
   useVoyage({ voyage: trip.voyage, dest: trip.dest }); const v = VEH(o.vehicle);
-  S = { v: 2, classic: !!o.classic, daily: daily ? today : null, opts: tripOpts, avoid: avoidList, start: trip.start, dest: trip.dest, via: trip.via, par: trip.par, routeKm: trip.km, cur: trip.start, fuel: v.tank, tickets: trip.tickets + seasonTickets(o), ticketsTotal: trip.tickets + seasonTickets(o),
+  S = { v: 2, classic: !!o.classic, daily: daily ? today : null, weekly: weekly ? week : null, opts: tripOpts, avoid: avoidList, start: trip.start, dest: trip.dest, via: trip.via, par: trip.par, routeKm: trip.km, cur: trip.start, fuel: v.tank, tickets: trip.tickets + seasonTickets(o), ticketsTotal: trip.tickets + seasonTickets(o),
     stops: [], pts: 0, penalties: 0, scouts: [], helps: 0, done: false, gaveUp: false, km: 0,
-    rules: { ...RULES }, mult: o.classic ? 1 : Math.round(scoreMultiplier(RULES, o.assist, avoidList.length, daily || voyage ? null : regionsOf(o), o.vehicle) * (voyage ? 1.3 : 1) * 100) / 100, mode: 'ground', flights: 0, airKm: 0, flightCoins: 0, voyage: trip.voyage || null };
+    rules: { ...RULES }, mult: o.classic ? 1 : Math.round(scoreMultiplier(RULES, o.assist, avoidList.length, fixed || voyage ? null : regionsOf(o), o.vehicle) * (voyage ? 1.3 : 1) * 100) / 100, mode: 'ground', flights: 0, airKm: 0, flightCoins: 0, voyage: trip.voyage || null };
   hintIds = []; lastMsg = { text: '', cls: '' };
   save(); render(); tripMap.fit(tripBounds(), true, 56, 130);
   if (voyage) { const isle = isleOf(trip.dest); setMsg(`Far-Flung Isles: sail from ${G.name[trip.start]} to ${G.name[trip.dest]}, ${ccName(ccOf(trip.dest))}. ${isle ? isle.note + ' ' : ''}Your boat is stocked for ${fmt(v.tank)} km of open sea: the nearest other shore is ${fmt(trip.voyage.need)} km from the island.`); return true; }
@@ -456,9 +469,12 @@ function travel(id, mode = 'ground') {
   if (!S.classic) { const from = S.stops.length > 1 ? S.stops[S.stops.length - 2].id : S.start; bsRecordLeg(from, id, res.path || null, res.kind); bsVisited(id); }
   const pk = placeKey(id), now = Date.now();
   P.visits[pk] = { n: before + 1, first: (P.visits[pk] || {}).first || now, last: now }; P.km += legKm;
-  const newFlags = S.classic ? [] : collectFlags(id, now);
+  const newFlags = S.classic ? [] : collectFlags(id, now), holo = S.classic ? [] : rollHolo(id, newFlags);
   S.lastFlagsNew = newFlags;
+  // a new country is a first stamp for it, crossed into from somewhere else (not the country the trip started in)
+  const cameFrom = S.stops.length > 1 ? S.stops[S.stops.length - 2].id : S.start, hadStamp = !!(P.stamps && P.stamps[ccOf(id)]);
   if (!S.classic) { if (S.stops.length === 1) recordStamp(S.start, 'road'); recordStamp(id, res.kind); }
+  const newCountry = !S.classic && !hadStamp && ccOf(id) !== ccOf(cameFrom);
   saveProfile();
   const target = nextTarget(), left = dist(G.lat[id], G.lon[id], G.lat[target], G.lon[target]);
   const onward = `${fmt(left)} km to ${G.name[target]}${target !== S.dest ? `, then on to ${G.name[S.dest]}` : ''}.`;
@@ -468,9 +484,10 @@ function travel(id, mode = 'ground') {
   else if (ride) setMsg(`Train arrived in ${G.name[id]} after ${fmt(res.km)} km of track: ${res.free ? `free ride${P.freeTrains ? ` (${P.freeTrains} left)` : ''}` : `−${res.cost} coins`}, +${pts} pts (trains score half)${hopNote}.${cpNote} ${onward}`, 'good');
   else if (res.kind === 'flight') setMsg(`Landed in ${G.name[id]}: ${res.free ? `free flight${P.freeFlights ? ` (${P.freeFlights} left)` : ''}` : `−${res.cost} coins`} and a full tank. Landing scores no points. ${onward}`, 'good');
   else setMsg(`${res.kind === 'ferry' ? 'Ferry crossing done. ' : res.own ? `${fmt(res.km)} km of track. ` : ''}Welcome to ${G.name[id]}: +${pts} pts${!S.classic && fam.mult !== 1 ? ` (${fam.label}, ×${fam.mult})` : ''}${hopNote}.${cpNote} ${v.gauge} +${fmt(S.fuel - fuelBefore)} km${tired < 1 ? ` (familiar town: ${tired === 0.5 ? 'half' : 'a quarter of the'} usual refuel)` : ''}. ${onward}`, 'good');
-  if (newFlags.length) celebrateFlags(newFlags);
+  if (newFlags.length) celebrateFlags(newFlags, holo); else if (holo.length) celebrateHoloOnly(holo);
   checkAchievements();
   save(); render(); tripMap.fit(tripBounds(), false, 56, 130);
+  requestAnimationFrame(() => juiceStop({ id, pts, refill: arrived ? 0 : S.fuel - fuelBefore, newCountry, rank: tier.rank, arrived }));
   if (!S.done && HOOKS.afterTravel) HOOKS.afterTravel();
 }
 function finishTrip(gaveUp) {
@@ -482,17 +499,21 @@ function finishTrip(gaveUp) {
     const disc = tripDiscovery(); S.discovery = S.classic ? 1 : disc.share;
     // the arrival bonus grows with the trip's length; a route of towns you already know pays a quarter of it
     S.bonus = Math.round((lengthOf(S.opts.length).bonus * groundShare * (S.classic || S.race ? 1 : discoveryBonusFactor(disc.share)) + S.tickets * TICKET_BONUS) * (S.mult || 1));
+    // three days away earns a double arrival bonus on the first solo trip back (never on a race or a ranked trip)
+    if (P.boost && !S.race && !S.daily && !S.weekly && !S.classic) { S.boosted = S.bonus; S.bonus *= 2; P.boost = null; }
     S.total = Math.max(0, S.pts + S.bonus - S.penalties);
     P.trips += 1;
     const bk = `${S.opts.vehicle}-${S.opts.length}`; P.best[bk] = Math.max(P.best[bk] || 0, S.total);
     let coins = Math.round(S.total / 10);
     if (S.daily && P.lastDaily !== S.daily) { coins += 40; P.lastDaily = S.daily; }
+    if (S.weekly && P.lastWeekly !== S.weekly) { coins += 150; P.lastWeekly = S.weekly; }
     if (!S.classic) recordFeats();
     S.coins = coins;
     P.history.unshift({ t: Date.now(), mult: S.mult || 1, flights: S.flights || 0, vehicle: S.opts.vehicle, length: S.opts.length, total: S.total, km: Math.round(S.km), fresh: tripDiscovery().fresh, stopsN: tripDiscovery().stops, route: [S.start, ...S.stops.map(s => s.id)].map(i => G.gid[i]), dest: G.gid[S.dest] });
     P.history = P.history.slice(0, 40);
     saveProfile(); addCoins(coins, `trip to ${G.name[S.dest]}`); renderLeagueChip(); publishScore();
     setMsg(`You made it to ${G.name[S.dest]}!`, 'good');
+    setTimeout(() => sfx('arrive'), 120);
     if (!S.classic) setTimeout(playArrivalEffect, 150);
   } else {
     S.total = 0;
@@ -503,6 +524,7 @@ function finishTrip(gaveUp) {
     setMsg('Trip abandoned. The green dashed line on the map is a route that works from where you stopped.');
   }
   S.passed = passedTowns();
+  P.lastPlayed = Date.now();
   checkAchievements();
   if (HOOKS.afterFinish) HOOKS.afterFinish(gaveUp);
 }
