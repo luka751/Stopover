@@ -453,7 +453,8 @@ function renderProfile(x, showAll) {
   const countries = Object.keys(pr.stamps).filter(k => !k.startsWith('area:')), visas = Object.keys(pr.stamps).filter(k => k.startsWith('area:'));
   const stat = (label, value) => `<div class="stat"><span class="label">${label}</span><b>${value}</b></div>`;
   $('profile-body').innerHTML = `
-    <section class="profilehead"><div class="profilecover">${coverSvg({ color: league.color, ink: league.ink, emblem: league.emblem, title: league.title, top: 'STOPOVER', bottom: displayName(x.name).toUpperCase() })}</div>
+    <section class="profilehead"><div class="profilecover">${coverSvg({ ...((pr.cover && COVERS.data && countryCover(pr.cover, league)) || { color: league.color, ink: league.ink, emblem: league.emblem, title: league.title, top: 'STOPOVER' }), bottom: displayName(x.name).toUpperCase() })}
+        <span class="pfleague" style="--lc:${league.color}" title="League · rating ${fmt(x.rating)}"><i></i>${esc(league.name)}</span></div>
       <div class="stats profilestats">${stat('🚩 Flags', fmt(x.flags))}${stat('League', esc(league.name))}${stat('Rating', fmt(x.rating))}${stat('Trips', fmt(pr.trips))}${stat('Distance', fmt(pr.km) + ' km')}${stat('Places known', fmt(x.places))}${stat('Countries', fmt(countries.length))}${stat('Races won', `${fmt(x.wins)}<small class="hint"> / ${fmt(x.races)}</small>`)}${stat('Achievements', fmt(Object.keys(pr.achievements || {}).length))}</div></section>
     <section class="pfpassport"><button class="btn go big" type="button" id="pf-passport">📖 Open ${mine ? 'your' : `${esc(displayName(x.name))}'s`} passport</button><span class="hint">Mastery map, stamps, country covers, the full flag collection, stats and trips${mine ? '' : ', just as they see them'}.</span></section>
     ${mine ? nickEditorHtml('pf') : ''}
@@ -466,6 +467,7 @@ function renderProfile(x, showAll) {
     ${countries.length ? `<section><div class="label">Countries stamped · ${countries.length}${visas.length ? ` · ${visas.length} visas` : ''}</div><div class="tagrow">${countries.sort((a, b) => ccName(a).localeCompare(ccName(b))).map(cc => `<span class="tag">${countryFlag(cc)}${esc(ccName(cc))}</span>`).join('')}</div></section>` : ''}
     ${pr.history.length ? `<section><div class="label">Recent trips</div><ul class="list profiletrips">${pr.history.map(h => { const d = G.byGid.get(h.dest); return `<li><span>${(VEHICLES[h.vehicle] || VEHICLES.car).icon} ${d != null ? `${placeFlag(d)}${esc(G.name[d])}` : 'A trip'} <small class="hint">${esc(lengthOf(h.length).name)} · ${fmt(h.km)} km · ${new Date(h.t).toLocaleDateString()}</small></span><b>${fmt(h.total)} pts</b></li>`; }).join('')}</ul></section>` : ''}
     ${x.recentRaces.length ? `<section><div class="label">Recent races</div><ul class="list profiletrips">${x.recentRaces.map(r => `<li><span>${esc((RACE_MODES[r.mode] || RACE_MODES.time).name)} <small class="hint">${new Date(r.finished).toLocaleDateString()}</small></span><b>${r.place ? `${medal(r.place)} of ${r.players}` : 'Did not finish'}</b></li>`).join('')}</ul></section>` : ''}`;
+  if (pr.cover && !COVERS.data) loadCovers().then(() => { if ($('dlg-profile').open && $('pf-passport')) renderProfile(x, showAll); });
   if ($('pf-all')) $('pf-all').onclick = () => renderProfile(x, true);
   $('pf-passport').onclick = () => mine ? openPassport(null) : openPassport({ label: displayName(x.name), data: passportOf(pr) });
   if (mine) wireNickEditor('pf', () => openProfile(x.name));

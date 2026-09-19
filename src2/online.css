@@ -84,3 +84,8 @@
 .nickrow { display: flex; gap: 8px; flex-wrap: wrap; }
 .nickrow .field { flex: 1; min-width: 160px; }
 #set-nicksec .nickedit { padding: 14px 20px; border-bottom: 1px solid var(--line); }
+
+/* the equipped cover shows the country; the league still reads underneath it (and on the cover's title line) */
+.profilecover { display: grid; gap: 6px; justify-items: center; }
+.pfleague { display: inline-flex; align-items: center; gap: 6px; font: 700 12px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; padding: 5px 9px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); white-space: nowrap; }
+.pfleague i { width: 9px; height: 12px; border-radius: 2px; background: var(--lc); }
