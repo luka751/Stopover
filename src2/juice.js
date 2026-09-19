@@ -144,7 +144,7 @@ function nudgesHtml(focusCcs, limit) {
 const HOLO_NEW = 0.05, HOLO_AGAIN = 0.03, HOLO_PAY = 3;
 const isHolo = (key, p = P) => !!(p.holo && p.holo[key]);
 // the foil sits over the flag picture only, not its caption
-const holoWrap = (imgHtml, on) => on ? `<span class="holo">${imgHtml}<span class="holotag">HOLO</span></span>` : imgHtml;
+const holoWrap = (imgHtml, on) => on ? `<span class="foilflag">${imgHtml}<span class="holotag">HOLO</span></span>` : imgHtml;
 const holoCount = (p = P) => Object.keys(p.holo || {}).filter(k => p.flagsSeen && p.flagsSeen[k]).length;
 function rollHolo(id, fresh) {
   if (!S || S.classic || !FLAGS.ready) return [];
