@@ -83,15 +83,15 @@ function flagCatalog() {
   return flagCat = { all, byKey, byCc, byCont };
 }
 const owns = key => !!P.flagsSeen[key];
-function flagCounts() {
-  const cat = flagCatalog();
-  if (!cat) return { have: Object.keys(P.flagsSeen).length, total: 0, kinds: {}, rarity: [] };
+function flagCounts(p = P) {
+  const cat = flagCatalog(), owns = key => !!p.flagsSeen[key];
+  if (!cat) return { have: Object.keys(p.flagsSeen).length, total: 0, kinds: {}, rarity: [] };
   const kinds = Object.fromEntries(FLAG_KINDS.map(k => [k.id, { have: 0, total: 0 }])), rarity = RARITY.map(() => ({ have: 0, total: 0 }));
   let have = 0;
   for (const f of cat.all) { const o = owns(f.key); kinds[f.kind].total++; rarity[f.rarity].total++; if (o) { kinds[f.kind].have++; rarity[f.rarity].have++; have++; } }
   return { have, total: cat.all.length, kinds, rarity };
 }
-const albumOf = cc => { const list = (flagCatalog() && flagCat.byCc.get(cc)) || []; return { list, have: list.filter(f => owns(f.key)).length, total: list.length }; };
+const albumOf = (cc, p = P) => { const list = (flagCatalog() && flagCat.byCc.get(cc)) || []; return { list, have: list.filter(f => !!p.flagsSeen[f.key]).length, total: list.length }; };
 const albumSteps = total => total >= 8 ? [0, 1, 2, 3] : [3];
 const albumReward = (total, step) => total >= 8 ? Math.round((15 + total * 2) * ALBUM_PAY[step]) : 15 + total * 6;
 
@@ -231,13 +231,13 @@ function renderFlagBadge() {
 }
 
 // ---- passport summary and the Flags tab
-function flagSummaryHtml(withButton) {
-  const c = flagCounts(), rank = flagRankOf(c.have), next = FLAG_RANKS[FLAG_RANKS.indexOf(rank) + 1], st = P.flagStreak || { n: 0 };
+function flagSummaryHtml(withButton, p = P) {
+  const c = flagCounts(p), rank = flagRankOf(c.have), next = FLAG_RANKS[FLAG_RANKS.indexOf(rank) + 1], st = p.flagStreak || { n: 0 }, view = p !== P;
   const gap = st.day ? dayNumber(localDay()) - dayNumber(st.day) : Infinity, live = gap <= 1, streak = live ? st.n : 0, atRisk = live && gap >= 1;
   const bar = (have, total, color = 'var(--sign)') => `<div class="levelbar"><div style="width:${total ? Math.max(have ? 1.5 : 0, have / total * 100) : 0}%;background:${color}"></div></div>`;
   return `<div style="display:grid;gap:10px">
     <div class="flaghead"><span class="big">${fmt(c.have)}</span><b style="font:800 22px/1 var(--display);text-transform:uppercase">🚩 ${rank.name}</b><span class="of">of ${c.total ? fmt(c.total) : '…'} flags · +${flagRating(c.have)} explorer rating</span></div>
-    <div class="chipline">${streak ? `<span class="chip ${atRisk ? 'warn' : 'good'}">🔥 ${streak}-day streak${atRisk ? ' · collect a flag today to keep it' : streak === 1 ? ' · come back tomorrow for coins ×1.1' : ` · coins ×${(1 + 0.1 * (Math.min(6, streak) - 1)).toFixed(1)}`}</span>` : '<span class="chip">🔥 Collect a flag today to start a streak</span>'}${st.best > 1 ? `<span class="chip">Best streak ${st.best} days</span>` : ''}</div>
+    <div class="chipline">${view ? (streak ? `<span class="chip good">🔥 ${streak}-day streak</span>` : '') : streak ? `<span class="chip ${atRisk ? 'warn' : 'good'}">🔥 ${streak}-day streak${atRisk ? ' · collect a flag today to keep it' : streak === 1 ? ' · come back tomorrow for coins ×1.1' : ` · coins ×${(1 + 0.1 * (Math.min(6, streak) - 1)).toFixed(1)}`}</span>` : '<span class="chip">🔥 Collect a flag today to start a streak</span>'}${st.best > 1 ? `<span class="chip">Best streak ${st.best} days</span>` : ''}</div>
     ${next ? `<div>${bar(c.have - rank.at, next.at - rank.at)}<div class="hint" style="margin-top:4px">${fmt(next.at - c.have)} more for ${next.name}</div></div>` : ''}
     ${c.total ? `<div class="flagbars">${FLAG_KINDS.map(k => `<div class="flagbar"><span>${k.name}</span>${bar(c.kinds[k.id].have, c.kinds[k.id].total)}<span>${fmt(c.kinds[k.id].have)} / ${fmt(c.kinds[k.id].total)}</span></div>`).join('')}</div>
       <div class="raritychips">${RARITY.map((r, i) => `<span style="--rc:${r.color}"><i></i>${r.name} <b>${fmt(c.rarity[i].have)}</b>/${fmt(c.rarity[i].total)}</span>`).join('')}</div>` : ''}
@@ -261,7 +261,8 @@ function renderWanted() {
   const w = wantedToday(); el.hidden = !w || !w.list.length || w.swept; el.innerHTML = el.hidden ? '' : wantedHtml(true);
 }
 const FL = { kind: 'country', cc: '', seenBefore: 0 };
-function renderFlagTab(body) {
+function renderFlagTab(body, p = P) {
+  const view = p !== P, owns = key => !!p.flagsSeen[key];
   const cat = flagCatalog();
   if (!cat) { body.innerHTML = `<p class="hint" style="margin:0">${FLAGS.failed ? 'The flags could not be loaded in this browser.' : 'Unpacking the flag catalogue…'}</p>`; return; }
   const haveByCc = new Map(); for (const f of cat.all) if (owns(f.key)) haveByCc.set(f.cc, (haveByCc.get(f.cc) || 0) + 1);
@@ -274,25 +275,25 @@ function renderFlagTab(body) {
   const conts = [...cat.byCont.entries()].filter(([c]) => c !== 'AN').map(([c, list]) => ({ c, have: list.filter(f => owns(f.key)).length, total: list.length })).sort((a, b) => b.have / b.total - a.have / a.total);
   let list = cat.all.filter(f => (!FL.kind || f.kind === FL.kind) && (!FL.cc || f.cc === FL.cc));
   const onlyOwned = !FL.cc && FL.kind !== 'country';
-  if (onlyOwned) list = list.filter(f => owns(f.key)).sort((a, b) => P.flagsSeen[b.key] - P.flagsSeen[a.key]);
+  if (onlyOwned) list = list.filter(f => owns(f.key)).sort((a, b) => p.flagsSeen[b.key] - p.flagsSeen[a.key]);
   else if (FL.cc) list.sort((a, b) => owns(b.key) - owns(a.key));
   const complete = new Set([...cat.byCc.entries()].filter(([cc, l]) => (haveByCc.get(cc) || 0) === l.length).map(([cc]) => cc));
   const shown = list.slice(0, 300), ownedShown = list.filter(f => owns(f.key)).length;
   const tile = f => {
-    const src = flagSrc(f.key), have = owns(f.key), fresh = have && P.flagsSeen[f.key] > FL.seenBefore, r = RARITY[f.rarity];
-    return `<button type="button" class="flagtile ${have ? '' : 'locked'} r${f.rarity} ${have && complete.has(f.cc) ? 'gold' : ''}" style="--rc:${r.color}" data-fcc="${f.cc}" title="${esc(f.label)} · ${r.name}${have ? ' · collected ' + new Date(P.flagsSeen[f.key]).toLocaleDateString() : ' · not collected yet'}">${fresh ? '<span class="ribbon">New</span>' : ''}${have && f.rarity === 4 ? '<span class="shine"></span>' : ''}${src ? `<img src="${src}" alt="" loading="lazy">` : '<span class="unknown">?</span>'}<em><i></i>${have ? r.name : 'Not yet'}</em><span>${esc(f.label)}</span></button>`;
+    const src = flagSrc(f.key), have = owns(f.key), fresh = !view && have && p.flagsSeen[f.key] > FL.seenBefore, r = RARITY[f.rarity];
+    return `<button type="button" class="flagtile ${have ? '' : 'locked'} r${f.rarity} ${have && complete.has(f.cc) ? 'gold' : ''}" style="--rc:${r.color}" data-fcc="${f.cc}" title="${esc(f.label)} · ${r.name}${have ? ' · collected ' + new Date(p.flagsSeen[f.key]).toLocaleDateString() : ' · not collected yet'}">${fresh ? '<span class="ribbon">New</span>' : ''}${have && f.rarity === 4 ? '<span class="shine"></span>' : ''}${src ? `<img src="${src}" alt="" loading="lazy">` : '<span class="unknown">?</span>'}<em><i></i>${have ? r.name : 'Not yet'}</em><span>${esc(f.label)}</span></button>`;
   };
-  const album = FL.cc ? albumOf(FL.cc) : null;
-  body.innerHTML = `${flagSummaryHtml(false)}
-    ${wantedHtml(false)}
+  const album = FL.cc ? albumOf(FL.cc, p) : null;
+  body.innerHTML = `${flagSummaryHtml(false, p)}
+    ${view ? '' : wantedHtml(false)}
     ${nextUp.length ? `<div><div class="label" style="margin-bottom:6px">Albums close to a bonus</div><ul class="albums">${nextUp.map(x => `<li><button type="button" data-fcc="${x.cc}">${countryFlag(x.cc)}${esc(ccName(x.cc))}</button><div class="levelbar"><div style="width:${x.have / x.total * 100}%;background:var(--sign)"></div></div><span>${x.need - x.have} more · <b>+${x.pay}</b></span></li>`).join('')}</ul></div>` : ''}
     <div><div class="label" style="margin-bottom:6px">Continent sets · every country flag</div><ul class="albums">${conts.map(x => `<li><span>${esc(REGION_NAME(x.c))}</span><div class="levelbar"><div style="width:${x.have / x.total * 100}%;background:var(--fuel)"></div></div><span>${x.have}/${x.total} · <b>+${x.have >= Math.ceil(x.total / 2) ? 400 : 100}</b></span></li>`).join('')}</ul></div>
     <div style="display:grid;gap:8px">
       <select class="field" id="fl-cc" aria-label="Country"><option value="">All countries</option>${ccs.map(cc => { const a = cat.byCc.get(cc).length, h = haveByCc.get(cc) || 0; return `<option value="${cc}" ${FL.cc === cc ? 'selected' : ''}>${h === a ? '★ ' : ''}${esc(ccName(cc))} · ${h}/${a}</option>`; }).join('')}</select>
       <div class="seg" role="group" aria-label="Kind of flag"><button type="button" data-fkind="" aria-pressed="${!FL.kind}">All</button>${FLAG_KINDS.map(k => `<button type="button" data-fkind="${k.id}" aria-pressed="${FL.kind === k.id}">${k.name}</button>`).join('')}</div>
-      ${album ? `<div class="albumcard"><div class="fd-albumhead"><span>${countryFlag(FL.cc)}<b>${esc(ccName(FL.cc))} album</b></span><span>${album.have} / ${album.total}</span></div><div class="levelbar"><div style="width:${album.have / album.total * 100}%;background:var(--sign)"></div></div><div class="albumsteps">${albumSteps(album.total).map(s => { const need = Math.ceil(album.total * ALBUM_STEPS[s]), got = (P.flagSets || {})[FL.cc + '#' + s]; return `<span class="${got ? 'got' : ''}">${ALBUM_STEPS[s] * 100}% ${got ? '✓' : `· ${need} flags · +${albumReward(album.total, s)}`}</span>`; }).join('')}</div></div>` : ''}
+      ${album ? `<div class="albumcard"><div class="fd-albumhead"><span>${countryFlag(FL.cc)}<b>${esc(ccName(FL.cc))} album</b></span><span>${album.have} / ${album.total}</span></div><div class="levelbar"><div style="width:${album.have / album.total * 100}%;background:var(--sign)"></div></div><div class="albumsteps">${albumSteps(album.total).map(s => { const need = Math.ceil(album.total * ALBUM_STEPS[s]), got = (p.flagSets || {})[FL.cc + '#' + s]; return `<span class="${got ? 'got' : ''}">${ALBUM_STEPS[s] * 100}% ${got ? '✓' : `· ${need} flags · +${albumReward(album.total, s)}`}</span>`; }).join('')}</div></div>` : ''}
       <p class="hint" style="margin:0">${FL.cc ? `Greyed flags are still out there. Stop in those places to collect them.`
-        : onlyOwned ? `Your ${fmt(ownedShown)} ${FL.kind ? FLAG_KINDS.find(k => k.id === FL.kind).name.toLowerCase() : 'flags'}, newest first. Pick a country to see the ones still to find.`
+        : onlyOwned ? `${view ? 'Their' : 'Your'} ${fmt(ownedShown)} ${FL.kind ? FLAG_KINDS.find(k => k.id === FL.kind).name.toLowerCase() : 'flags'}, newest first. Pick a country to see the ones still to find.`
         : `${ownedShown} of ${list.length} country flags. Tap one to open that country's album.`}</p>
     </div>
     ${shown.length ? `<div class="flaggrid">${shown.map(tile).join('')}</div>${list.length > shown.length ? `<p class="hint" style="margin:0">Showing the first 300 of ${fmt(list.length)}. Pick a country to narrow it down.</p>` : ''}`

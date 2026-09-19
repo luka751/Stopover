@@ -28,7 +28,13 @@ function raceDraft(set) {
     assist: set.assist || preset.assist, rules: migrateRules(set.rules || preset.rules), avoid: Array.isArray(set.avoid) ? set.avoid : [] };
 }
 const nameInfo = n => (CLOUD && CLOUD.names.parse(n)) || { name: String(n || '?'), color: '#5F6368', emoji: '🧳' };
-const unameHtml = (n, cls = '') => { const p = nameInfo(n); return `<span class="uname ${cls}" style="--uc:${p.color}"><i aria-hidden="true">${p.emoji}</i>${esc(p.name)}</span>`; };
+// Nicknames aren't unique, so the username's fruit and colour stay beside them: two players called Luka are
+// still a watermelon and a pear. Every server reply that names players fills this cache, and every name on
+// screen reads from it, so a nickname shows up everywhere without each screen having to ask for it.
+const NICKS = new Map();
+const noteNicks = list => { for (const x of list || []) if (x && x.name) { if (x.nick) NICKS.set(x.name, x.nick); else NICKS.delete(x.name); } };
+const displayName = n => NICKS.get(n) || nameInfo(n).name;
+const unameHtml = (n, cls = '') => { const p = nameInfo(n), nick = NICKS.get(n); return `<span class="uname ${cls}" style="--uc:${p.color}" ${nick ? `title="Username: ${esc(p.name)}"` : ''}><i aria-hidden="true">${p.emoji}</i>${esc(nick || p.name)}</span>`; };
 const clock = ms => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 const ordinal = n => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th');
 const medal = place => place === 1 ? '🥇' : place === 2 ? '🥈' : place === 3 ? '🥉' : place ? ordinal(place) : '–';
@@ -84,7 +90,7 @@ function onLobbyMessage(m) {
   if (m.t === 'error') { toast(m.text); return; }
   if (m.t === 'kicked') { leaveLocal('The host removed you from the lobby.'); return; }
   if (m.t !== 'state') return;
-  ONLINE.offset = m.now - Date.now(); ONLINE.state = m;
+  ONLINE.offset = m.now - Date.now(); ONLINE.state = m; noteNicks(m.players);
   const r = m.race, mine = r && r.progress[m.me];
   // a player who finished and went back to their own trip stays there
   if (G && m.phase === 'racing' && mine) { if (inThisRace()) syncRace(m); else if (ONLINE.leftRace !== `${m.code}:${r.n}`) enterRace(m); }
@@ -365,7 +371,7 @@ function renderLobby(body) {
 async function loadBoard(force) {
   if (!force && ONLINE.board && Date.now() - ONLINE.boardAt < 20000) return ONLINE.board;
   const r = await api('/api/leaderboard');
-  if (r.ok) { ONLINE.board = r.body.rows; ONLINE.boardAt = Date.now(); }
+  if (r.ok) { ONLINE.board = r.body.rows; ONLINE.boardAt = Date.now(); noteNicks(r.body.rows); }
   return ONLINE.board;
 }
 function renderBoard(body) {
@@ -398,18 +404,48 @@ function renderAccount(body) {
 }
 
 // ---- profiles
+// what the profile endpoint sends back, shaped like the parts of a save the Passport reads
+const passportOf = pr => ({ visits: pr.visits || {}, study: pr.study || {}, flagsSeen: pr.flagsSeen || {}, stamps: pr.stamps || {}, history: pr.history || [],
+  achievements: pr.achievements || {}, trips: pr.trips || 0, km: pr.km || 0, ferries: pr.ferries || 0, feats: pr.feats || {}, cover: pr.cover || null,
+  equip: pr.equip || {}, flagStreak: pr.flagStreak || null, flagSets: pr.flagSets || {} });
+function nickEditorHtml(id) {
+  const u = CLOUD.user;
+  return `<section class="nickedit"><div class="label">Nickname</div>
+    <p class="hint" style="margin:6px 0 8px">What other players see. It doesn't have to be unique, and your fruit stays beside it. You still log in as <b>${esc(u.name)}</b>.</p>
+    <form class="nickrow" id="${id}-nickform"><input class="field" id="${id}-nick" maxlength="24" placeholder="${esc(u.name)}" value="${esc(u.nick || '')}" aria-label="Nickname" autocomplete="off" spellcheck="false">
+      <button class="btn go" type="submit">Save</button>${u.nick ? `<button class="btn" type="button" id="${id}-nickclear">Use ${esc(u.name)}</button>` : ''}</form>
+    <div class="msg" id="${id}-nickmsg"></div></section>`;
+}
+async function setNick(nick) {
+  const r = await api('/api/nick', { method: 'POST', body: JSON.stringify({ nick }) });
+  if (!r.ok) return r.body.error || 'Could not save that nickname.';
+  CLOUD.user.nick = r.body.nick; noteNicks([CLOUD.user]);
+  if ($('btn-me')) $('btn-me').innerHTML = unameHtml(CLOUD.user.name);
+  if (ONLINE.state) renderRacePanel();
+  return null;
+}
+function wireNickEditor(id, after) {
+  const say = (text, cls) => { const m = $(id + '-nickmsg'); if (m) { m.className = 'msg ' + cls; m.textContent = text; } };
+  // the form redraws itself after a save, so the confirmation goes into the new one
+  const done = async () => { if (after) await after(); say(CLOUD.user.nick ? `Players now see you as ${CLOUD.user.nick}.` : 'Players see your username again.', 'good'); };
+  $(id + '-nickform').onsubmit = async e => { e.preventDefault(); say('Saving…', ''); const err = await setNick($(id + '-nick').value); if (err) say(err, 'bad'); else done(); };
+  if ($(id + '-nickclear')) $(id + '-nickclear').onclick = async () => { const err = await setNick(''); if (err) say(err, 'bad'); else done(); };
+}
 async function openProfile(name) {
   ensureOnlineDialogs();
   $('profile-title').innerHTML = unameHtml(name, 'big'); $('profile-sub').textContent = ''; $('profile-body').innerHTML = '<section><p class="hint">Loading…</p></section>';
   if (!$('dlg-profile').open) $('dlg-profile').showModal();
   const r = await api('/api/profile/' + encodeURIComponent(name));
   if (!r.ok) { $('profile-body').innerHTML = `<section><p class="msg bad">${esc(r.body.error || 'Could not load this profile.')}</p></section>`; return; }
+  noteNicks([r.body]);
+  $('profile-title').innerHTML = unameHtml(r.body.name, 'big');
   renderProfile(r.body);
 }
 function ago(t) { const m = Math.round((Date.now() - t) / 60000); return m < 2 ? 'just now' : m < 60 ? `${m} min ago` : m < 48 * 60 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`; }
 function renderProfile(x, showAll) {
   const pr = x.profile, league = LEAGUES.find(l => l.id === x.league) || LEAGUES[0], cat = flagCatalog();
-  $('profile-sub').textContent = `#${x.rank} on the leaderboard · joined ${new Date(x.created).toLocaleDateString()} · seen ${ago(x.seen)}`;
+  const mine = CLOUD.user && x.name === CLOUD.user.name;
+  $('profile-sub').textContent = `${x.nick ? `@${x.name} · ` : ''}#${x.rank} on the leaderboard · joined ${new Date(x.created).toLocaleDateString()} · seen ${ago(x.seen)}`;
   const keys = Object.keys(pr.flagsSeen), flags = cat ? keys.map(k => cat.byKey.get(k)).filter(Boolean) : [];
   const rarity = RARITY.map((r, i) => flags.filter(f => f.rarity === i).length), kinds = FLAG_KINDS.map(k => flags.filter(f => f.kind === k.id).length);
   flags.sort((a, b) => b.rarity - a.rarity || pr.flagsSeen[b.key] - pr.flagsSeen[a.key]);
@@ -417,8 +453,10 @@ function renderProfile(x, showAll) {
   const countries = Object.keys(pr.stamps).filter(k => !k.startsWith('area:')), visas = Object.keys(pr.stamps).filter(k => k.startsWith('area:'));
   const stat = (label, value) => `<div class="stat"><span class="label">${label}</span><b>${value}</b></div>`;
   $('profile-body').innerHTML = `
-    <section class="profilehead"><div class="profilecover">${coverSvg({ color: league.color, ink: league.ink, emblem: league.emblem, title: league.title, top: 'STOPOVER', bottom: x.name.toUpperCase() })}</div>
-      <div class="stats profilestats">${stat('🚩 Flags', fmt(x.flags))}${stat('League', esc(league.name))}${stat('Rating', fmt(x.rating))}${stat('Trips', fmt(pr.trips))}${stat('Distance', fmt(pr.km) + ' km')}${stat('Places known', fmt(x.places))}${stat('Countries', fmt(countries.length))}${stat('Races won', `${fmt(x.wins)}<small class="hint"> / ${fmt(x.races)}</small>`)}${stat('Achievements', fmt(pr.achievements.length))}</div></section>
+    <section class="profilehead"><div class="profilecover">${coverSvg({ color: league.color, ink: league.ink, emblem: league.emblem, title: league.title, top: 'STOPOVER', bottom: displayName(x.name).toUpperCase() })}</div>
+      <div class="stats profilestats">${stat('🚩 Flags', fmt(x.flags))}${stat('League', esc(league.name))}${stat('Rating', fmt(x.rating))}${stat('Trips', fmt(pr.trips))}${stat('Distance', fmt(pr.km) + ' km')}${stat('Places known', fmt(x.places))}${stat('Countries', fmt(countries.length))}${stat('Races won', `${fmt(x.wins)}<small class="hint"> / ${fmt(x.races)}</small>`)}${stat('Achievements', fmt(Object.keys(pr.achievements || {}).length))}</div></section>
+    <section class="pfpassport"><button class="btn go big" type="button" id="pf-passport">📖 Open ${mine ? 'your' : `${esc(displayName(x.name))}'s`} passport</button><span class="hint">Mastery map, stamps, country covers, the full flag collection, stats and trips${mine ? '' : ', just as they see them'}.</span></section>
+    ${mine ? nickEditorHtml('pf') : ''}
     <section><div class="label">Flag collection · ${esc(flagRankOf(keys.length).name)}</div>
       ${cat ? `<div class="raritychips" style="margin:8px 0">${RARITY.map((r, i) => `<span style="--rc:${r.color}"><i></i>${r.name} <b>${fmt(rarity[i])}</b></span>`).join('')}</div>
       <p class="hint" style="margin:0 0 8px">${FLAG_KINDS.map((k, i) => `${fmt(kinds[i])} ${k.name.toLowerCase()}`).join(' · ')}</p>
@@ -429,6 +467,8 @@ function renderProfile(x, showAll) {
     ${pr.history.length ? `<section><div class="label">Recent trips</div><ul class="list profiletrips">${pr.history.map(h => { const d = G.byGid.get(h.dest); return `<li><span>${(VEHICLES[h.vehicle] || VEHICLES.car).icon} ${d != null ? `${placeFlag(d)}${esc(G.name[d])}` : 'A trip'} <small class="hint">${esc(lengthOf(h.length).name)} · ${fmt(h.km)} km · ${new Date(h.t).toLocaleDateString()}</small></span><b>${fmt(h.total)} pts</b></li>`; }).join('')}</ul></section>` : ''}
     ${x.recentRaces.length ? `<section><div class="label">Recent races</div><ul class="list profiletrips">${x.recentRaces.map(r => `<li><span>${esc((RACE_MODES[r.mode] || RACE_MODES.time).name)} <small class="hint">${new Date(r.finished).toLocaleDateString()}</small></span><b>${r.place ? `${medal(r.place)} of ${r.players}` : 'Did not finish'}</b></li>`).join('')}</ul></section>` : ''}`;
   if ($('pf-all')) $('pf-all').onclick = () => renderProfile(x, true);
+  $('pf-passport').onclick = () => mine ? openPassport(null) : openPassport({ label: displayName(x.name), data: passportOf(pr) });
+  if (mine) wireNickEditor('pf', () => openProfile(x.name));
 }
 
 // ---- hooks into the game
@@ -469,6 +509,10 @@ if (CLOUD) {
     if (!rows) loadBoard().then(() => { if ($('leaderboard')) HOOKS.renderLeaderboard($('leaderboard')); });
   };
   HOOKS.boot = () => {
+    noteNicks([CLOUD.user]);
+    const setDlg = $('dlg-settings') && $('dlg-settings').querySelector('.dlg header');
+    const drawSetNick = () => { $('set-nicksec').innerHTML = nickEditorHtml('set'); wireNickEditor('set', drawSetNick); };
+    if (setDlg && !$('set-nicksec')) { setDlg.insertAdjacentHTML('afterend', '<div id="set-nicksec"></div>'); drawSetNick(); }
     P.playerName = CLOUD.user.name; saveProfile();
     CLOUD.summary = () => { const r = explorerRating(); return { rating: r.total, league: leagueOf(r.total).id, places: r.known, countries: Object.keys(P.stamps || {}).filter(k => !k.startsWith('area:')).length }; };
     const nav = document.querySelector('header.bar nav');

@@ -90,11 +90,11 @@ const ACHIEVEMENTS = [
   { id: 'scholar', group: 'learn', icon: '🎓', name: 'Scholar', desc: 'Get 100 study answers right.', coins: 80, progress: st => [Math.min(100, st.correct), 100] },
   { id: 'native', group: 'learn', icon: '🗺️', name: 'Cartographer', desc: 'Reach Native mastery in any country.', coins: 150, progress: st => [Math.min(8, st.topLevel), 8] },
 ];
-function computeStats() {
-  const st = { places: 0, villages: 0, tiny: 0, capitals: 0, mega: 0, countries: 0, continents: 0, ferries: P.ferries, km: P.km, flags: Object.keys(P.flagsSeen).length, countryFlags: Object.keys(P.flagsSeen).filter(k => k.startsWith('c:')).length, correct: 0, answered: 0, topLevel: 0, mostVisited: null, newest: null, bestCountry: null, firstTimers: 0,
-    cc: new Set(), areas: new Set(), seas: Object.fromEntries(Object.keys(SEAS).map(k => [k, new Set()])), maxLat: -90, minLat: 90, equator: false, dateline: false, tropics: 0, south: 0, feats: P.feats || {} };
+function computeStats(p = P) {
+  const st = { places: 0, villages: 0, tiny: 0, capitals: 0, mega: 0, countries: 0, continents: 0, ferries: p.ferries || 0, km: p.km || 0, flags: Object.keys(p.flagsSeen).length, countryFlags: Object.keys(p.flagsSeen).filter(k => k.startsWith('c:')).length, correct: 0, answered: 0, topLevel: 0, mostVisited: null, newest: null, bestCountry: null, firstTimers: 0,
+    cc: new Set(), areas: new Set(), seas: Object.fromEntries(Object.keys(SEAS).map(k => [k, new Set()])), maxLat: -90, minLat: 90, equator: false, dateline: false, tropics: 0, south: 0, feats: p.feats || {} };
   const conts = new Set();
-  for (const [k, v] of Object.entries(P.visits)) {
+  for (const [k, v] of Object.entries(p.visits || {})) {
     const id = G.byGid.get(+k.slice(1)); if (id == null) continue;
     const cc = ccOf(id), la = G.lat[id], lo = G.lon[id];
     st.places++; st.cc.add(cc); conts.add(G.contOf[G.cc[id]]);
@@ -109,8 +109,8 @@ function computeStats() {
     if (!st.newest || v.first > st.newest.t) st.newest = { id, t: v.first };
   }
   st.countries = st.cc.size; st.continents = conts.size;
-  for (const s of Object.values(P.study)) { st.correct += s.correct || 0; st.answered += s.answered || 0; }
-  const k = countryKnowledge(); let bi = -1; k.forEach((v, i) => { if (bi < 0 || v > k[bi]) bi = i; });
+  for (const s of Object.values(p.study || {})) { st.correct += s.correct || 0; st.answered += s.answered || 0; }
+  const k = countryKnowledge(p); let bi = -1; k.forEach((v, i) => { if (bi < 0 || v > k[bi]) bi = i; });
   if (bi >= 0 && k[bi] > 0) { st.bestCountry = { ci: bi, score: k[bi] }; st.topLevel = masteryLevel(k[bi]); }
   return st;
 }
@@ -118,47 +118,47 @@ function checkAchievements() {
   if (!G) return; const st = computeStats();
   for (const a of ACHIEVEMENTS) { if (P.achievements[a.id]) continue; const [have, need] = a.progress(st); if (have >= need) { P.achievements[a.id] = Date.now(); saveProfile(); addCoins(a.coins, `Achievement: ${a.name}`); } }
 }
-function renderAwards(body) {
-  const st = computeStats(), done = ACHIEVEMENTS.filter(a => P.achievements[a.id]).length;
-  body.innerHTML = `<div class="flaghead"><span class="big">${done}</span><b style="font:800 22px/1 var(--display);text-transform:uppercase">Achievements</b><span class="of">of ${ACHIEVEMENTS.length} unlocked · ${fmt(ACHIEVEMENTS.filter(a => P.achievements[a.id]).reduce((t, a) => t + a.coins, 0))} coins earned</span></div>
-    ${ACH_GROUPS.map(g => { const list = ACHIEVEMENTS.filter(a => a.group === g.id); return `<div class="achgroup"><div class="label">${g.name} · ${list.filter(a => P.achievements[a.id]).length}/${list.length}</div>${list.map(a => { const got = !!P.achievements[a.id], [have, need] = a.progress(st);
-      return `<div class="ach ${got ? 'done' : ''}"><span class="ico" aria-hidden="true">${a.icon}</span><div><b>${esc(a.name)}</b><small>${esc(typeof a.desc === 'function' ? a.desc() : a.desc)}</small>${got ? '<small class="got">Unlocked</small>' : need > 1 ? `<div class="achbar"><div class="levelbar"><div style="width:${Math.min(100, have / need * 100)}%;background:var(--accent)"></div></div><span>${fmt(have)} / ${fmt(need)}</span></div>` : ''}</div><span class="price"><i></i>${a.coins}</span></div>`; }).join('')}</div>`; }).join('')}`;
+function renderAwards(body, p = P) {
+  const got = id => !!(p.achievements || {})[id], st = computeStats(p), done = ACHIEVEMENTS.filter(a => got(a.id)).length;
+  body.innerHTML = `<div class="flaghead"><span class="big">${done}</span><b style="font:800 22px/1 var(--display);text-transform:uppercase">Achievements</b><span class="of">of ${ACHIEVEMENTS.length} unlocked · ${fmt(ACHIEVEMENTS.filter(a => got(a.id)).reduce((t, a) => t + a.coins, 0))} coins earned</span></div>
+    ${ACH_GROUPS.map(g => { const list = ACHIEVEMENTS.filter(a => a.group === g.id); return `<div class="achgroup"><div class="label">${g.name} · ${list.filter(a => got(a.id)).length}/${list.length}</div>${list.map(a => { const unlocked = got(a.id), [have, need] = a.progress(st);
+      return `<div class="ach ${unlocked ? 'done' : ''}"><span class="ico" aria-hidden="true">${a.icon}</span><div><b>${esc(a.name)}</b><small>${esc(typeof a.desc === 'function' ? a.desc() : a.desc)}</small>${unlocked ? '<small class="got">Unlocked</small>' : need > 1 ? `<div class="achbar"><div class="levelbar"><div style="width:${Math.min(100, have / need * 100)}%;background:var(--accent)"></div></div><span>${fmt(have)} / ${fmt(need)}</span></div>` : ''}</div><span class="price"><i></i>${a.coins}</span></div>`; }).join('')}</div>`; }).join('')}`;
 }
 
 // ================= passport =================
 let ppSel = null, ppTab = 'country';
 const ppMap = new MapView($('pp-map'), {
   style: () => 'atlas', overlays: () => ({ names: true }),
-  tint: () => { const k = countryKnowledge(); return ci => { const lv = masteryLevel(k[ci]); if (lv) return MASTERY[lv].color + (ci === ppSel ? 'FF' : 'B8'); return ci === ppSel ? 'rgba(29,111,184,.3)' : null; }; },
-  avoid: () => G ? new Set(opts.avoid.map(cc => G.ccIndex[cc]).filter(x => x != null)) : null,
+  tint: () => { const k = countryKnowledge(pp()); return ci => { const lv = masteryLevel(k[ci]); if (lv) return MASTERY[lv].color + (ci === ppSel ? 'FF' : 'B8'); return ci === ppSel ? 'rgba(29,111,184,.3)' : null; }; },
+  avoid: () => G && !PV.other ? new Set(opts.avoid.map(cc => G.ccIndex[cc]).filter(x => x != null)) : null,
   click: p => { const ci = countryAt(p.lat, p.lon); if (ci >= 0 && G.placeCount[ci]) { ppSel = ci; ppTab = 'country'; renderPassport(); ppMap.draw(); } },
   layer: (m, ctx) => {
     if (ppSel != null) { const sh = G.shapes[ppSel]; if (sh) { ctx.beginPath(); m.trace(sh.rings); ctx.strokeStyle = '#16221D'; ctx.lineWidth = 2; ctx.stroke(); } }
     if (ppTab !== 'trips') return;
     ctx.globalAlpha = .75;
-    for (const h of P.history) { const ids = h.route.concat([h.dest]).map(g => G.byGid.get(g)).filter(x => x != null); ctx.beginPath(); ids.forEach((id, i) => { const [x, y] = m.px(G.lon[id], G.lat[id]); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }); ctx.strokeStyle = routeColor(); ctx.lineWidth = 2; ctx.stroke(); }
+    for (const h of pp().history || []) { const ids = h.route.concat([h.dest]).map(g => G.byGid.get(g)).filter(x => x != null); ctx.beginPath(); ids.forEach((id, i) => { const [x, y] = m.px(G.lon[id], G.lat[id]); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }); ctx.strokeStyle = routeColor(); ctx.lineWidth = 2; ctx.stroke(); }
     ctx.globalAlpha = 1;
   },
 });
 function renderPassport() {
   $('pp-legend').innerHTML = MASTERY.slice(1).map(m => `<span style="background:${m.color}" title="${m.name}: ${m.at}+ places known"></span>`).join('');
   $('pp-tabs').querySelectorAll('[data-tab]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === ppTab)));
-  const k = countryKnowledge(), body = $('pp-body');
+  const p = pp(), view = !!PV.other, who = view ? PV.other.label : null, k = countryKnowledge(p), body = $('pp-body');
   if (ppTab === 'book') { renderBook(body); return; }
   if (ppTab === 'country' && ppSel == null) {
     const known = G.countries.map((c, i) => [i, k[i]]).filter(([, v]) => v > 0);
     const weak = known.slice().sort((a, b) => a[1] - b[1]).slice(0, 6), strong = known.slice().sort((a, b) => b[1] - a[1]).slice(0, 6);
-    body.innerHTML = `<p class="hint" style="margin:0">Click any country on the map to see what you know about it, study it, or avoid it on trips. A country's colour comes from how many of its places you've stopped in or got right in Study.</p>
+    body.innerHTML = `<p class="hint" style="margin:0">${view ? `Click any country on the map to see how well ${esc(who)} knows it. A country's colour comes from how many of its places they've stopped in or got right in Study.` : "Click any country on the map to see what you know about it, study it, or avoid it on trips. A country's colour comes from how many of its places you've stopped in or got right in Study."}</p>
       ${strong.length ? `<div><div class="label" style="margin-bottom:6px">Best known</div><ul class="list">${strong.map(([i, v]) => `<li><a href="#" data-pick="${i}">${countryFlag(G.countries[i][0])}${esc(G.countries[i][1])}</a><span>${MASTERY[masteryLevel(v)].name} · ${v}</span></li>`).join('')}</ul></div>` : ''}
       ${known.length > 6 ? `<div><div class="label" style="margin-bottom:6px">Needs work</div><ul class="list">${weak.map(([i, v]) => `<li><a href="#" data-pick="${i}">${countryFlag(G.countries[i][0])}${esc(G.countries[i][1])}</a><span>${MASTERY[masteryLevel(v)].name} · ${v}</span></li>`).join('')}</ul></div>` : ''}
-      ${!known.length ? '<p class="hint">Nothing stamped yet. Finish a leg of a trip or a study round to colour in your first country.</p>' : ''}`;
+      ${!known.length ? `<p class="hint">${view ? 'Nothing stamped yet.' : 'Nothing stamped yet. Finish a leg of a trip or a study round to colour in your first country.'}</p>` : ''}`;
     body.querySelectorAll('[data-pick]').forEach(a => a.onclick = e => { e.preventDefault(); ppSel = +a.dataset.pick; renderPassport(); zoomToCountry(ppMap, ppSel); });
   } else if (ppTab === 'country') {
     const ci = ppSel, c = G.countries[ci], score = k[ci], lv = masteryLevel(score), next = MASTERY[lv + 1];
-    const mine = Object.entries(P.visits).map(([key, v]) => ({ id: G.byGid.get(+key.slice(1)), v })).filter(x => x.id != null && G.cc[x.id] === ci);
+    const mine = Object.entries(p.visits || {}).map(([key, v]) => ({ id: G.byGid.get(+key.slice(1)), v })).filter(x => x.id != null && G.cc[x.id] === ci);
     const most = mine.slice().sort((a, b) => b.v.n - a.v.n)[0], newest = mine.slice().sort((a, b) => b.v.first - a.v.first)[0];
     const regions = new Map(); for (const x of mine) { const a = admOf(x.id)[0]; if (a) regions.set(a, (regions.get(a) || 0) + 1); }
-    const study = P.study[c[0]] || {}, avoided = opts.avoid.includes(c[0]);
+    const study = (p.study || {})[c[0]] || {}, avoided = !view && opts.avoid.includes(c[0]);
     body.innerHTML = `<div class="cstat">
         <h3>${countryFlag(c[0])}${esc(c[1])}</h3>
         <div class="chipline" style="margin-top:8px"><span class="chip" style="background:${MASTERY[Math.max(1, lv)].color}33">${MASTERY[lv].name}</span><span class="chip">${fmt(score)} places known</span><span class="chip">${fmt(G.placeCount[ci])} in the gazetteer</span>${avoided ? '<span class="chip warn">Avoided</span>' : ''}</div>
@@ -172,19 +172,21 @@ function renderPassport() {
         <li><span>Best-known region</span><span>${regions.size ? esc([...regions.entries()].sort((a, b) => b[1] - a[1])[0][0]) : '—'}</span></li>
         <li><span>Best study score</span><span>${study.bestPct != null ? study.bestPct + '%' : '—'}</span></li>
       </ul>
-      <div class="tools"><button class="btn go" type="button" id="pp-study">Study ${esc(c[1])}</button><button class="btn" type="button" id="pp-avoid">${avoided ? 'Stop avoiding' : 'Avoid on trips'}</button><button class="btn" type="button" id="pp-back">All countries</button></div>
-      ${mine.length ? `<div><div class="label" style="margin-bottom:6px">Your places</div><div class="chipline">${mine.sort((a, b) => b.v.n - a.v.n).slice(0, 60).map(x => `<span class="chip">${esc(G.name[x.id])}${x.v.n > 1 ? ' ×' + x.v.n : ''}</span>`).join('')}</div></div>` : ''}`;
-    $('pp-study').onclick = () => { $('dlg-passport').close(); openStudy(c[0]); };
-    $('pp-avoid').onclick = () => { setAvoid(c[0], !avoided); renderPassport(); ppMap.draw(); };
+      <div class="tools">${view ? '' : `<button class="btn go" type="button" id="pp-study">Study ${esc(c[1])}</button><button class="btn" type="button" id="pp-avoid">${avoided ? 'Stop avoiding' : 'Avoid on trips'}</button>`}<button class="btn" type="button" id="pp-back">All countries</button></div>
+      ${mine.length ? `<div><div class="label" style="margin-bottom:6px">${view ? `${esc(who)}'s places` : 'Your places'}</div><div class="chipline">${mine.sort((a, b) => b.v.n - a.v.n).slice(0, 60).map(x => `<span class="chip">${esc(G.name[x.id])}${x.v.n > 1 ? ' ×' + x.v.n : ''}</span>`).join('')}</div></div>` : ''}`;
+    if (!view) {
+      $('pp-study').onclick = () => { $('dlg-passport').close(); openStudy(c[0]); };
+      $('pp-avoid').onclick = () => { setAvoid(c[0], !avoided); renderPassport(); ppMap.draw(); };
+    }
     $('pp-back').onclick = () => { ppSel = null; renderPassport(); ppMap.draw(); };
   } else if (ppTab === 'flags') {
-    renderFlagTab(body);
+    renderFlagTab(body, p);
   } else if (ppTab === 'stats') {
-    const st = computeStats(), newestFlags = Object.entries(P.flagsSeen).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([key]) => flagSrc(key)).filter(Boolean);
-    body.innerHTML = `<div><div class="label" style="margin-bottom:8px">Flag collection</div>${flagSummaryHtml(true)}</div>
+    const st = computeStats(p), newestFlags = Object.entries(p.flagsSeen).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([key]) => flagSrc(key)).filter(Boolean);
+    body.innerHTML = `<div><div class="label" style="margin-bottom:8px">Flag collection</div>${flagSummaryHtml(true, p)}</div>
       <div class="stats">
         <div class="stat"><span class="label">Places</span><b>${fmt(st.places)}</b></div><div class="stat"><span class="label">Countries</span><b>${st.countries}</b></div><div class="stat"><span class="label">Continents</span><b>${st.continents}</b></div>
-        <div class="stat"><span class="label">Trips</span><b>${P.trips}</b></div><div class="stat"><span class="label">Km</span><b>${fmt(P.km)}</b></div><div class="stat"><span class="label">Flags</span><b>${fmt(st.flags)}</b></div>
+        <div class="stat"><span class="label">Trips</span><b>${fmt(p.trips || 0)}</b></div><div class="stat"><span class="label">Km</span><b>${fmt(p.km || 0)}</b></div><div class="stat"><span class="label">Flags</span><b>${fmt(st.flags)}</b></div>
         <div class="stat"><span class="label">Villages</span><b>${fmt(st.villages)}</b></div><div class="stat"><span class="label">Capitals</span><b>${fmt(st.capitals)}</b></div><div class="stat"><span class="label">Ferries</span><b>${fmt(st.ferries)}</b></div>
       </div>
       <ul class="list">
@@ -196,18 +198,27 @@ function renderPassport() {
       </ul>
       ${newestFlags.length ? `<div><div class="label" style="margin-bottom:6px">Newest flags</div><div class="flagrow">${newestFlags.map(s => `<img src="${s}" alt="" style="width:54px;height:36px;object-fit:contain;border-radius:3px;box-shadow:0 0 0 1px var(--line)">`).join('')}</div></div>` : ''}`;
   } else if (ppTab === 'awards') {
-    renderAwards(body);
+    renderAwards(body, p);
   } else {
-    body.innerHTML = P.history.length ? `<p class="hint" style="margin:0">Your last ${P.history.length} finished trips, drawn on the map.</p><ul class="list">${P.history.map(h => { const s = G.byGid.get(h.route[0]), d = G.byGid.get(h.dest); return `<li><span>${s != null ? esc(G.name[s]) : '?'} → ${d != null ? esc(G.name[d]) : '?'}</span><span>${(VEHICLES[h.vehicle] || VEHICLES.car).icon} ${fmt(h.km)} km · ${fmt(h.total)} pts</span></li>`; }).join('')}</ul>` : '<p class="hint">Finish a trip and it shows up here.</p>';
+    const hist = p.history || [];
+    body.innerHTML = hist.length ? `<p class="hint" style="margin:0">${view ? 'Their' : 'Your'} last ${hist.length} finished trips, drawn on the map.</p><ul class="list">${hist.map(h => { const s = G.byGid.get(h.route[0]), d = G.byGid.get(h.dest); return `<li><span>${s != null ? esc(G.name[s]) : '?'} → ${d != null ? esc(G.name[d]) : '?'}</span><span>${(VEHICLES[h.vehicle] || VEHICLES.car).icon} ${fmt(h.km)} km · ${fmt(h.total)} pts</span></li>`; }).join('')}</ul>` : `<p class="hint">${view ? 'No finished trips yet.' : 'Finish a trip and it shows up here.'}</p>`;
   }
 }
-$('pp-body').addEventListener('click', e => { const b = e.target.closest('[data-goto-tab]'); if (b) { ppTab = b.dataset.gotoTab; if (ppTab === 'flags') openedFlagTab(); renderPassport(); ppMap.draw(); } });
-$('pp-tabs').onclick = e => { const b = e.target.closest('[data-tab]'); if (!b) return; ppTab = b.dataset.tab; if (ppTab === 'flags') openedFlagTab(); renderPassport(); ppMap.draw(); };
-$('btn-passport').onclick = () => {
-  if (P.flagsNew) { ppTab = 'flags'; openedFlagTab(); }
-  renderPassport(); $('dlg-passport').showModal();
-  requestAnimationFrame(() => { ppMap.resize(); if (ppSel != null) zoomToCountry(ppMap, ppSel, true); else ppMap.fit(S ? [[G.lat[S.cur] + 18, G.lon[S.cur] - 30], [G.lat[S.cur] - 18, G.lon[S.cur] + 30]] : [[62, -20], [30, 45]], true, 20, 20); applyCosmetics(); });
-};
+$('pp-body').addEventListener('click', e => { const b = e.target.closest('[data-goto-tab]'); if (b) { ppTab = b.dataset.gotoTab; if (ppTab === 'flags' && !PV.other) openedFlagTab(); renderPassport(); ppMap.draw(); } });
+$('pp-tabs').onclick = e => { const b = e.target.closest('[data-tab]'); if (!b) return; ppTab = b.dataset.tab; if (ppTab === 'flags' && !PV.other) openedFlagTab(); renderPassport(); ppMap.draw(); };
+// other: null for your own passport, or { label, data } for another player's, read-only
+function openPassport(other) {
+  const was = PV.other; PV.other = other || null;
+  if (!other && was) { ppSel = null; ppTab = 'book'; FL.cc = ''; }
+  if (other) { ppSel = null; ppTab = 'book'; FL.cc = ''; FL.kind = 'country'; }
+  $('pp-title').textContent = other ? `${other.label}'s passport` : 'Passport';
+  $('pp-lead').textContent = other ? 'Read-only. Their mastery map, stamps, covers, flags and trips. Click a country to see how well they know it.' : 'How well you know each country. Click one on the map.';
+  if (!other && P.flagsNew) { ppTab = 'flags'; openedFlagTab(); }
+  renderPassport(); if (!$('dlg-passport').open) $('dlg-passport').showModal();
+  requestAnimationFrame(() => { ppMap.resize(); if (ppSel != null) zoomToCountry(ppMap, ppSel, true); else ppMap.fit(!other && S ? [[G.lat[S.cur] + 18, G.lon[S.cur] - 30], [G.lat[S.cur] - 18, G.lon[S.cur] + 30]] : [[62, -20], [30, 45]], true, 20, 20); applyCosmetics(); });
+}
+$('btn-passport').onclick = () => openPassport(null);
+$('dlg-passport').addEventListener('close', () => { if (PV.other) { PV.other = null; ppSel = null; ppTab = 'book'; FL.cc = ''; } });
 
 // ================= study (Seterra-style) =================
 const LEVELS = [5, 10, 15, 20, 30, 40, 60, 80, 120, 160];

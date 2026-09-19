@@ -18,6 +18,19 @@ const lobby = (env, code) => env.LOBBY.get(env.LOBBY.idFromName('lobby:' + code)
 // the browser never sends the password: it sends a key stretched from it (PBKDF2, 200k rounds), always 64 hex digits
 const validKey = k => typeof k === 'string' && /^[0-9a-f]{64}$/.test(k);
 const int = (v, max) => Math.max(0, Math.min(max, Math.round(+v || 0)));
+// A nickname is what other players see. It isn't unique and isn't used to log in, so it can be anything
+// readable: letters in any script, digits, spaces and a little punctuation. The one thing it may not be is
+// someone else's fruit username, or a player could pass themselves off as them.
+function cleanNick(raw, ownName) {
+  const nick = String(raw ?? '').normalize('NFC').replace(/\s+/g, ' ').trim();
+  if (!nick) return { nick: null };
+  const len = [...nick].length;
+  if (len < 2 || len > 24) return { error: 'A nickname is 2 to 24 characters.' };
+  if (!/^[\p{L}\p{N}][\p{L}\p{M}\p{N} ._'’-]*$/u.test(nick)) return { error: 'Use letters, numbers, spaces and . _ \' - only.' };
+  const p = parseName(nick.replace(/\s+/g, ''));
+  if (p && p.name.toLowerCase() !== String(ownName).toLowerCase()) return { error: 'That looks like someone’s username. Pick something else.' };
+  return { nick };
+}
 
 async function readJson(req, limit) {
   const text = await req.text();
@@ -100,6 +113,12 @@ async function api(req, env, url) {
     const res = await acct.changePassword(u.id, body.old, body.key, th);
     return res.error ? fail(401, res.error) : json({ ok: true });
   }
+  if (method === 'POST' && path === '/api/nick') {
+    const u = await who(), body = await readJson(req, 1000), c = cleanNick(body.nick, u.name);
+    if (c.error) return fail(400, c.error);
+    await acct.setNick(u.id, c.nick);
+    return json({ ok: true, nick: c.nick });
+  }
   if (method === 'GET' && path === '/api/leaderboard') { await who(); return json({ rows: await acct.leaderboard() }); }
   if (method === 'GET' && (m = /^\/api\/profile\/([A-Za-z]{4,30})$/.exec(path))) {
     await who();
@@ -107,8 +126,11 @@ async function api(req, env, url) {
     if (!data) return fail(404, 'No such player');
     let prof = {}; try { prof = JSON.parse(data.profile || '{}') || {}; } catch {}
     // only what a profile page shows: no study decks, blind spots or trip in progress
-    const pick = { flagsSeen: prof.flagsSeen || {}, stamps: prof.stamps || {}, history: (prof.history || []).slice(0, 10), best: prof.best || {},
-      achievements: Object.keys(prof.achievements || {}), trips: prof.trips || 0, km: prof.km || 0, ferries: prof.ferries || 0, cover: prof.cover || null, feats: { isles: ((prof.feats || {}).isles || []).length } };
+    const visits = {}; for (const [k, v] of Object.entries(prof.visits || {})) if (v && typeof v === 'object') visits[k] = { n: int(v.n, 1e6), first: int(v.first, 1e13) };
+    const study = {}; for (const [cc, v] of Object.entries(prof.study || {})) if (v && typeof v === 'object') study[cc] = { known: Array.isArray(v.known) ? v.known : [], bestPct: v.bestPct ?? null, correct: int(v.correct, 1e7), answered: int(v.answered, 1e7) };
+    const pick = { flagsSeen: prof.flagsSeen || {}, stamps: prof.stamps || {}, history: (prof.history || []).slice(0, 30), best: prof.best || {},
+      achievements: prof.achievements || {}, trips: prof.trips || 0, km: prof.km || 0, ferries: prof.ferries || 0, cover: prof.cover || null, feats: prof.feats || {},
+      visits, study, flagSets: prof.flagSets || {}, flagStreak: prof.flagStreak || null, equip: { ink: ((prof.equip || {}).ink) || null } };
     return json({ ...data, profile: pick });
   }
   if (method === 'POST' && path === '/api/lobby') {
@@ -123,7 +145,7 @@ async function api(req, env, url) {
   if (method === 'GET' && (m = /^\/api\/lobby\/([A-Za-z]{4})\/ws$/.exec(path))) {
     if (req.headers.get('upgrade') !== 'websocket') return fail(426, 'WebSocket only');
     const u = await who(), headers = new Headers(req.headers);
-    headers.set('x-uid', String(u.id)); headers.set('x-name', u.name);
+    headers.set('x-uid', String(u.id)); headers.set('x-name', u.name); headers.set('x-nick', encodeURIComponent(u.nick || ''));
     return lobby(env, m[1].toUpperCase()).fetch(new Request(req.url, { headers }));
   }
   return fail(404, 'Not found');
@@ -142,6 +164,8 @@ export class Accounts extends DurableObject {
       `CREATE TABLE IF NOT EXISTS races (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT NOT NULL, mode TEXT NOT NULL, players INTEGER NOT NULL, finished INTEGER NOT NULL, detail TEXT NOT NULL)`,
       `CREATE TABLE IF NOT EXISTS race_players (race_id INTEGER NOT NULL, user_id INTEGER NOT NULL, place INTEGER, PRIMARY KEY (race_id, user_id))`,
     ]) this.sql.exec(stmt);
+    // added after launch: databases from before nicknames get the column on their next start
+    try { this.sql.exec('ALTER TABLE users ADD COLUMN nick TEXT'); } catch { /* already there */ }
   }
   row(query, ...args) { return this.sql.exec(query, ...args).toArray()[0] || null; }
 
@@ -182,10 +206,12 @@ export class Accounts extends DurableObject {
   }
   endSession(tokenHash) { this.sql.exec('DELETE FROM sessions WHERE token = ?', tokenHash); }
   userBySession(tokenHash) {
-    const now = Date.now(), r = this.row('SELECT u.id, u.name, u.last_seen FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ? AND s.expires > ?', tokenHash, now);
+    const now = Date.now(), r = this.row('SELECT u.id, u.name, u.nick, u.last_seen FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ? AND s.expires > ?', tokenHash, now);
     if (!r) return null;
     if (now - r.last_seen > 60000) this.sql.exec('UPDATE users SET last_seen = ? WHERE id = ?', now, r.id);
-    return { id: r.id, name: r.name };
+    return { id: r.id, name: r.name, nick: r.nick || null };
+  }
+  setNick(userId, nick) { this.sql.exec('UPDATE users SET nick = ? WHERE id = ?', nick, userId); 
   }
 
   load(userId) {
@@ -212,13 +238,13 @@ export class Accounts extends DurableObject {
   }
 
   leaderboard() {
-    return this.sql.exec(`SELECT u.name, s.flags, s.rating, s.league, s.trips, s.places, s.countries, s.km, u.last_seen AS seen,
+    return this.sql.exec(`SELECT u.name, u.nick, s.flags, s.rating, s.league, s.trips, s.places, s.countries, s.km, u.last_seen AS seen,
         (SELECT COUNT(*) FROM race_players p WHERE p.user_id = u.id) AS races,
         (SELECT COUNT(*) FROM race_players p JOIN races r ON r.id = p.race_id WHERE p.user_id = u.id AND p.place = 1 AND r.players > 1) AS wins
       FROM users u JOIN stats s ON s.user_id = u.id ORDER BY s.flags DESC, s.rating DESC, u.id ASC LIMIT 200`).toArray();
   }
   profile(name) {
-    const u = this.row(`SELECT u.id, u.name, u.created, u.last_seen AS seen, s.flags, s.rating, s.league, s.trips, s.places, s.countries, s.km FROM users u JOIN stats s ON s.user_id = u.id WHERE u.name_lc = ?`, name.toLowerCase());
+    const u = this.row(`SELECT u.id, u.name, u.nick, u.created, u.last_seen AS seen, s.flags, s.rating, s.league, s.trips, s.places, s.countries, s.km FROM users u JOIN stats s ON s.user_id = u.id WHERE u.name_lc = ?`, name.toLowerCase());
     if (!u) return null;
     const rank = this.row('SELECT COUNT(*) + 1 AS rank FROM stats WHERE flags > ?', u.flags).rank;
     const races = this.sql.exec(`SELECT r.mode, r.players, r.finished, p.place FROM race_players p JOIN races r ON r.id = p.race_id WHERE p.user_id = ? ORDER BY r.id DESC LIMIT 10`, u.id).toArray();
@@ -297,10 +323,12 @@ export class Lobby extends DurableObject {
 
   async fetch(req) {
     const uid = +req.headers.get('x-uid'), name = req.headers.get('x-name') || '?';
+    let nick = null; try { nick = decodeURIComponent(req.headers.get('x-nick') || '') || null; } catch {}
     if (!this.st) return new Response('No lobby with that code', { status: 404 });
     const st = this.st;
     if (!st.players[uid] && st.order.length >= MAX_PLAYERS) return new Response('That lobby is full', { status: 403 });
-    if (!st.players[uid]) { st.players[uid] = { id: uid, name, ready: false }; st.order.push(uid); }
+    if (!st.players[uid]) { st.players[uid] = { id: uid, name, nick, ready: false }; st.order.push(uid); }
+    else st.players[uid].nick = nick;
     if (!st.players[st.host]) st.host = uid;
     const pair = new WebSocketPair();
     this.ctx.acceptWebSocket(pair[1]);

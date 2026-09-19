@@ -447,9 +447,14 @@ function migrateV1() {
 }
 const visitsBefore = id => (P.visits[placeKey(id)] || {}).n || 0;
 // unique places visited plus unique places answered right in study, per country
-function countryKnowledge() {
+// The Passport can show another player's passport, read-only. Everything it draws reads from pp(): your own
+// save normally, a copy of theirs while PV.other is set. Game logic never reads pp(), so nothing about their
+// collection can leak into your coins, rating or saves.
+const PV = { other: null };
+const pp = () => PV.other ? PV.other.data : P;
+function countryKnowledge(p = P) {
   const sets = G.countries.map(() => new Set());
-  for (const k of Object.keys(P.visits)) { const id = G.byGid.get(+k.slice(1)); if (id != null) sets[G.cc[id]].add(G.gid[id]); }
-  for (const [cc, s] of Object.entries(P.study)) { const ci = G.ccIndex[cc]; if (ci != null) for (const g of s.known || []) sets[ci].add(g); }
+  for (const k of Object.keys(p.visits || {})) { const id = G.byGid.get(+k.slice(1)); if (id != null) sets[G.cc[id]].add(G.gid[id]); }
+  for (const [cc, s] of Object.entries(p.study || {})) { const ci = G.ccIndex[cc]; if (ci != null) for (const g of s.known || []) sets[ci].add(g); }
   return sets.map(s => s.size);
 }

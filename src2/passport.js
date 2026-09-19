@@ -12,14 +12,14 @@ const LEAGUES = [
   { id: 'diplomatic', at: 550, name: 'Diplomatic passport', color: '#17191C', ink: '#E7C46A', emblem: 'laurel', title: 'DIPLOMATIC PASSPORT' },
   { id: 'laissez', at: 750, name: 'Laissez-passer', color: '#1D5FA8', ink: '#EAF2FB', emblem: 'laurel', title: 'LAISSEZ-PASSER' },
 ];
-function explorerRating() {
-  const recent = P.history.slice(0, 10);
+function explorerRating(p = P) {
+  const recent = (p.history || []).slice(0, 10);
   // a trip through places you already knew counts for less: 40% for an all-familiar route, 100% for an all-new one
   const perf = recent.map(h => Math.min(2, h.total / ((TRIP_PAR[h.length] || 750) * (VEHICLE_PAR[h.vehicle] || 1))) * (h.stopsN ? 0.4 + 0.6 * h.fresh / h.stopsN : 1));
   const trips = 300 * perf.reduce((a, b) => a + b, 0) / 10;
-  const known = countryKnowledge().reduce((a, b) => a + b, 0);
+  const known = countryKnowledge(p).reduce((a, b) => a + b, 0);
   const knowledge = 400 * (1 - Math.exp(-known / 400));
-  const flagsHave = flagCounts().have, flags = flagRating(flagsHave);
+  const flagsHave = flagCounts(p).have, flags = flagRating(flagsHave);
   return { total: Math.round(trips + knowledge + flags), trips: Math.round(trips), knowledge: Math.round(knowledge), flags, flagsHave, known, tripsCounted: recent.length };
 }
 const leagueOf = rating => { let l = LEAGUES[0]; for (const x of LEAGUES) if (rating >= x.at) l = x; return l; };
@@ -46,8 +46,8 @@ function backfillStamps() {
 const hashOf = s => { let h = 2166136261; for (const ch of s) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0; return h; };
 const INKS = ['#A32D2D', '#185FA5', '#2E7D32', '#5B3FA6', '#2B2B2B', '#B3541E'];
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-function stampSvg(key, s) {
-  const id = G.byGid.get(s.g), h = hashOf(key), inks = (INK_PACKS[P.equip.ink] || INK_PACKS.classic).inks, ink = inks[h % inks.length], rot = (h >> 3) % 29 - 14;
+function stampSvg(key, s, p = P) {
+  const id = G.byGid.get(s.g), h = hashOf(key), inks = (INK_PACKS[(p.equip || {}).ink] || INK_PACKS.classic).inks, ink = inks[h % inks.length], rot = (h >> 3) % 29 - 14;
   const d = new Date(s.t), date = `${String(d.getDate()).padStart(2, '0')} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
   const title = (key.startsWith('area:') ? key.slice(5) : ccName(key)).toUpperCase(), city = id != null ? G.name[id].toUpperCase() : '';
   const via = { road: 'BY ROAD', ferry: 'BY SEA', sail: 'BY SEA', flight: 'BY AIR', train: 'BY RAIL' }[s.via] || 'BY ROAD';
@@ -79,42 +79,43 @@ function coverSvg({ color, ink, emblem, title, top, bottom, emblemImg }) {
     <rect x="98" y="286" width="36" height="12" rx="2" fill="none" stroke="${ink}" stroke-width="1.4" opacity=".7"/><circle cx="106" cy="292" r="2.4" fill="${ink}" opacity=".7"/></svg>`;
 }
 function renderBook(body) {
-  if (!P.stamps || !Object.keys(P.stamps).length) backfillStamps();
-  const r = explorerRating(), league = leagueOf(r.total), next = LEAGUES[LEAGUES.indexOf(league) + 1];
-  const name = P.playerName || 'Traveller';
-  const stamps = Object.entries(P.stamps || {}).sort((a, b) => a[1].t - b[1].t), PER_PAGE = 6, pages = Math.max(1, Math.ceil(stamps.length / PER_PAGE));
+  const p = pp(), view = !!PV.other;
+  if (!view && (!P.stamps || !Object.keys(P.stamps).length)) backfillStamps();
+  const r = explorerRating(p), league = leagueOf(r.total), next = LEAGUES[LEAGUES.indexOf(league) + 1];
+  const name = view ? PV.other.label : P.playerName || 'Traveller';
+  const stamps = Object.entries(p.stamps || {}).sort((a, b) => a[1].t - b[1].t), PER_PAGE = 6, pages = Math.max(1, Math.ceil(stamps.length / PER_PAGE));
   bookPage = Math.min(bookPage, pages - 1);
   const pageStamps = stamps.slice(bookPage * PER_PAGE, (bookPage + 1) * PER_PAGE);
   body.innerHTML = `
     <div style="display:grid;grid-template-columns:140px 1fr;gap:14px;align-items:center">
-      <div>${coverSvg({ ...((P.cover && countryCover(P.cover, league)) || { color: league.color, ink: league.ink, emblem: league.emblem, title: league.title, top: 'STOPOVER' }), bottom: name.toUpperCase() })}</div>
+      <div>${coverSvg({ ...((p.cover && countryCover(p.cover, league)) || { color: league.color, ink: league.ink, emblem: league.emblem, title: league.title, top: 'STOPOVER' }), bottom: name.toUpperCase() })}</div>
       <div style="display:grid;gap:6px">
-        <div class="label">Your league</div>
+        <div class="label">${view ? 'League' : 'Your league'}</div>
         <b style="font:800 24px/1 var(--display);text-transform:uppercase">${league.name}</b>
         <div class="chipline"><span class="chip">Rating ${fmt(r.total)}</span><span class="chip">Trips ${fmt(r.trips)}/600</span><span class="chip">Knowledge ${fmt(r.knowledge)}/400</span><span class="chip">Flags ${fmt(r.flags)}/${FLAG_RATING_MAX}</span></div>
         <div class="levelbar"><div style="width:${next ? Math.min(100, (r.total - league.at) / (next.at - league.at) * 100) : 100}%;background:${league.color}"></div></div>
-        <span class="hint">${next ? `${next.at - r.total} more rating for ${next.name}.` : 'The top document there is.'} Trips count your last 10 (${r.tripsCounted} so far), so harder rules and fewer flights raise it fastest. Your ${fmt(r.flagsHave)} flags make you a ${flagRankOf(r.flagsHave).name}.</span>
-        ${CLOUD ? '' : `<label class="hint" for="pp-name" style="margin-top:4px">Name on your passport</label>
+        <span class="hint">${view ? `${fmt(r.flagsHave)} flags make them a ${flagRankOf(r.flagsHave).name}. Rating counts their last 10 trips (${r.tripsCounted} so far), the places they know and their flags.` : `${next ? `${next.at - r.total} more rating for ${next.name}.` : 'The top document there is.'} Trips count your last 10 (${r.tripsCounted} so far), so harder rules and fewer flights raise it fastest. Your ${fmt(r.flagsHave)} flags make you a ${flagRankOf(r.flagsHave).name}.`}</span>
+        ${CLOUD || view ? '' : `<label class="hint" for="pp-name" style="margin-top:4px">Name on your passport</label>
         <input class="field" id="pp-name" maxlength="24" value="${esc(name)}">`}
       </div>
     </div>
     <div>
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div class="label">Visas and entry stamps · ${stamps.length}</div>
         <div class="tools"><button class="btn small" type="button" id="bk-prev" ${bookPage ? '' : 'disabled'}>←</button><span class="hint">Page ${bookPage + 1} of ${pages}</span><button class="btn small" type="button" id="bk-next" ${bookPage < pages - 1 ? '' : 'disabled'}>→</button></div></div>
-      <div class="bookpage">${pageStamps.length ? pageStamps.map(([k, s]) => `<div class="stamp">${stampSvg(k, s)}</div>`).join('') : '<p class="hint">Your first stop in a new country stamps a page here.</p>'}</div>
+      <div class="bookpage">${pageStamps.length ? pageStamps.map(([k, s]) => `<div class="stamp">${stampSvg(k, s, p)}</div>`).join('') : `<p class="hint">${view ? 'No stamps yet.' : 'Your first stop in a new country stamps a page here.'}</p>`}</div>
     </div>
     <div>
       <div class="label" style="margin-bottom:6px">Leagues</div>
       <div class="leaguerow">${LEAGUES.map(l => `<div class="${l === league ? 'current' : ''}" title="${l.name}: rating ${l.at}+">${coverSvg({ color: l.color, ink: l.ink, emblem: l.emblem, title: l.title, top: 'STOPOVER', bottom: l.at + '+' })}<span>${l.name}</span></div>`).join('')}</div>
     </div>
     <div id="covers"></div>
-    <div id="leaderboard"></div>`;
+    ${view ? '' : '<div id="leaderboard"></div>'}`;
   $('bk-prev').onclick = () => { bookPage--; renderBook(body); };
   $('bk-next').onclick = () => { bookPage++; renderBook(body); };
   if ($('pp-name')) $('pp-name').onchange = e => { P.playerName = e.target.value.trim().slice(0, 24) || 'Traveller'; saveProfile(); renderBook(body); publishScore(); };
-  renderCovers($('covers'), league);
-  if (P.cover && !COVERS.data) loadCovers().then(() => renderPassport());
-  renderLeaderboard();
+  renderCovers($('covers'), league, p);
+  if (p.cover && !COVERS.data) loadCovers().then(() => renderPassport());
+  if (!view) renderLeaderboard();
 }
 let bookPage = 0;
 
@@ -158,17 +159,19 @@ function countryCover(cc, league) {
   const c = COVERS.data && COVERS.data.countries[cc]; if (!c) return null;
   return { color: c.colour ? COVERS.data.palette[c.colour] : '#1B2A44', ink: '#E3BD5A', emblem: 'globe', emblemImg: c.arms ? 'data:image/webp;base64,' + c.arms : null, title: league.title, top: (c.name || ccName(cc)).toUpperCase() };
 }
-function renderCovers(el, league) {
-  if (!COVERS.data) { el.innerHTML = '<div class="label">Country covers</div><p class="hint">Loading covers…</p>'; loadCovers().then(() => renderCovers(el, league)); return; }
-  const k = countryKnowledge();
+function renderCovers(el, league, p = P) {
+  const view = p !== P;
+  if (!COVERS.data) { el.innerHTML = '<div class="label">Country covers</div><p class="hint">Loading covers…</p>'; loadCovers().then(() => renderCovers(el, league, p)); return; }
+  const k = countryKnowledge(p);
   const rows = G.countries.map((c, i) => ({ cc: c[0], known: k[i] })).filter(x => COVERS.data.countries[x.cc]);
   const unlocked = rows.filter(x => x.known >= COVER_UNLOCK).sort((a, b) => b.known - a.known);
   const close = rows.filter(x => x.known > 0 && x.known < COVER_UNLOCK).sort((a, b) => b.known - a.known).slice(0, 6);
-  const tile = (x, locked) => { const cov = countryCover(x.cc, league); return `<button type="button" class="covertile ${locked ? 'locked' : ''} ${P.cover === x.cc ? 'equipped' : ''}" ${locked ? 'disabled' : `data-cover="${x.cc}"`} title="${esc(ccName(x.cc))}">${coverSvg({ ...cov, bottom: locked ? `${x.known} / ${COVER_UNLOCK}` : (P.cover === x.cc ? 'EQUIPPED' : 'TAP TO USE') })}<span>${esc(ccName(x.cc))}</span></button>`; };
-  el.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div class="label">Country covers · ${unlocked.length} earned</div>${P.cover ? '<button class="btn small" type="button" id="cover-reset">Use league cover</button>' : ''}</div>
-    <p class="hint" style="margin:6px 0 8px">Know ${COVER_UNLOCK} places in a country, from trips or Study, and its passport cover is yours to carry in any league.</p>
+  const tile = (x, locked) => { const cov = countryCover(x.cc, league); return `<button type="button" class="covertile ${locked ? 'locked' : ''} ${p.cover === x.cc ? 'equipped' : ''}" ${locked || view ? 'disabled' : `data-cover="${x.cc}"`} title="${esc(ccName(x.cc))}">${coverSvg({ ...cov, bottom: locked ? `${x.known} / ${COVER_UNLOCK}` : (p.cover === x.cc ? (view ? 'CARRIED' : 'EQUIPPED') : view ? 'EARNED' : 'TAP TO USE') })}<span>${esc(ccName(x.cc))}</span></button>`; };
+  el.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div class="label">Country covers · ${unlocked.length} earned</div>${P.cover && !view ? '<button class="btn small" type="button" id="cover-reset">Use league cover</button>' : ''}</div>
+    <p class="hint" style="margin:6px 0 8px">${view ? `A country's cover is earned by knowing ${COVER_UNLOCK} of its places.` : `Know ${COVER_UNLOCK} places in a country, from trips or Study, and its passport cover is yours to carry in any league.`}</p>
     ${unlocked.length ? `<div class="covergrid">${unlocked.map(x => tile(x, false)).join('')}</div>` : ''}
-    ${close.length ? `<div class="label" style="margin:10px 0 6px">Closest to unlocking</div><div class="covergrid">${close.map(x => tile(x, true)).join('')}</div>` : '<p class="hint">Visit or study a country to start earning its cover.</p>'}`;
+    ${close.length ? `<div class="label" style="margin:10px 0 6px">Closest to unlocking</div><div class="covergrid">${close.map(x => tile(x, true)).join('')}</div>` : view ? '' : '<p class="hint">Visit or study a country to start earning its cover.</p>'}`;
+  if (view) return;
   el.querySelectorAll('[data-cover]').forEach(b => b.onclick = () => { P.cover = b.dataset.cover; saveProfile(); renderPassport(); });
   if ($('cover-reset')) $('cover-reset').onclick = () => { delete P.cover; saveProfile(); renderPassport(); };
 }
