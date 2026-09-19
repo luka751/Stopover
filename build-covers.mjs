@@ -1,5 +1,5 @@
 // dist/covers.json: for each country, the passport cover colour (measured from a photo of its passport, snapped to
-// the handful of colours passports actually come in) and its coat of arms rendered as a gold emblem.
+// the handful of colours passports actually come in) and its coat of arms in its own colours.
 import fs from 'node:fs'; import { spawnSync } from 'node:child_process';
 const data = JSON.parse(fs.readFileSync('cache/covers/data.json', 'utf8'));
 const OVERRIDES = JSON.parse(fs.existsSync('cover-overrides.json') ? fs.readFileSync('cover-overrides.json', 'utf8') : '{}');
@@ -12,7 +12,7 @@ for (const [iso, r] of Object.entries(data)) {
   const colour = OVERRIDES[iso] || (measured && measured !== 'brown' && measured !== 'black' ? measured : null);
   let arms = null;
   if (r.armsFile && fs.existsSync(r.armsFile)) {
-    const outFile = r.armsFile + '.gold.webp';
+    const outFile = r.armsFile + '.colour.webp';
     if (!fs.existsSync(outFile)) spawnSync(process.execPath, ['render-arms.mjs', r.armsFile, outFile], { timeout: 60000 });
     if (fs.existsSync(outFile)) arms = fs.readFileSync(outFile).toString('base64'); else console.log('skipped arms', iso);
   }
