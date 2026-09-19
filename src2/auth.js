@@ -18,7 +18,7 @@ async function apiA(path, opts = {}) {
 
 // ---- the cloud store
 const cloud = {
-  user: null, rev: 0, data: {}, sent: {}, dirty: new Set(), timer: 0, busy: false, blocked: false, summary: null, names: { parse: parseName }, passwordKey, api: apiA,
+  user: null, rev: 0, data: {}, sent: {}, dirty: new Set(), timer: 0, busy: false, blocked: false, summary: null, names: { parse: parseName, nickProblem }, passwordKey, api: apiA,
   get(k) { return Object.prototype.hasOwnProperty.call(this.data, k) ? this.data[k] : null; },
   set(k, v) { this.data[k] = v === undefined ? null : v; this.dirty.add(k); this.soon(); },
   soon(ms = 4000) { if (!this.timer && !this.blocked) this.timer = setTimeout(() => { this.timer = 0; this.flush(); }, ms); },

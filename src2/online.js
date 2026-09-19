@@ -11,6 +11,9 @@ const RACE_MODES = {
   stops: { name: 'Fewest stops', blurb: 'Reach it in the fewest stops' },
 };
 const RACE_LIMITS = [0, 5, 10, 15, 20, 30];
+// an entry fee: everyone who races pays it, and the winner takes the lot; if nobody finishes, everyone gets theirs back
+const RACE_STAKES = [0, 50, 100, 250, 500];
+const raceStake = () => (ONLINE.state && ONLINE.state.settings.stake) || 0;
 const RACE_REGIONS = ['EU', 'AS', 'AF', 'NA', 'SA', 'OC', 'ALL', 'UNCHARTED'];
 // A lobby used to carry one continent. It carries a set now, like a solo trip, so a host can race
 // Europe + Asia. Older lobbies still send the single `region`, so read either.
@@ -27,14 +30,43 @@ function raceDraft(set) {
     from: set.from ?? null, to: set.to ?? null, via: Array.isArray(set.via) ? set.via : [],
     assist: set.assist || preset.assist, rules: migrateRules(set.rules || preset.rules), avoid: Array.isArray(set.avoid) ? set.avoid : [] };
 }
-const nameInfo = n => (CLOUD && CLOUD.names.parse(n)) || { name: String(n || '?'), color: '#5F6368', emoji: '🧳' };
+const nameInfo = n => (CLOUD && CLOUD.names.parse(n)) || { name: String(n || '?'), color: '#5F6368', emoji: '🧳', fruit: null };
 // Nicknames aren't unique, so the username's fruit and colour stay beside them: two players called Luka are
-// still a watermelon and a pear. Every server reply that names players fills this cache, and every name on
-// screen reads from it, so a nickname shows up everywhere without each screen having to ask for it.
-const NICKS = new Map();
-const noteNicks = list => { for (const x of list || []) if (x && x.name) { if (x.nick) NICKS.set(x.name, x.nick); else NICKS.delete(x.name); } };
-const displayName = n => NICKS.get(n) || nameInfo(n).name;
-const unameHtml = (n, cls = '') => { const p = nameInfo(n), nick = NICKS.get(n); return `<span class="uname ${cls}" style="--uc:${p.color}" ${nick ? `title="Username: ${esc(p.name)}"` : ''}><i aria-hidden="true">${p.emoji}</i>${esc(nick || p.name)}</span>`; };
+// still a watermelon and a pear. Every server reply that names players fills this cache (nickname, the flag they
+// represent, the cover they carry, league and title), and every name on screen reads from it.
+// Three kinds of little picture sit near a name, and each has its own shape so they can't be mixed up:
+//   the fruit is round, on a disc of the username's colour: it IS the username, and every player has one;
+//   the flag is a small framed rectangle: the country the player chose to represent;
+//   vehicles (🚗 🚆 and the shop's markers) are never part of a name; they only show on the map and in trip details.
+const IDENT = new Map();
+function noteNicks(list) {
+  for (const x of list || []) {
+    if (!x || !x.name) continue;
+    const cur = IDENT.get(x.name) || {};
+    for (const k of ['nick', 'flair', 'cover', 'league', 'title', 'motto', 'ride', 'fx']) if (k in x) cur[k] = x[k] || null;
+    IDENT.set(x.name, cur);
+  }
+  // your own look comes from your save, which is newer than anything the server has seen
+  if (CLOUD && CLOUD.user && G) IDENT.set(CLOUD.user.name, { ...IDENT.get(CLOUD.user.name), ...myIdent() });
+}
+// ride: the model you drive for each vehicle, which rivals see in a race; fx: your exhaust trail
+const myRide = () => { const out = {}; for (const [k] of MODEL_KINDS) { const m = modelFor(k); if (m && P.owned.includes('model:' + m.id)) out[k] = m.id; } return out; };
+const myIdent = () => ({ nick: CLOUD.user.nick || null, flair: P.flair || null, cover: P.cover || null, league: leagueOf(explorerRating().total).id, title: myTitle(), motto: myMotto(), ride: myRide(), fx: P.owned.includes('exhaust:' + P.equip.exhaust) ? P.equip.exhaust : null });
+const displayName = n => (IDENT.get(n) || {}).nick || nameInfo(n).name;
+const flairHtml = cc => { const src = flagSrc('c:' + cc), name = G ? ccName(cc) : cc; return `<span class="flair" title="Representing ${esc(name)}" aria-label="representing ${esc(name)}">${src ? `<img src="${src}" alt="">` : `<b>${emojiFlag(cc)}</b>`}</span>`; };
+const fruitHtml = p => `<i class="avfruit" title="${esc(p.name)}${p.fruit ? ` · the ${esc(p.fruit.toLowerCase())} is part of the username` : ''}" aria-hidden="true">${p.emoji}</i>`;
+// o.flair: false leaves the flag off (where it would repeat a flag already beside the name)
+const unameHtml = (n, cls = '', o = {}) => { const p = nameInfo(n), id = IDENT.get(n) || {}, nick = id.nick;
+  return `<span class="uname ${cls}" style="--uc:${p.color}">${fruitHtml(p)}<span class="unametxt" ${nick ? `title="Username: ${esc(p.name)}"` : ''}>${esc(nick || p.name)}</span>${o.flair !== false && id.flair ? flairHtml(id.flair) : ''}</span>`; };
+const titleHtml = n => { const t = titleName((IDENT.get(n) || {}).title); return t ? `<span class="ptitle">${esc(t)}</span>` : ''; };
+const mottoHtml = n => { const t = mottoText((IDENT.get(n) || {}).motto); return t ? `<span class="motto">“${esc(t)}”</span>` : ''; };
+// the passport a player carries, as a thumbnail: their country cover's colour, or their league's
+function coverMini(n) {
+  const id = IDENT.get(n) || {}, league = LEAGUES.find(l => l.id === id.league) || LEAGUES[0], c = id.cover && COVERS.data && COVERS.data.countries[id.cover];
+  const col = c ? coverColour(id.cover) : league.color, ink = c ? '#E3BD5A' : league.ink;
+  if (id.cover && !COVERS.data) loadCovers().then(() => refreshOnline());
+  return `<span class="minicover" style="--cv:${col};--ci:${ink}" title="${id.cover && G ? `${esc(ccName(id.cover))} cover · ` : ''}${esc(league.name)}" aria-hidden="true"><i></i></span>`;
+};
 const clock = ms => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 const ordinal = n => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th');
 const medal = place => place === 1 ? '🥇' : place === 2 ? '🥈' : place === 3 ? '🥉' : place ? ordinal(place) : '–';
@@ -45,6 +77,8 @@ const amHost = () => ONLINE.state && ONLINE.state.host === ONLINE.state.me;
 
 // ---- connection
 function send(msg) { if (ONLINE.ws && ONLINE.ws.readyState === 1) { ONLINE.ws.send(JSON.stringify(msg)); return true; } return false; }
+// the lobby reads your flag and cover from your last save; this tells it about a change you made since
+const sendIdent = () => { if (G) { const m = myIdent(); send({ t: 'ident', flair: m.flair, cover: m.cover, league: m.league, title: m.title, motto: m.motto, ride: m.ride, fx: m.fx }); } };
 setInterval(() => { if (ONLINE.ws && ONLINE.ws.readyState === 1) ONLINE.ws.send('ping'); }, 25000);
 function connect(code) {
   if (ONLINE.ws) { ONLINE.ws.onclose = null; try { ONLINE.ws.close(); } catch {} }
@@ -52,7 +86,7 @@ function connect(code) {
   ONLINE.code = code; store.set('stopover-lobby', { code });
   const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/lobby/${code}/ws`);
   ONLINE.ws = ws;
-  ws.onopen = () => { ONLINE.retry = 0; };
+  ws.onopen = () => { ONLINE.retry = 0; sendIdent(); };
   ws.onmessage = e => { if (e.data === 'pong') return; let m; try { m = JSON.parse(e.data); } catch { return; } onLobbyMessage(m); };
   ws.onclose = async ev => {
     if (ONLINE.ws !== ws) return;
@@ -96,9 +130,22 @@ function onLobbyMessage(m) {
   if (G && m.phase === 'racing' && mine) { if (inThisRace()) syncRace(m); else if (ONLINE.leftRace !== `${m.code}:${r.n}`) enterRace(m); }
   if (G && m.phase === 'results' && inThisRace()) {
     if (!S.done) { finishTrip(true); save(); tripMap.fit(tripBounds(), false, 56, 130); lastMsg = { text: "Time's up! The green line shows a way you could have finished.", cls: 'bad' }; }
-    if (ONLINE.resultsShown !== r.n) { ONLINE.resultsShown = r.n; render(); showResults(); }
+    if (ONLINE.resultsShown !== r.n) { ONLINE.resultsShown = r.n; noteRaceResult(m); render(); showResults(); }
   }
   refreshOnline();
+}
+// a race you finished goes in your expeditions, and wins count towards Speed Demon and Race Champion
+function noteRaceResult(st) {
+  const key = `${st.code}:${st.race.n}`, mine = (st.results || []).find(x => x.id === st.me);
+  if (!mine || P.lastRaceNoted === key) return;
+  P.lastRaceNoted = key; const n = st.results.length;
+  if (st.race.stake) {
+    const anyone = st.results.some(x => x.place === 1);
+    if (mine.place === 1) addCoins(st.race.pot, 'race pot');
+    else if (!anyone && (P.racePaid || []).includes(key)) addCoins(st.race.stake, 'entry fee back: nobody finished');
+  }
+  if (mine.place === 1 && n > 1) { P.feats.raceWins = (P.feats.raceWins || 0) + 1; if (st.race.mode === 'time') P.feats.raceTimeWins = (P.feats.raceTimeWins || 0) + 1; }
+  feedAdd({ k: 'race', place: mine.place, of: n, mode: st.race.mode });
 }
 function refreshOnline() {
   const badge = $('online-count');
@@ -124,10 +171,11 @@ function raceSummaryHtml(set) {
     ${row('Route', routeTxt)}
     ${row('Rules', `${preset ? esc(preset.name) : 'Custom'} · ${esc((ASSISTS.find(a => a.id === o.assist) || ASSISTS[0]).name)} · <span class="mult">×${mult.toFixed(2)}</span>`)}
     ${row('Avoiding', o.avoid.length ? o.avoid.map(cc => esc(ccName(cc))).join(', ') : 'No countries')}
+    ${row('Entry fee', set.stake ? `💰 ${fmt(set.stake)} coins each · the winner takes the pot${P.coins < set.stake ? ` · <b class="bad">you have ${fmt(P.coins)}</b>` : ''}` : 'Free')}
   </ul>`;
 }
 function openRaceSetup(st) {
-  const race = { draft: raceDraft(st.settings), extra: { mode: st.settings.mode || 'time', limit: st.settings.limit ?? 15, show: st.settings.show || 'live' },
+  const race = { draft: raceDraft(st.settings), extra: { mode: st.settings.mode || 'time', limit: st.settings.limit ?? 15, show: st.settings.show || 'live', stake: st.settings.stake || 0 },
     onSave: trip => {
       if (!amHost() || !ONLINE.state || ONLINE.state.phase === 'racing') return toast('Only the host can change the race, and not mid-race.');
       ONLINE.state.settings = { ...ONLINE.state.settings, ...trip, ...race.extra };
@@ -142,8 +190,9 @@ HOOKS.renderRaceSection = (el, race) => {
       ${group('mode', 'Win by', Object.entries(RACE_MODES).map(([id, m]) => [id, m.name, m.blurb]))}
       ${group('limit', 'Time limit', RACE_LIMITS.map(l => [l, l ? `${l} min` : 'No limit']))}
       ${group('show', 'Rivals', Object.entries(RACE_SHOW).map(([id, [n, b]]) => [id, n, b]))}
+      ${group('stake', 'Entry fee', RACE_STAKES.map(v => [v, v ? `${v} coins` : 'Free', v ? 'Winner takes the pot' : 'No coins at stake']))}
     </div></details>`;
-  el.querySelectorAll('[data-raceset]').forEach(b => b.onclick = () => { const k = b.dataset.raceset; x[k] = k === 'limit' ? +b.dataset.v : b.dataset.v; HOOKS.renderRaceSection(el, race); });
+  el.querySelectorAll('[data-raceset]').forEach(b => b.onclick = () => { const k = b.dataset.raceset; x[k] = k === 'limit' || k === 'stake' ? +b.dataset.v : b.dataset.v; HOOKS.renderRaceSection(el, race); });
 };
 
 // ---- the race itself
@@ -192,6 +241,9 @@ function enterRace(m) {
   if (S && !S.race) save();
   let next = saved && saved.race && saved.race.code === m.code && saved.race.n === r.n ? saved : buildRaceTrip(m);
   if (!next) return;
+  // the entry fee is paid once per race, even through a reload
+  const paidKey = `${m.code}:${r.n}`;
+  if (r.stake && !(P.racePaid || []).includes(paidKey)) { P.coins = Math.max(0, P.coins - r.stake); P.racePaid = [paidKey, ...(P.racePaid || [])].slice(0, 20); saveProfile(); renderCoins(); toast(`−${r.stake} coins entry fee · pot ${fmt(r.pot)}`); }
   S = next; S.race.startAt = r.startAt - ONLINE.offset; S.race.endAt = r.endAt ? r.endAt - ONLINE.offset : null;
   useVoyage(S); RULES = migrateRules(S.rules); hintIds = S.scouts ? S.scouts.map(s => s.id) : [];
   if (!S.stops.length && !S.done) lastMsg = { text: `Race to ${G.name[S.dest]}${S.via.length ? ` through ${S.via.map(x => G.name[x]).join(', ')}` : ''}. ${RACE_MODES[r.mode].blurb}.`, cls: '' };
@@ -247,8 +299,8 @@ function renderRacePanel() {
   const st = ONLINE.state;
   if (!inThisRace()) { el.innerHTML = `<div class="racehead"><b>🏁 Race ${esc(S.race.code)}</b><span class="hint">${ONLINE.code ? 'Reconnecting…' : 'Lobby closed'}</span></div>`; return; }
   const r = st.race, rows = raceRows(st);
-  el.innerHTML = `<div class="racehead"><b>🏁 ${esc(RACE_MODES[r.mode].name)}</b><span class="raceclock" id="race-clock"></span><button class="btn small" type="button" id="race-lobby">Lobby ${esc(st.code)}</button></div>
-    <ol class="racerows">${rows.map((p, i) => `<li class="${p.id === st.me ? 'me' : ''} ${p.done ? 'done' : ''} ${p.gaveUp ? 'out' : ''}"><span class="place">${p.done ? medal(i + 1) : ''}</span>${unameHtml(p.name)}<span class="racestat">${p.done ? `🏁 ${esc(resultValue(r.mode, { ...p, dnf: false }))}` : p.gaveUp ? 'gave up' : `${p.stops} ${p.stops === 1 ? 'stop' : 'stops'} · ${fmt(p.km)} km${r.mode === 'points' ? ` · ${fmt(p.pts)} pts` : ''}`}</span></li>`).join('')}</ol>`;
+  el.innerHTML = `<div class="racehead"><b>🏁 ${esc(RACE_MODES[r.mode].name)}</b>${r.stake ? `<span class="chip warn">💰 Pot ${fmt(r.pot)}</span>` : ''}<span class="raceclock" id="race-clock"></span><button class="btn small" type="button" id="race-lobby">Lobby ${esc(st.code)}</button></div>
+    <ol class="racerows">${rows.map((p, i) => `<li class="${p.id === st.me ? 'me' : ''} ${p.done ? 'done' : ''} ${p.gaveUp ? 'out' : ''}"><span class="place">${p.done ? medal(i + 1) : ''}</span>${coverMini(p.name)}${unameHtml(p.name)}<span class="racestat">${p.done ? `🏁 ${esc(resultValue(r.mode, { ...p, dnf: false }))}` : p.gaveUp ? 'gave up' : `${p.stops} ${p.stops === 1 ? 'stop' : 'stops'} · ${fmt(p.km)} km${r.mode === 'points' ? ` · ${fmt(p.pts)} pts` : ''}`}</span></li>`).join('')}</ol>`;
   $('race-lobby').onclick = () => openOnline('race');
   updateRaceClock();
 }
@@ -273,8 +325,8 @@ function showResults() {
 function resultsHtml(st) {
   const mode = st.race ? st.race.mode : 'time', winner = st.results.find(x => x.place === 1);
   return `<section>${winner ? `<p class="resultwin">${winner.id === st.me ? '🏆 You won!' : `🏆 ${unameHtml(winner.name)} won`}</p>` : '<p class="hint">Nobody reached the destination.</p>'}
-    <ol class="results">${st.results.map(x => `<li class="${x.id === st.me ? 'me' : ''}"><span class="place">${medal(x.place)}</span><button type="button" class="linkish" data-profile="${esc(x.name)}">${unameHtml(x.name)}</button><span class="val">${esc(resultValue(mode, x))}</span><small>${x.dnf ? '' : `${x.stops} stops · ${fmt(x.km)} km · ${fmt(x.total || 0)} pts`}</small></li>`).join('')}</ol>
-    <p class="hint" style="margin:10px 0 0">${esc(RACE_MODES[mode].name)}. Coins, flags and places from the race are yours to keep.</p></section>`;
+    <ol class="results">${st.results.map(x => `<li class="${x.id === st.me ? 'me' : ''}"><span class="place">${medal(x.place)}</span><span class="resname">${coverMini(x.name)}<button type="button" class="linkish" data-profile="${esc(x.name)}">${unameHtml(x.name)}</button></span><span class="val">${esc(resultValue(mode, x))}</span><small>${x.dnf ? '' : `${x.stops} stops · ${fmt(x.km)} km · ${fmt(x.total || 0)} pts`}</small></li>`).join('')}</ol>
+    <p class="hint" style="margin:10px 0 0">${esc(RACE_MODES[mode].name)}.${st.race && st.race.stake ? ` ${winner ? `The pot of ${fmt(st.race.pot)} coins went to ${winner.id === st.me ? 'you' : esc(displayName(winner.name))}.` : 'Nobody finished, so every entry fee went back.'}` : ''} Coins, flags and places from the race are yours to keep.</p></section>`;
 }
 
 // ---- the Online dialog: race lobby, leaderboard, account
@@ -283,7 +335,7 @@ function ensureOnlineDialogs() {
   document.body.insertAdjacentHTML('beforeend', `
 <dialog id="dlg-online"><div class="dlg">
   <header><div><h2>Online</h2><p>Race your friends, check the leaderboard, manage your account.</p></div><button class="x" type="button" data-close aria-label="Close">×</button></header>
-  <div class="tabs onlinetabs" role="tablist">${[['race', '🏁 Race'], ['board', '🏆 Leaderboard'], ['account', '👤 Account']].map(([id, n]) => `<button type="button" role="tab" data-otab="${id}">${n}</button>`).join('')}</div>
+  <div class="tabs onlinetabs" role="tablist">${[['race', '🏁 Race'], ['board', '🏆 Leaderboard'], ['bounty', '🎯 Bounties'], ['account', '👤 Account']].map(([id, n]) => `<button type="button" role="tab" data-otab="${id}">${n}</button>`).join('')}</div>
   <div id="online-body"></div>
 </div></dialog>
 <dialog id="dlg-profile"><div class="dlg">
@@ -310,6 +362,7 @@ function renderOnline() {
   const body = $('online-body');
   if (ONLINE.tab === 'board') return renderBoard(body);
   if (ONLINE.tab === 'account') return renderAccount(body);
+  if (ONLINE.tab === 'bounty') return renderBounties(body);
   renderLobby(body);
 }
 function renderLobby(body) {
@@ -336,8 +389,8 @@ function renderLobby(body) {
     <section class="lobbyhead"><div><div class="label">Lobby code</div><div class="lobbycode">${esc(st.code)}</div><p class="hint" style="margin:4px 0 0">Friends join with this code in Online → Race.${ONLINE.ws ? '' : ' <b>Reconnecting…</b>'}</p></div>
       <div class="tools"><button class="btn small" type="button" id="lob-copy">Copy code</button><button class="btn small" type="button" id="lob-leave">Leave lobby</button></div></section>
     <section><div class="label">Players · ${st.players.length}/8</div><ul class="lobbyplayers">${st.players.map(p => `<li>
-      <button type="button" class="linkish" data-profile="${esc(p.name)}">${unameHtml(p.name)}</button>${p.id === st.me ? '<span class="hint">(you)</span>' : ''}
-      <span class="lobbytags">${p.id === st.host ? '<span class="chip">👑 Host</span>' : ''}${!p.online ? '<span class="chip">Offline</span>' : p.id === st.host ? '' : p.ready ? '<span class="chip good">✓ Ready</span>' : '<span class="chip">Not ready</span>'}${host && p.id !== st.me && !racing ? `<button class="btn small" type="button" data-kick="${p.id}">Remove</button>` : ''}</span></li>`).join('')}</ul></section>
+      ${coverMini(p.name)}<span class="lobbyname"><button type="button" class="linkish" data-profile="${esc(p.name)}">${unameHtml(p.name)}</button>${p.id === st.me ? ' <span class="hint">(you)</span>' : ''}${titleHtml(p.name)}${mottoHtml(p.name)}</span>
+      <span class="lobbytags">${p.id === st.host ? '<span class="chip">👑 Host</span>' : ''}${!p.online ? '<span class="chip">Offline</span>' : p.id === st.host ? '' : p.ready && set.stake && !p.canPay ? '<span class="chip warn">💰 Can\'t pay the fee</span>' : p.ready ? '<span class="chip good">✓ Ready</span>' : '<span class="chip">Not ready</span>'}${host && p.id !== st.me && !racing ? `<button class="btn small" type="button" data-kick="${p.id}">Remove</button>` : ''}</span></li>`).join('')}</ul></section>
     ${racing ? `<section><div class="label">Race in progress</div><p class="hint" style="margin:6px 0 0">${st.race && st.race.progress[st.me] ? 'You are in this race.' : "You joined after the start, so you'll be in the next race."}</p></section>` : ''}
     ${st.phase === 'results' && st.results ? `<section><div class="label">Last race</div>${resultsHtml(st).replace(/^<section>|<\/section>$/g, '')}</section>` : ''}
     <section><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><div class="label">Race settings${host ? '' : ' · the host picks'}</div>${host && !racing ? '<button class="btn small" type="button" id="lob-edit">Edit race settings</button>' : ''}</div>
@@ -352,7 +405,7 @@ function renderLobby(body) {
   $('lob-copy').onclick = async () => { try { await navigator.clipboard.writeText(st.code); toast('Code copied'); } catch { toast(`The code is ${st.code}`); } };
   if ($('lob-edit')) $('lob-edit').onclick = () => openRaceSetup(st);
   body.querySelectorAll('[data-kick]').forEach(b => b.onclick = () => send({ t: 'kick', id: +b.dataset.kick }));
-  if ($('lob-ready')) $('lob-ready').onclick = () => send({ t: 'ready', on: !me.ready });
+  if ($('lob-ready')) $('lob-ready').onclick = () => { if (!me.ready && P.coins < raceStake()) toast(`The entry fee is ${raceStake()} coins and you have ${fmt(P.coins)}. You can watch this one.`); send({ t: 'ready', on: !me.ready, pay: P.coins >= raceStake() }); };
   if ($('lob-go')) $('lob-go').onclick = () => $('dlg-online').close();
   if ($('lob-end')) $('lob-end').onclick = e => { const b = e.currentTarget; if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = 'Tap again to end it'; return; } send({ t: 'end' }); };
   if ($('lob-start')) $('lob-start').onclick = () => {
@@ -363,16 +416,47 @@ function renderLobby(body) {
     setTimeout(() => {
       const plan = planRace(ONLINE.state); ONLINE.planning = false;
       if (plan.error) { toast(plan.error); renderOnline(); return; }
-      if (!send({ t: 'start', trip: plan.trip })) toast('Not connected to the lobby. Try again in a moment.');
+      if (P.coins < raceStake()) { toast(`The entry fee is ${raceStake()} coins and you have ${fmt(P.coins)}. Lower it to start.`); renderOnline(); return; }
+      if (!send({ t: 'start', trip: plan.trip, pay: true })) toast('Not connected to the lobby. Try again in a moment.');
       renderOnline();
     }, 60);
   };
 }
-async function loadBoard(force) {
-  if (!force && ONLINE.board && Date.now() - ONLINE.boardAt < 20000) return ONLINE.board;
-  const r = await api('/api/leaderboard');
-  if (r.ok) { ONLINE.board = r.body.rows; ONLINE.boardAt = Date.now(); noteNicks(r.body.rows); }
-  return ONLINE.board;
+// ---- the leaderboard: one category at a time, with the players you follow ranked in it wherever they are
+const BOARD_CATS = [
+  { id: 'flags', name: '🚩 Flags', col: 'Flags', blurb: 'Ranked by flags collected.' },
+  { id: 'rating', name: '📈 Rating', col: 'Rating', blurb: 'Ranked by explorer rating: recent trips, places known and flags.' },
+  { id: 'places', name: '📍 Places known', col: 'Places', blurb: 'Ranked by places known, from trips and Study.' },
+  { id: 'countries', name: '🛂 Countries', col: 'Countries', blurb: 'Ranked by countries stamped.' },
+  { id: 'wins', name: '🏁 Race wins', col: 'Wins', blurb: 'Ranked by races won against at least one other player.' },
+  { id: 'EU', name: 'Europe', col: 'Places', blurb: 'Top European explorers: places known in Europe.' },
+  { id: 'AS', name: 'Asia', col: 'Places', blurb: 'Top Asian explorers: places known in Asia.' },
+  { id: 'AF', name: 'Africa', col: 'Places', blurb: 'Top African explorers: places known in Africa.' },
+  { id: 'NA', name: 'North America', col: 'Places', blurb: 'Top North American explorers: places known there.' },
+  { id: 'SA', name: 'South America', col: 'Places', blurb: 'Top South American explorers: places known there.' },
+  { id: 'OC', name: 'Oceania', col: 'Places', blurb: 'Top explorers of Oceania: places known there.' },
+];
+ONLINE.by = 'flags'; ONLINE.boards = {};
+const rivals = () => (P.rivals || []).filter(n => nameInfo(n).fruit);
+function toggleRival(name) {
+  const list = rivals();
+  if (list.includes(name)) P.rivals = list.filter(n => n !== name);
+  else if (list.length >= 30) { toast('You can follow 30 players. Unfollow someone first.'); return false; }
+  else P.rivals = [...list, name];
+  saveProfile(); ONLINE.boards = {}; toast(P.rivals.includes(name) ? `Following ${displayName(name)}` : `Stopped following ${displayName(name)}`);
+  return true;
+}
+async function loadBoard(force, by = ONLINE.by) {
+  const have = ONLINE.boards[by];
+  if (!force && have && Date.now() - have.at < 20000) return have;
+  const r = await api(`/api/leaderboard?by=${by}&also=${rivals().join(',')}`);
+  if (r.ok) { ONLINE.boards[by] = { ...r.body, at: Date.now() }; noteNicks([...r.body.rows, ...(r.body.pinned || []), ...(r.body.me ? [r.body.me] : [])]); }
+  return ONLINE.boards[by];
+}
+const starBtn = n => n === CLOUD.user.name ? '<span class="rowtools"></span>' : `<span class="rowtools"><button type="button" class="iconbtn" data-rival="${esc(n)}" aria-pressed="${rivals().includes(n)}" title="${rivals().includes(n) ? 'Stop following' : 'Follow: keep them on your Following board'}">${rivals().includes(n) ? '★' : '☆'}</button><button type="button" class="iconbtn" data-pass="${esc(n)}" title="Open their passport">📖</button></span>`;
+function wireBoardRows(body, redraw) {
+  body.querySelectorAll('[data-rival]').forEach(b => b.onclick = () => { if (toggleRival(b.dataset.rival)) redraw(); });
+  body.querySelectorAll('[data-pass]').forEach(b => b.onclick = () => openPassportOf(b.dataset.pass));
 }
 // ---- daily and weekly boards
 const CHAL = { kind: 'flags', boards: {}, posted: {} };
@@ -404,14 +488,30 @@ function refreshChallengeLine() { const el = $('chal-rank'); if (el) el.innerHTM
 // the finish card is redrawn often, so its "see the board" link is handled once, here
 document.addEventListener('click', e => { const b = e.target.closest('[data-openboard]'); if (b) { CHAL.kind = b.dataset.openboard; openOnline('board'); } });
 function renderBoard(body) {
-  if (CHAL.kind !== 'flags') return renderChallengeBoard(body);
-  const rows = ONLINE.board, me = CLOUD.user.name;
-  body.innerHTML = `${boardSwitch()}<section><p class="hint" style="margin:0 0 10px">Ranked by flags collected. Tap a name to see their profile.</p>
-    ${rows ? `<table class="board"><thead><tr><th>#</th><th>Player</th><th>🚩 Flags</th><th class="wide">League</th><th>Races won</th></tr></thead><tbody>${rows.map((x, i) => `<tr class="${x.name === me ? 'me' : ''}"><td>${i < 3 ? medal(i + 1) : i + 1}</td><td><button type="button" class="linkish" data-profile="${esc(x.name)}">${unameHtml(x.name)}</button></td><td><b>${fmt(x.flags)}</b></td><td class="wide">${esc((LEAGUES.find(l => l.id === x.league) || LEAGUES[0]).name)}</td><td>${fmt(x.wins)}<small class="hint"> / ${fmt(x.races)}</small></td></tr>`).join('')}</tbody></table>` : '<p class="hint">Loading…</p>'}</section>`;
-  loadBoard().then(b => { if (b !== rows && $('dlg-online').open && ONLINE.tab === 'board') renderBoard(body); });
-  wireBoardSwitch(body);
+  if (CHAL.kind === 'daily' || CHAL.kind === 'weekly') return renderChallengeBoard(body);
+  const following = CHAL.kind === 'following', cat = BOARD_CATS.find(c => c.id === ONLINE.by) || BOARD_CATS[0], b = ONLINE.boards[cat.id], me = CLOUD.user.name;
+  const catSel = `<div class="catrow"><label class="label" for="board-cat">Category</label><select class="field" id="board-cat">
+      <optgroup label="Everywhere">${BOARD_CATS.slice(0, 5).map(c => `<option value="${c.id}" ${c.id === cat.id ? 'selected' : ''}>${c.name}</option>`).join('')}</optgroup>
+      <optgroup label="Top explorers of a continent">${BOARD_CATS.slice(5).map(c => `<option value="${c.id}" ${c.id === cat.id ? 'selected' : ''}>${c.name}</option>`).join('')}</optgroup></select></div>`;
+  const row = (x, rank, extra = '') => `<tr class="${x.name === me ? 'me' : ''} ${rivals().includes(x.name) ? 'rival' : ''}"><td>${rank <= 3 ? medal(rank) : rank}</td><td><button type="button" class="linkish" data-profile="${esc(x.name)}">${unameHtml(x.name)}</button></td><td><b>${fmt(x.score)}</b>${extra}</td><td class="wide">${esc((LEAGUES.find(l => l.id === x.league) || LEAGUES[0]).name)}</td><td>${starBtn(x.name)}</td></tr>`;
+  const head = `<thead><tr><th>#</th><th>Player</th><th>${esc(cat.col)}</th><th class="wide">League</th><th></th></tr></thead>`;
+  let table = '<p class="hint">Loading…</p>';
+  if (b && following) {
+    const people = [...(b.pinned || []), ...(b.me ? [b.me] : [])].sort((x, y) => x.rank - y.rank || x.name.localeCompare(y.name));
+    const mine = b.me ? b.me.score : 0;
+    const vs = x => { if (x.name === me) return ' <small class="hint">you</small>'; const d = x.score - mine; return ` <small class="${d > 0 ? 'ahead' : d < 0 ? 'behind' : 'hint'}">${d > 0 ? `${fmt(d)} ahead` : d < 0 ? `${fmt(-d)} behind` : 'level'}</small>`; };
+    table = rivals().length ? `<table class="board">${head}<tbody>${people.map(x => row(x, x.rank, vs(x))).join('')}</tbody></table>`
+      : `<p class="hint">Nobody yet. Tap ☆ beside a player on the leaderboard, or Follow on their profile, and they'll be ranked here next to you in every category.</p>`;
+  } else if (b) {
+    table = b.rows.length ? `<table class="board">${head}<tbody>${b.rows.map((x, i) => row(x, i + 1)).join('')}</tbody></table>` : '<p class="hint">Nobody on this board yet.</p>';
+    if (b.me && !b.rows.some(x => x.name === me)) table += `<p class="hint" style="margin:8px 0 0">You're #${fmt(b.me.rank)} with ${fmt(b.me.score)}.</p>`;
+  }
+  body.innerHTML = `${boardSwitch()}<section>${catSel}<p class="hint" style="margin:8px 0 10px">${following ? `The players you follow, ranked by ${esc(cat.id.length === 2 ? `places known in ${cat.name}` : cat.name.replace(/^\S+\s/, '').toLowerCase())}. ` : esc(cat.blurb) + ' '}Tap a name for their profile, 📖 for their passport.</p>${table}</section>`;
+  $('board-cat').onchange = e => { ONLINE.by = e.target.value; renderBoard(body); };
+  wireBoardSwitch(body); wireBoardRows(body, () => renderBoard(body));
+  if (!b || Date.now() - b.at > 20000) loadBoard(false, cat.id).then(nb => { if (nb && nb !== b && $('dlg-online').open && ONLINE.tab === 'board' && ONLINE.by === cat.id) renderBoard(body); });
 }
-const boardSwitch = () => `<div class="seg boardseg" role="group" aria-label="Which board">${[['flags', '🚩 Flags'], ['daily', '📅 Today'], ['weekly', '🏔️ This week']].map(([k, n]) => `<button type="button" data-board="${k}" aria-pressed="${CHAL.kind === k}">${n}</button>`).join('')}</div>`;
+const boardSwitch = () => `<div class="seg boardseg" role="group" aria-label="Which board">${[['flags', '🌍 Global'], ['following', `⭐ Following${rivals().length ? ` · ${rivals().length}` : ''}`], ['daily', '📅 Today'], ['weekly', '🏔️ This week']].map(([k, n]) => `<button type="button" data-board="${k}" aria-pressed="${CHAL.kind === k}">${n}</button>`).join('')}</div>`;
 function wireBoardSwitch(body) { body.querySelectorAll('[data-board]').forEach(b => b.onclick = () => { CHAL.kind = b.dataset.board; renderBoard(body); }); }
 function renderChallengeBoard(body) {
   const kind = CHAL.kind, period = periodOf(kind), b = CHAL.boards[kind + ':' + period], weekly = kind === 'weekly';
@@ -438,7 +538,7 @@ async function loadCrowns(force) {
   const me = CLOUD.user.name, held = Object.keys(CROWNS.data).filter(cc => CROWNS.data[cc].name === me), before = P.crownsHeld;
   if (Array.isArray(before)) {
     const won = held.filter(cc => !before.includes(cc)), lost = before.filter(cc => !held.includes(cc));
-    for (const cc of won) tick(`👑 You now hold the crown of <b>${esc(ccName(cc))}</b>`);
+    for (const cc of won) { tick(`👑 You now hold the crown of <b>${esc(ccName(cc))}</b>`); feedAdd({ k: 'crown', cc }); }
     for (const cc of lost) { const c = CROWNS.data[cc]; tick(`👑 ${c ? `<b>${esc(c.nick || nameInfo(c.name).name)}</b> took` : 'You lost'} your crown of <b>${esc(ccName(cc))}</b>`); }
     if (won.length) sfx('crown');
   }
@@ -470,18 +570,51 @@ function renderAccount(body) {
 
 // ---- profiles
 // what the profile endpoint sends back, shaped like the parts of a save the Passport reads
-const passportOf = pr => ({ visits: pr.visits || {}, study: pr.study || {}, flagsSeen: pr.flagsSeen || {}, stamps: pr.stamps || {}, history: pr.history || [],
+const passportOf = (pr, x = {}) => ({ visits: pr.visits || {}, study: pr.study || {}, flagsSeen: pr.flagsSeen || {}, stamps: pr.stamps || {}, history: pr.history || [],
   achievements: pr.achievements || {}, trips: pr.trips || 0, km: pr.km || 0, ferries: pr.ferries || 0, feats: pr.feats || {}, cover: pr.cover || null,
-  equip: pr.equip || {}, flagStreak: pr.flagStreak || null, flagSets: pr.flagSets || {}, holo: pr.holo || {} });
+  equip: pr.equip || {}, flagStreak: pr.flagStreak || null, flagSets: pr.flagSets || {}, holo: pr.holo || {},
+  showcase: pr.showcase || [], feed: pr.feed || [], title: x.title || null, flair: x.flair || null, motto: x.motto || null });
+// straight to someone's passport, from a leaderboard row or a race
+async function openPassportOf(name, tab) {
+  if (name === CLOUD.user.name) { if ($('dlg-online').open) $('dlg-online').close(); openPassport(null); return; }
+  const r = await api('/api/profile/' + encodeURIComponent(name));
+  if (!r.ok) { toast(r.body.error || 'Could not open that passport.'); return; }
+  noteNicks([r.body]);
+  document.querySelectorAll('dialog[open]').forEach(d => d.close());
+  openPassport({ name: r.body.name, label: displayName(r.body.name), data: passportOf(r.body.profile, r.body) }, tab);
+}
 function nickEditorHtml(id) {
-  const u = CLOUD.user;
-  return `<section class="nickedit"><div class="label">Nickname</div>
-    <p class="hint" style="margin:6px 0 8px">What other players see. It doesn't have to be unique, and your fruit stays beside it. You still log in as <b>${esc(u.name)}</b>.</p>
-    <form class="nickrow" id="${id}-nickform"><input class="field" id="${id}-nick" maxlength="24" placeholder="${esc(u.name)}" value="${esc(u.nick || '')}" aria-label="Nickname" autocomplete="off" spellcheck="false">
+  const u = CLOUD.user, p = nameInfo(u.name), been = new Set(Object.keys(P.stamps || {}).filter(k => !k.startsWith('area:')));
+  const all = G.countries.map(c => c[0]).filter(cc => flagEntry('c:' + cc) || emojiFlag(cc)).sort((a, b) => ccName(a).localeCompare(ccName(b)));
+  const titles = titlesEarned(), mine = myTitle();
+  return `<section class="nickedit"><div class="label">How other players see you</div>
+    <div class="idpreview">${unameHtml(u.name, 'big')}${titleHtml(u.name)}</div>
+    <p class="hint" style="margin:6px 0 10px"><span class="avfruit sample" style="--uc:${p.color}">${p.emoji}</span> The round fruit badge is your username, <b>${esc(u.name)}</b>, and always stays, so two players with the same nickname can be told apart. <span class="flair sample">${P.flair ? `<b>${emojiFlag(P.flair)}</b>` : '<b>🏳️</b>'}</span> The framed flag is the country you represent. Vehicles never appear beside names.</p>
+    <form class="nickrow" id="${id}-nickform"><label class="label" for="${id}-nick" style="flex-basis:100%">Nickname</label><input class="field" id="${id}-nick" maxlength="24" placeholder="${esc(u.name)}" value="${esc(u.nick || '')}" aria-label="Nickname" autocomplete="off" spellcheck="false">
       <button class="btn go" type="submit">Save</button>${u.nick ? `<button class="btn" type="button" id="${id}-nickclear">Use ${esc(u.name)}</button>` : ''}</form>
-    <div class="msg" id="${id}-nickmsg"></div></section>`;
+    <div class="msg" id="${id}-nickmsg"></div>
+    <div class="idgrid">
+      <label><span class="label">Representing</span><select class="field" id="${id}-flair"><option value="">No flag</option>
+        ${been.size ? `<optgroup label="Countries you've stamped">${all.filter(cc => been.has(cc)).map(cc => `<option value="${cc}" ${P.flair === cc ? 'selected' : ''}>${emojiFlag(cc)} ${esc(ccName(cc))}</option>`).join('')}</optgroup>` : ''}
+        <optgroup label="Every country">${all.map(cc => `<option value="${cc}" ${P.flair === cc && !been.has(cc) ? 'selected' : ''}>${emojiFlag(cc)} ${esc(ccName(cc))}</option>`).join('')}</optgroup></select></label>
+      <label><span class="label">Title · ${titles.length} earned</span><select class="field" id="${id}-title"><option value="">No title</option>${titles.map(t => `<option value="${esc(t.id)}" ${mine === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></label>
+    </div>
+    <details class="fold titlelist"><summary><span class="label">Titles to earn · ${TITLES.length - titles.filter(t => !t.id.startsWith('spec:')).length} left</span></summary><div class="foldbody"><ul class="list">${TITLES.filter(t => !titles.some(e => e.id === t.id)).map(t => `<li><span>${esc(t.name)}</span><span class="hint">${esc(t.desc)}</span></li>`).join('')}<li><span>&lt;Country&gt; Specialist</span><span class="hint">Reach Native mastery (60 places) in a country.</span></li></ul></div></details>
+  </section>`;
+}
+// flag and title are part of your save; the lobby you're in is told straight away
+function setLook(k, v) {
+  if (v) P[k] = v; else delete P[k];
+  saveProfile(); applyLook();
+}
+function applyLook() {
+  noteNicks([]);
+  if ($('btn-me')) $('btn-me').innerHTML = unameHtml(CLOUD.user.name);
+  sendIdent(); if (ONLINE.state) { renderRacePanel(); if ($('dlg-online').open) renderOnline(); }
 }
 async function setNick(nick) {
+  const bad = nick && CLOUD.names.nickProblem && CLOUD.names.nickProblem(nick);
+  if (bad) return bad;
   const r = await api('/api/nick', { method: 'POST', body: JSON.stringify({ nick }) });
   if (!r.ok) return r.body.error || 'Could not save that nickname.';
   CLOUD.user.nick = r.body.nick; noteNicks([CLOUD.user]);
@@ -493,6 +626,8 @@ function wireNickEditor(id, after) {
   const say = (text, cls) => { const m = $(id + '-nickmsg'); if (m) { m.className = 'msg ' + cls; m.textContent = text; } };
   // the form redraws itself after a save, so the confirmation goes into the new one
   const done = async () => { if (after) await after(); say(CLOUD.user.nick ? `Players now see you as ${CLOUD.user.nick}.` : 'Players see your username again.', 'good'); };
+  $(id + '-flair').onchange = e => { setLook('flair', e.target.value); if (after) after(); };
+  $(id + '-title').onchange = e => { setLook('title', e.target.value); if (after) after(); };
   $(id + '-nickform').onsubmit = async e => { e.preventDefault(); say('Saving…', ''); const err = await setNick($(id + '-nick').value); if (err) say(err, 'bad'); else done(); };
   if ($(id + '-nickclear')) $(id + '-nickclear').onclick = async () => { const err = await setNick(''); if (err) say(err, 'bad'); else done(); };
 }
@@ -503,14 +638,15 @@ async function openProfile(name) {
   const r = await api('/api/profile/' + encodeURIComponent(name));
   if (!r.ok) { $('profile-body').innerHTML = `<section><p class="msg bad">${esc(r.body.error || 'Could not load this profile.')}</p></section>`; return; }
   noteNicks([r.body]);
-  $('profile-title').innerHTML = unameHtml(r.body.name, 'big');
+  $('profile-title').innerHTML = unameHtml(r.body.name, 'big') + titleHtml(r.body.name) + mottoHtml(r.body.name);
   renderProfile(r.body);
 }
 function ago(t) { const m = Math.round((Date.now() - t) / 60000); return m < 2 ? 'just now' : m < 60 ? `${m} min ago` : m < 48 * 60 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`; }
 function renderProfile(x, showAll) {
   const pr = x.profile, league = LEAGUES.find(l => l.id === x.league) || LEAGUES[0], cat = flagCatalog();
   const mine = CLOUD.user && x.name === CLOUD.user.name;
-  $('profile-sub').textContent = `${x.nick ? `@${x.name} · ` : ''}#${x.rank} on the leaderboard · joined ${new Date(x.created).toLocaleDateString()} · seen ${ago(x.seen)}`;
+  $('profile-sub').textContent = `${x.nick ? `@${x.name} · ` : ''}${x.flair ? `representing ${ccName(x.flair)} · ` : ''}#${x.rank} on the leaderboard · joined ${new Date(x.created).toLocaleDateString()} · seen ${ago(x.seen)}`;
+  const other = passportOf(pr, x), show = showcaseOf(mine ? P : other, x.name), title = titleName(mine ? myTitle() : x.title), following = rivals().includes(x.name);
   const keys = Object.keys(pr.flagsSeen), flags = cat ? keys.map(k => cat.byKey.get(k)).filter(Boolean) : [];
   const rarity = RARITY.map((r, i) => flags.filter(f => f.rarity === i).length), kinds = FLAG_KINDS.map(k => flags.filter(f => f.kind === k.id).length);
   flags.sort((a, b) => b.rarity - a.rarity || pr.flagsSeen[b.key] - pr.flagsSeen[a.key]);
@@ -518,11 +654,14 @@ function renderProfile(x, showAll) {
   const countries = Object.keys(pr.stamps).filter(k => !k.startsWith('area:')), visas = Object.keys(pr.stamps).filter(k => k.startsWith('area:'));
   const stat = (label, value) => `<div class="stat"><span class="label">${label}</span><b>${value}</b></div>`;
   $('profile-body').innerHTML = `
-    <section class="profilehead"><div class="profilecover">${coverSvg({ ...((pr.cover && COVERS.data && countryCover(pr.cover, league)) || { color: league.color, ink: league.ink, emblem: league.emblem, title: league.title, top: 'STOPOVER' }), bottom: displayName(x.name).toUpperCase() })}
+    <section class="profilehead"><div class="profilecover">${coverWithShowcase(coverSvg({ ...((pr.cover && COVERS.data && countryCover(pr.cover, league)) || { color: league.color, ink: league.ink, emblem: league.emblem, title: league.title, top: 'STOPOVER' }), bottom: displayName(x.name).toUpperCase(), sub: title, finish: finishOf(mine ? P : other) }), show)}
         <span class="pfleague" style="--lc:${league.color}" title="League · rating ${fmt(x.rating)}"><i></i>${esc(league.name)}</span></div>
       <div class="stats profilestats">${stat('🚩 Flags', fmt(x.flags))}${stat('League', esc(league.name))}${stat('Rating', fmt(x.rating))}${stat('Trips', fmt(pr.trips))}${stat('Distance', fmt(pr.km) + ' km')}${stat('Places known', fmt(x.places))}${stat('Countries', fmt(countries.length))}${stat('Races won', `${fmt(x.wins)}<small class="hint"> / ${fmt(x.races)}</small>`)}${stat('Achievements', fmt(Object.keys(pr.achievements || {}).length))}</div></section>
     ${HOOKS.crownsOf(x.name).length ? `<section><div class="label">👑 Crowns · ${HOOKS.crownsOf(x.name).length}</div><p class="hint" style="margin:4px 0 8px">Countries where nobody knows more places.</p><div class="tagrow">${HOOKS.crownsOf(x.name).sort((a, b) => ccName(a).localeCompare(ccName(b))).map(cc => `<span class="tag">${countryFlag(cc)}${esc(ccName(cc))} <small class="hint">${fmt(CROWNS.data[cc].n)}</small></span>`).join('')}</div></section>` : ''}
-    <section class="pfpassport"><button class="btn go big" type="button" id="pf-passport">📖 Open ${mine ? 'your' : `${esc(displayName(x.name))}'s`} passport</button><span class="hint">Mastery map, stamps, country covers, the full flag collection, stats and trips${mine ? '' : ', just as they see them'}.</span></section>
+    <section class="pfpassport"><button class="btn go big" type="button" id="pf-passport">📖 Open ${mine ? 'your' : `${esc(displayName(x.name))}'s`} passport</button>${mine ? '' : '<button class="btn big" type="button" id="pf-compare">⚖️ Compare with me</button>'}<span class="hint">Mastery map, stamps, country covers, the full flag collection, stats and trips${mine ? '' : ', just as they see them'}.</span></section>
+    ${mine ? '' : `<section class="pfactions"><button class="btn" type="button" id="pf-follow" aria-pressed="${following}">${following ? '★ Following' : '☆ Follow'}</button><span class="hint">${following ? 'On your Following board.' : 'Keep them on your Following board to track where you stand.'}</span>${x.nick ? '<button class="btn small" type="button" id="pf-report">Report nickname</button>' : ''}<span class="msg" id="pf-reportmsg"></span></section>`}
+    ${show.length ? `<section><div class="label">Showcase</div>${showcaseListHtml(show)}</section>` : ''}
+    ${(mine ? P.feed || [] : other.feed).length ? `<section><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div class="label">Recent expeditions</div>${(mine ? P.feed || [] : other.feed).length > 5 ? '<button class="btn small" type="button" id="pf-feed">See all</button>' : ''}</div>${feedHtml(mine ? P.feed : other.feed, 5)}</section>` : ''}
     ${mine ? nickEditorHtml('pf') : ''}
     <section><div class="label">Flag collection · ${esc(flagRankOf(keys.length).name)}</div>
       ${cat ? `<div class="raritychips" style="margin:8px 0">${RARITY.map((r, i) => `<span style="--rc:${r.color}"><i></i>${r.name} <b>${fmt(rarity[i])}</b></span>`).join('')}</div>
@@ -535,9 +674,110 @@ function renderProfile(x, showAll) {
     ${x.recentRaces.length ? `<section><div class="label">Recent races</div><ul class="list profiletrips">${x.recentRaces.map(r => `<li><span>${esc((RACE_MODES[r.mode] || RACE_MODES.time).name)} <small class="hint">${new Date(r.finished).toLocaleDateString()}</small></span><b>${r.place ? `${medal(r.place)} of ${r.players}` : 'Did not finish'}</b></li>`).join('')}</ul></section>` : ''}`;
   if (pr.cover && !COVERS.data) loadCovers().then(() => { if ($('dlg-profile').open && $('pf-passport')) renderProfile(x, showAll); });
   if ($('pf-all')) $('pf-all').onclick = () => renderProfile(x, true);
-  $('pf-passport').onclick = () => mine ? openPassport(null) : openPassport({ name: x.name, label: displayName(x.name), data: passportOf(pr) });
+  const theirs = tab => openPassport({ name: x.name, label: displayName(x.name), data: other }, tab);
+  $('pf-passport').onclick = () => mine ? openPassport(null) : theirs();
+  if ($('pf-compare')) $('pf-compare').onclick = () => theirs('compare');
+  if ($('pf-feed')) $('pf-feed').onclick = () => { if (!mine) return theirs('feed'); openPassport(null); ppTab = 'feed'; renderPassport(); ppMap.draw(); };
+  if ($('pf-follow')) $('pf-follow').onclick = () => { if (toggleRival(x.name)) renderProfile(x, showAll); };
+  if ($('pf-report')) $('pf-report').onclick = async e => {
+    const b = e.currentTarget, m = $('pf-reportmsg');
+    if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = 'Tap again to report'; m.className = 'msg'; m.textContent = `Report "${x.nick}" as offensive? Three reports take a nickname down.`; return; }
+    b.disabled = true;
+    const r = await api('/api/report', { method: 'POST', body: JSON.stringify({ name: x.name }) });
+    m.className = 'msg ' + (r.ok ? 'good' : 'bad');
+    m.textContent = !r.ok ? r.body.error || 'Could not send the report.' : r.body.removed ? 'Thanks. That nickname has been taken down.' : 'Thanks. The report is in.';
+    b.textContent = 'Reported';
+  };
   if (mine) wireNickEditor('pf', () => openProfile(x.name));
 }
+
+// ---- bounties: coins put up on a route you finished, for whoever beats your score on it first
+// The route is fixed (same start, same destination, same vehicle and rules), so it's you against their best.
+const BOUNTY_REWARDS = [100, 250, 500, 1000, 2000];
+const BOUNTY = { data: null, at: 0, posting: false, msg: '' };
+async function loadBounties(force) {
+  if (!force && BOUNTY.data && Date.now() - BOUNTY.at < 20000) return BOUNTY.data;
+  const r = await api('/api/bounties'); if (!r.ok) return BOUNTY.data;
+  BOUNTY.data = r.body; BOUNTY.at = Date.now();
+  noteNicks([...r.body.open, ...r.body.mine].flatMap(b => [b.poster, b.target, b.claimer].filter(Boolean)));
+  settleBounties();
+  return BOUNTY.data;
+}
+// your own bounties that ran out come back to you, and the ones someone beat are announced, each once
+async function settleBounties() {
+  const seen = P.bountySeen = P.bountySeen || [];
+  for (const b of BOUNTY.data.mine) {
+    if (b.claimer && !seen.includes(b.id)) { seen.push(b.id); tick(`🎯 <b>${esc(displayName(b.claimer.name))}</b> beat your ${fmt(b.beat)} and took your ${fmt(b.reward)}-coin bounty`); }
+    else if (!b.claimer && !b.refunded && b.expires < Date.now()) {
+      const r = await api(`/api/bounty/${b.id}/refund`, { method: 'POST', body: '{}' });
+      if (r.ok) { b.refunded = true; addCoins(r.body.reward, 'bounty ran out unclaimed'); }
+    }
+  }
+  P.bountySeen = seen.slice(-80); saveProfile();
+}
+const bountyRoute = spec => { const a = G.byGid.get(spec.from), b = G.byGid.get(spec.to); return a == null || b == null ? null : { a, b }; };
+const daysLeft = t => { const d = Math.ceil((t - Date.now()) / 864e5); return d <= 1 ? 'last day' : `${d} days left`; };
+function bountyLine(b) {
+  const r = bountyRoute(b.spec), v = VEHICLES[b.spec.vehicle];
+  if (!r) return '';
+  const preset = PRESETS.find(p => p.assist === b.spec.assist && Object.entries(migrateRules(p.rules)).every(([k, x]) => migrateRules(b.spec.rules)[k] === x));
+  return `${placeFlag(r.a)}<b>${esc(G.name[r.a])}</b> → ${placeFlag(r.b)}<b>${esc(G.name[r.b])}</b> <small class="hint">${v.icon} ${esc(v.name)} · ${esc(lengthOf(b.spec.length).name)} · ${preset ? esc(preset.name) : 'custom'} rules</small>`;
+}
+function renderBounties(body) {
+  const d = BOUNTY.data;
+  const openRow = b => `<li class="bounty"><div><div>${bountyLine(b)}</div><small>Beat ${unameHtml(b.poster.name)}'s <b>${fmt(b.beat)} pts</b>${b.target ? ` · <b>just for you</b>` : ''} · ${daysLeft(b.expires)}</small></div>
+      <span class="reward">💰 ${fmt(b.reward)}</span><button class="btn small go" type="button" data-attempt="${b.id}">Take it on</button></li>`;
+  const mineRow = b => `<li class="bounty mine"><div><div>${bountyLine(b)}</div><small>Your ${fmt(b.beat)} pts${b.target ? ` · for ${unameHtml(b.target.name)}` : ''} · ${b.claimer ? `beaten by ${unameHtml(b.claimer.name)} with ${fmt(b.claimTotal)}` : b.refunded ? 'ran out, coins returned' : daysLeft(b.expires)}</small></div><span class="reward">💰 ${fmt(b.reward)}</span></li>`;
+  body.innerHTML = `<section><p class="hint" style="margin:0 0 10px">Finish a trip and you can put coins on its route from the finish card. Whoever first beats your score on the same route, with the same vehicle and rules, takes them. Unclaimed bounties come back to you after 7 days.</p>
+      ${!d ? '<p class="hint">Loading…</p>' : d.open.length ? `<ul class="bounties">${d.open.map(openRow).join('')}</ul>` : '<p class="hint">No open bounties right now. Post the first one from your next finished trip.</p>'}</section>
+    ${d && d.mine.length ? `<section><div class="label">Your bounties</div><ul class="bounties">${d.mine.map(mineRow).join('')}</ul></section>` : ''}`;
+  body.querySelectorAll('[data-attempt]').forEach(b => b.onclick = () => attemptBounty(d.open.find(x => x.id === +b.dataset.attempt)));
+  if (!d || Date.now() - BOUNTY.at > 20000) loadBounties(true).then(() => { if ($('dlg-online').open && ONLINE.tab === 'bounty') renderBounties(body); });
+}
+function attemptBounty(b) {
+  if (!b || !bountyRoute(b.spec)) { toast('That route uses places your copy of the game does not have. Reload the page.'); return; }
+  const o = { ...opts, vehicle: b.spec.vehicle, length: b.spec.length, from: b.spec.from, to: b.spec.to, via: [], avoid: [], rules: b.spec.rules, assist: b.spec.assist, classic: false, voyage: 'coast' };
+  if (!startTrip(o, false)) return;
+  S.bounty = { id: b.id, beat: b.beat, reward: b.reward, poster: b.poster.name };
+  save(); render(); $('dlg-online').close();
+  setMsg(`🎯 Bounty: beat ${displayName(b.poster.name)}'s ${fmt(b.beat)} points from ${G.name[S.start]} to ${G.name[S.dest]} for ${fmt(b.reward)} coins.`, 'good');
+}
+async function claimBounty() {
+  const b = S.bounty; if (!b || b.result) return;
+  if (S.total <= b.beat) { b.result = `${fmt(S.total)} didn't beat ${fmt(b.beat)}. Take it on again from the Bounties tab.`; save(); render(); return; }
+  b.result = 'Checking the bounty…'; render();
+  const r = await api(`/api/bounty/${b.id}/claim`, { method: 'POST', body: JSON.stringify({ total: S.total }) });
+  if (r.ok && r.body.ok) { addCoins(r.body.reward, 'bounty claimed'); feedAdd({ k: 'bounty', reward: r.body.reward, dest: G.gid[S.dest] }); b.result = `💰 You beat ${displayName(b.poster)} and took ${fmt(r.body.reward)} coins.`; sfx('crown'); }
+  else b.result = r.body.error || "The bounty couldn't be claimed.";
+  BOUNTY.at = 0; save(); if (S.bounty === b) render();
+}
+// the finish card: a bounty's result, or the offer to put one on the route you just drove
+const canPostBounty = () => S && S.done && !S.gaveUp && !S.race && !S.daily && !S.weekly && !S.stakes && !S.bounty && !S.voyage && !S.classic && !S.posted;
+HOOKS.finishExtra = () => {
+  if (S.bounty) return `<p class="chalrank">🎯 ${esc(S.bounty.result || 'Checking the bounty…')}</p>`;
+  if (S.posted) return `<p class="chalrank">🎯 Your ${fmt(S.posted)}-coin bounty is up. See it in Online → Bounties.</p>`;
+  if (!canPostBounty()) return '';
+  const can = BOUNTY_REWARDS.filter(x => x <= P.coins);
+  return `<details class="fold bountypost"><summary><span class="label">🎯 Put a bounty on this route</span></summary><div class="foldbody">
+    <p class="hint" style="margin:0 0 8px">Whoever first beats your ${fmt(S.total)} points from ${esc(G.name[S.start])} to ${esc(G.name[S.dest])}, with the same vehicle and rules, takes the coins. If nobody does in 7 days, they come back.</p>
+    ${can.length ? `<div class="bountyform"><label><span class="label">Reward</span><select class="field" id="bp-reward">${can.map(x => `<option value="${x}">${fmt(x)} coins</option>`).join('')}</select></label>
+      <label><span class="label">Open to</span><select class="field" id="bp-target"><option value="">Anyone</option>${rivals().map(n => `<option value="${esc(n)}">${esc(displayName(n))} only</option>`).join('')}</select></label>
+      <button class="btn go" type="button" id="bp-post">Post the bounty</button></div>` : `<p class="hint">You need at least ${BOUNTY_REWARDS[0]} coins.</p>`}
+    <div class="msg bad" id="bp-msg"></div></div></details>`;
+};
+HOOKS.wireFinishExtra = () => {
+  if (!$('bp-post')) return;
+  $('bp-post').onclick = async e => {
+    const reward = +$('bp-reward').value, target = $('bp-target').value || null;
+    if (P.coins < reward) return;
+    e.currentTarget.disabled = true;
+    const spec = { from: G.gid[S.start], to: G.gid[S.dest], vehicle: S.opts.vehicle, length: S.opts.length, rules: S.rules, assist: S.opts.assist || 'explorer' };
+    const r = await api('/api/bounty', { method: 'POST', body: JSON.stringify({ spec, beat: S.total, reward, target }) });
+    if (!r.ok || !r.body.ok) { $('bp-msg').textContent = r.body.error || 'Could not post it.'; e.currentTarget.disabled = false; return; }
+    P.coins -= reward; saveProfile(); renderCoins(); S.posted = reward; save(); BOUNTY.at = 0; render();
+    toast(`Bounty posted · −${reward} coins`);
+  };
+};
 
 // ---- hooks into the game
 if (CLOUD) {
@@ -546,6 +786,7 @@ if (CLOUD) {
   HOOKS.afterFinish = gaveUp => {
     if (S.race) { if (gaveUp) send({ t: 'giveup' }); else sendFinish(); }
     if (!gaveUp && (S.daily || S.weekly)) postChallenge();
+    if (!gaveUp && S.bounty) claimBounty();
     // the save carries this trip's knowledge; crowns are re-read once it has landed
     Promise.resolve(CLOUD.flush()).then(() => loadCrowns(true));
   };
@@ -569,30 +810,30 @@ if (CLOUD) {
   HOOKS.mapLayer = (m, ctx, pal, tryLabel) => {
     if (!inThisRace()) return;
     const st = ONLINE.state, r = st.race;
+    // rivals drive the model they chose for this vehicle, and glide between the stops they report
     for (const id of r.entrants) {
       const p = r.progress[id]; if (id === st.me || p.cur == null) continue;
-      const at = G.byGid.get(p.cur); if (at == null) continue;
-      const who = nameInfo(r.names[id]), [x, y] = m.px(G.lon[at], G.lat[at]);
-      ctx.beginPath(); ctx.arc(x, y, 12, 0, 7); ctx.fillStyle = who.color; ctx.fill(); ctx.lineWidth = 2.5; ctx.strokeStyle = pal.halo || '#FFFFFF'; ctx.stroke();
-      ctx.font = '13px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(p.done ? '🏁' : who.emoji, x, y + 1);
-      tryLabel(who.name, x + 15, y + 15, { size: 12, weight: 700, color: who.color });
+      const who = nameInfo(r.names[id]), look = IDENT.get(r.names[id]) || {};
+      drawRival(m, ctx, pal, id, p.cur, S.opts.vehicle, { color: who.color, emoji: who.emoji, label: displayName(r.names[id]), ride: look.ride || {}, fx: look.fx || null, done: p.done }, tryLabel);
     }
   };
   HOOKS.renderLeaderboard = el => {
-    const rows = ONLINE.board;
+    const rows = ONLINE.boards.flags && ONLINE.boards.flags.rows;
     el.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px"><div class="label">Leaderboard · flags</div><button class="btn small" type="button" id="pp-board">Full leaderboard</button></div>
       ${rows ? `<ol class="list" style="list-style:decimal;padding-left:20px">${rows.slice(0, 5).map(x => `<li style="display:list-item"><span style="display:flex;justify-content:space-between;gap:8px">${unameHtml(x.name)}<span>🚩 ${fmt(x.flags)}</span></span></li>`).join('')}</ol>` : '<p class="hint" style="margin:0">Loading…</p>'}`;
     $('pp-board').onclick = () => openOnline('board');
-    if (!rows) loadBoard().then(() => { if ($('leaderboard')) HOOKS.renderLeaderboard($('leaderboard')); });
+    if (!rows) loadBoard(false, 'flags').then(() => { if ($('leaderboard')) HOOKS.renderLeaderboard($('leaderboard')); });
   };
+  HOOKS.lookChanged = () => applyLook();
   HOOKS.boot = () => {
     noteNicks([CLOUD.user]);
     const setDlg = $('dlg-settings') && $('dlg-settings').querySelector('.dlg header');
     const drawSetNick = () => { $('set-nicksec').innerHTML = nickEditorHtml('set'); wireNickEditor('set', drawSetNick); };
     if (setDlg && !$('set-nicksec')) { setDlg.insertAdjacentHTML('afterend', '<div id="set-nicksec"></div>'); drawSetNick(); }
     P.playerName = CLOUD.user.name; saveProfile();
-    CLOUD.summary = () => { const r = explorerRating(), k = countryKnowledge(), known = {}; k.forEach((n, i) => { if (n > 0) known[G.countries[i][0]] = n; });
-      return { rating: r.total, league: leagueOf(r.total).id, places: r.known, countries: Object.keys(P.stamps || {}).filter(k => !k.startsWith('area:')).length, known }; };
+    CLOUD.summary = () => { const r = explorerRating(), k = countryKnowledge(), known = {}, cont = {}; k.forEach((n, i) => { if (n > 0) { known[G.countries[i][0]] = n; const c = G.contOf[i]; cont[c] = (cont[c] || 0) + n; } });
+      return { rating: r.total, league: leagueOf(r.total).id, places: r.known, countries: Object.keys(P.stamps || {}).filter(k => !k.startsWith('area:')).length, known, cont,
+        flair: P.flair || null, cover: P.cover || null, title: myTitle() }; };
     loadCrowns();
     const nav = document.querySelector('header.bar nav');
     nav.insertAdjacentHTML('afterbegin', `<button class="btn go icon" id="btn-online" type="button" title="Race your friends" aria-label="Race">🏁<span class="count" id="online-count" hidden></span></button>`);
@@ -603,6 +844,7 @@ if (CLOUD) {
     const lob = store.get('stopover-lobby');
     if (lob && lob.code) joinLobby(lob.code).then(err => { if (err) { store.set('stopover-lobby', null); if (store.get('stopover-race-trip')) { store.set('stopover-race-trip', null); } } });
     else if (store.get('stopover-race-trip')) store.set('stopover-race-trip', null);
-    loadBoard();
+    loadBoard(false, 'flags');
+    loadBounties();
   };
 }

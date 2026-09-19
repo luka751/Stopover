@@ -52,6 +52,8 @@ function renderPlaying(v) {
         <label class="label" for="entry-input">${S.mode === 'train' ? `Train from ${esc(G.name[S.cur])}` : S.mode === 'fly' ? `Fly from ${esc(G.name[S.cur])}` : `Next stop · within ${fmt(S.fuel)} km of ${esc(G.name[S.cur])}`}</label>
         ${modeSwitch(v)}
       </div>
+      ${flightClassHtml()}
+      ${S.stakes && !S.done ? `<div class="stakesbar" id="stakes-bar" role="timer" aria-label="Time left this turn"><i></i><span></span><b>💰 ${fmt(S.stakes.wager)} on the line</b></div>` : ''}
       <form class="entryrow" id="entry-form" autocomplete="off">
         <input type="text" id="entry-input" placeholder="${S.mode === 'train' ? (stationOK(S.cur) ? 'A town with a station' : 'No station here') : S.mode === 'fly' ? (airportOK(S.cur) ? 'A city with an airport' : 'No qualifying airport here') : v.rail ? 'A town with a railway station' : S.stops.length ? 'Name a city, town or village' : 'e.g. a town on the way'}" spellcheck="false" aria-autocomplete="list" aria-controls="sugg">
         <button class="btn go" type="submit">${S.mode === 'fly' ? 'Fly ✈' : S.mode === 'train' ? 'Ride 🚆' : (v.rail ? 'Ride ' : 'Go ') + markerFor(S.opts.vehicle)}</button>
@@ -63,11 +65,12 @@ function renderPlaying(v) {
           <button class="btn small" type="button" id="tools-btn" aria-expanded="false" aria-controls="tools-menu">Tools ▾</button>
           <div class="toolsmenu" id="tools-menu" hidden>
             ${S.avoid && S.avoid.length ? `<div class="hint">Avoiding ${S.avoid.map(cc => esc(ccName(cc))).join(', ')}</div>` : ''}
-            ${RULES.hints === 'off' ? '' : `<button type="button" id="btn-scout" ${S.scouts.length ? 'disabled' : ''}><span>🔭 Scout ahead</span><span class="cost">−${scoutCost()}</span></button>
+            ${S.stakes ? '<div class="hint">High stakes: no help or supplies on this run.</div>' : ''}
+            ${RULES.hints === 'off' || S.stakes ? '' : `<button type="button" id="btn-scout" ${S.scouts.length ? 'disabled' : ''}><span>🔭 Scout ahead</span><span class="cost">${S.freeScouts ? `free ×${S.freeScouts}` : '−' + scoutCost()}</span></button>
             <button type="button" id="btn-help-road" ${S.fuel >= v.tank * helpThreshold() ? `disabled title="Only when your tank is under ${helpThreshold() === 0.5 ? 'half' : Math.round(helpThreshold() * 100) + '%'}"` : ''}><span>🛟 ${v.coastal ? 'Resupply at sea' : v.rail ? 'Rail replacement' : S.opts.vehicle === 'bike' ? 'Rest stop' : 'Roadside help'}</span><span class="cost">−${helpCost()}</span></button>`}
-            ${P.consumables.jerrycan ? `<button type="button" id="use-jerry"><span>⛽ Jerrycan: +30% range</span><span class="cost">×${P.consumables.jerrycan}</span></button>` : ''}
-            ${v.ferry && ferryLimit() > 0 ? `<button type="button" id="use-ticket" ${!P.consumables.ticket && P.coins < TICKET_PRICE ? `disabled title="A ticket costs ${TICKET_PRICE} coins"` : ''}><span>🎫 ${P.consumables.ticket ? 'Add a ferry ticket' : 'Buy a ferry ticket'}</span><span class="cost">${P.consumables.ticket ? '×' + P.consumables.ticket : '−' + TICKET_PRICE}</span></button>` : ''}
-            ${!S.classic && P.consumables.tow ? `<button type="button" id="use-tow" ${S.undo ? '' : 'disabled title="Nothing to undo yet"'}><span>🛻 Tow truck: undo last leg</span><span class="cost">×${P.consumables.tow}</span></button>` : ''}
+            ${P.consumables.jerrycan && !S.stakes ? `<button type="button" id="use-jerry"><span>⛽ Jerrycan: +30% range</span><span class="cost">×${P.consumables.jerrycan}</span></button>` : ''}
+            ${v.ferry && ferryLimit() > 0 && !S.stakes ? `<button type="button" id="use-ticket" ${!P.consumables.ticket && P.coins < TICKET_PRICE ? `disabled title="A ticket costs ${TICKET_PRICE} coins"` : ''}><span>🎫 ${P.consumables.ticket ? 'Add a ferry ticket' : 'Buy a ferry ticket'}</span><span class="cost">${P.consumables.ticket ? '×' + P.consumables.ticket : '−' + TICKET_PRICE}</span></button>` : ''}
+            ${!S.classic && !S.stakes && P.consumables.tow ? `<button type="button" id="use-tow" ${S.undo ? '' : 'disabled title="Nothing to undo yet"'}><span>🛻 Tow truck: undo last leg</span><span class="cost">×${P.consumables.tow}</span></button>` : ''}
             <hr>
             <button type="button" id="btn-giveup" class="danger"><span>Give up and see a route</span></button>
           </div>
@@ -118,6 +121,8 @@ function renderFinished() {
           </div>`}
       ${S.boosted ? `<p class="hint" style="margin:0">👋 Welcome-back boost: the arrival bonus paid double, +${fmt(S.boosted)} extra.</p>` : ''}
       ${(S.daily || S.weekly) && !S.gaveUp && HOOKS.challengeLine ? `<p class="chalrank" id="chal-rank">${HOOKS.challengeLine()}</p>` : ''}
+      ${S.stakes ? `<p class="chalrank">${S.stakes.result === 'won' ? `💰 High stakes won: +${fmt(S.stakes.wager * 2)} coins back on your ${fmt(S.stakes.wager)}.` : `🎲 High stakes lost: −${fmt(S.stakes.wager)} coins${S.stakes.why ? ` (${esc(S.stakes.why.replace(/\.$/, ''))})` : ''}.`}</p>` : ''}
+      ${HOOKS.finishExtra ? HOOKS.finishExtra() : ''}
       ${S.gaveUp ? '' : nudgesHtml([...new Set(S.stops.map(s => ccOf(s.id)))], 3)}
       ${!S.classic && bsDeck('due').length ? `<div class="news-perk"><span><strong>${bsDeck('due').length} blind spots to review.</strong><br><span class="hint">Towns you hopped over on your trips are waiting in the deck.</span></span><button class="btn small dark" type="button" id="btn-review" style="margin-left:auto">Review</button></div>` : ''}
       ${S.race && HOOKS.finishedButtons ? HOOKS.finishedButtons() : `<div class="tools"><button class="btn go" type="button" id="btn-again">${opts.from != null && opts.to != null ? 'Same route again' : 'Next trip'}</button><button class="btn" type="button" id="btn-change">Change trip</button>${S.gaveUp ? '' : '<button class="btn sharebtn" type="button" id="btn-share">↗ Share</button>'}</div>`}
@@ -127,6 +132,7 @@ function renderFinished() {
   if ($('btn-review')) $('btn-review').onclick = () => openBlind();
   if ($('btn-change')) $('btn-change').onclick = openNew;
   if (S.race && HOOKS.wireFinished) HOOKS.wireFinished();
+  if (HOOKS.wireFinishExtra) HOOKS.wireFinishExtra();
 }
 function renderPostcard() {
   if (S.classic) { $('postcard').innerHTML = ''; return; }
@@ -269,7 +275,7 @@ function openTripDialog(race) {
   REGPICK.open = null;
   $('nt-title').textContent = race ? 'Race settings' : 'Plan a trip';
   $('nt-lead').textContent = race ? 'Everything a solo trip can be. Everyone in the lobby gets exactly this trip.' : 'Pick where, how, and how far. Longer trips need smaller towns to keep the tank topped up.';
-  $('start-daily').hidden = !!race; $('start-weekly').hidden = !!race;
+  $('start-daily').hidden = !!race; $('start-weekly').hidden = !!race; $('start-stakes').hidden = !!race;
   $('start-trip').textContent = race ? 'Save race settings' : 'Start trip';
   // the long, optional parts start folded unless they're already in use
   $('fold-route').open = draft.from != null || draft.to != null || draft.via.length > 0;
@@ -405,6 +411,7 @@ $('start-trip').onclick = () => {
 };
 $('start-daily').onclick = () => { opts = { ...opts, ...draft }; saveOpts(); if (startTrip(opts, true)) $('dlg-new').close(); };
 $('start-weekly').onclick = () => { if (startTrip(opts, 'weekly')) $('dlg-new').close(); };
+$('start-stakes').onclick = () => { $('dlg-new').close(); openStakes(); };
 $('btn-new').onclick = openNew;
 $('dlg-new').addEventListener('close', () => { NT.race = null; REGPICK.open = null; if (S) renderBrandMode(S.opts.vehicle); });
 $('btn-help').onclick = () => $('dlg-help').showModal();
@@ -507,7 +514,7 @@ $('set-sound').onchange = e => { P.sound = e.target.checked; saveProfile(); if (
 $('avoid-add-btn').onclick = () => { const cc = $('avoid-add').value; if (cc) { setAvoid(cc, true); renderSettings(); } };
 
 const SHOP_TABS = [
-  { id: 'supplies', name: 'Supplies' }, { id: 'upgrades', name: 'Upgrades' }, { id: 'themes', name: 'Themes' },
+  { id: 'supplies', name: 'Supplies' }, { id: 'upgrades', name: 'Upgrades' }, { id: 'garage', name: '🏎️ Garage' }, { id: 'prestige', name: '✨ Prestige' }, { id: 'decks', name: '🎓 Study decks' }, { id: 'themes', name: 'Themes' },
   { id: 'maps', name: 'Maps' }, { id: 'road', name: 'Signs & routes' }, { id: 'extras', name: 'Collection' },
 ];
 let shopTab = store.get('stopover-shoptab') || 'supplies';
@@ -516,7 +523,11 @@ function renderShop() {
   if (!SHOP_TABS.some(t => t.id === shopTab)) shopTab = 'supplies';
   const league = LEAGUES.indexOf(leagueOf(explorerRating().total));
   const card = (key, title, blurb, price, swatch, extra = '') => {
-    const owned = price === 0 || P.owned.includes(key), [kind, id] = key.split(':'), equipped = owned && ((kind === 'marker' && P.equip.markers[(MARKERS.find(m => m.id === id) || {}).vehicle] === id) || P.equip[kind] === id || (kind === 'holo' && P.equip.holo));
+    const owned = price === 0 || P.owned.includes(key), [kind, id] = key.split(':'), equipped = owned && ((kind === 'marker' && P.equip.markers[(MARKERS.find(m => m.id === id) || {}).vehicle] === id) || P.equip[kind] === id || (kind === 'holo' && P.equip.holo)
+      || (kind === 'model' && P.equip.models[(MODELS.find(m => m.id === id) || {}).kind] === id) || (kind === 'motto' && P.motto === id));
+    // garage and prestige items can be taken off again; a deck is opened rather than equipped
+    if (owned && kind === 'deck') return `<div class="item"><div class="swatch" style="${swatch.style || ''}">${swatch.html || ''}</div><div><b>${esc(title)}</b><small>${esc(blurb)}</small></div><div class="row"><span class="chip good">Owned</span><button class="btn small" type="button" data-opendeck="${id}">Study it</button></div></div>`;
+    if (equipped && ['model', 'exhaust', 'finish', 'motto'].includes(kind)) extra = `<button class="btn small" type="button" data-unequip="${key}">Take off</button>` + extra;
     return `<div class="item"><div class="swatch" style="${swatch.style || ''}">${swatch.html || ''}</div><div><b>${esc(title)}</b><small>${esc(blurb)}</small></div>
       <div class="row">${owned ? (equipped ? '<span class="chip good">Equipped</span>' : kind === 'holo' ? '<span class="chip good">Owned</span>' : `<button class="btn small" type="button" data-equip="${key}">Use</button>`) : `<span class="price"><i></i>${price}</span><button class="btn small go" type="button" data-buy="${key}" data-price="${price}" ${P.coins < price ? 'disabled' : ''}>Buy</button>`}${extra}</div></div>`;
   };
@@ -531,6 +542,11 @@ function renderShop() {
     upgrades: () => section('Upgrades', 'Permanent, and each one changes how a trip plays. The bigger ones need a passport league as well as coins.', PERKS.map(p => { const owned = hasPerk(p.id), locked = league < p.league;
       return `<div class="item ${locked && !owned ? 'lockeditem' : ''}"><div class="swatch" style="background: var(--panel)">${p.icon}</div><div><b>${esc(p.name)}</b><small>${esc(p.blurb)}${p.league ? ` Needs ${esc(LEAGUES[p.league].name)}.` : ''}</small></div><div class="row">${owned ? '<span class="chip good">Owned</span>' : locked ? `<span class="price"><i></i>${p.price}</span><span class="chip warn">🔒 ${esc(LEAGUES[p.league].name)}</span>` : `<span class="price"><i></i>${p.price}</span><button class="btn small go" type="button" data-buy="perk:${p.id}" data-price="${p.price}" ${P.coins < p.price ? 'disabled' : ''}>Buy</button>`}</div></div>`; }).join('')),
     themes: () => section('Interface themes', `Recolour the whole game: panels, text, buttons and toggles. Destination signs and map styles stay as they are. Every theme has a day and a night version; the preview shows ${night ? 'night' : 'day'}.`, entries(THEMES).map(x => card('theme:' + x.id, x.name, x.blurb, x.price, { html: themeSwatch(x.id, night), style: 'padding:0' })).join('')),
+    garage: () => section('Vehicle models', 'Drawn vehicles that turn to face the road and glide along every leg, in place of the emoji marker. In a race, your rivals see the one you drive. Flights use a plane model.', MODEL_KINDS.map(([k, label]) => byPrice(MODELS.filter(m => m.kind === k)).map(m => card('model:' + m.id, m.name, `${label}. ${m.blurb}`, m.price, { html: `<canvas class="modelprev" data-model="${m.id}"></canvas>`, style: 'background: color-mix(in srgb, var(--panel-2) 60%, #9FC7A6); padding:0' })).join('')).join(''))
+      + section('Exhaust trails', 'Particles left behind you while you move, on any vehicle or model. Rivals see yours in a race.', byPrice(EXHAUSTS).map(x => card('exhaust:' + x.id, x.name, x.blurb, x.price, { html: `<canvas class="modelprev" data-exhaust="${x.id}"></canvas>`, style: 'background: color-mix(in srgb, var(--panel-2) 60%, #9FC7A6); padding:0' })).join('')),
+    prestige: () => section('Passport cover finishes', 'Laid over whichever cover you carry, league or country. Everyone who opens your passport sees it.', entries(COVER_FINISHES).map(x => card('finish:' + x.id, x.name, x.blurb, x.price, { html: coverSvg({ color: leagueOf(explorerRating().total).color, ink: leagueOf(explorerRating().total).ink, emblem: 'globe', title: 'PASSPORT', top: 'STOPOVER', bottom: '', finish: x.id }), style: 'padding:4px;background:var(--panel)' })).join(''))
+      + section('Mottos', 'A line of your own under your name on your profile, your passport and in race lobbies.', MOTTOS.map(x => card('motto:' + x.id, `“${x.text}”`, 'Shown under your name.', x.price, { html: '💬', style: 'background: var(--panel)' })).join('')),
+    decks: () => section('Study decks', 'Drill places from all over the world in Study, not one country at a time. Every place you get right counts towards the mastery of its own country.', STUDY_DECKS.map(d => card('deck:' + d.id, d.name, `${d.blurb} ${fmt(deckPool(d.id).length)} places.`, d.price, { html: '🎓', style: 'background: var(--panel)' })).join('')),
     maps: () => section('Map styles', 'How the map under your trip is drawn.', entries(STYLES).map(x => card('style:' + x.id, x.name, x.blurb, x.price, styleSwatch(x.id))).join('')),
     road: () => section('Destination signs', 'The road plate above your trip.', byPrice(SIGNS).map(x => card('sign:' + x.id, x.name, x.blurb, x.price, { html: `<span class="signswatch sign-${x.id}">MADRID</span>`, style: 'background: var(--panel)' })).join(''))
       + section('Route trails', 'How your route is drawn on the trip map.', byPrice(TRAILS).map(x => card('trail:' + x.id, x.name, x.blurb, x.price, { html: trailSvg(x.id), style: 'background: var(--panel)' })).join(''))
@@ -551,13 +567,24 @@ function renderShop() {
     const [kind, id] = key.split(':');
     if (kind === 'style') P.equip.style = id; else if (kind === 'route') P.equip.route = id; else if (kind === 'cursor') P.equip.cursor = id; else if (kind === 'marker') P.equip.markers[MARKERS.find(m => m.id === id).vehicle] = id;
     else if (kind === 'holo') P.equip.holo = true; else if (['theme', 'sign', 'trail', 'effect', 'ink', 'sound'].includes(kind)) { P.equip[kind] = id; if (kind === 'effect') P.effectChosen = true; }
+    else if (kind === 'model') P.equip.models[MODELS.find(m => m.id === id).kind] = id; else if (kind === 'exhaust' || kind === 'finish') P.equip[kind] = id; else if (kind === 'motto') P.motto = id;
+    if (HOOKS.lookChanged) HOOKS.lookChanged();
   };
+  const unequip = key => {
+    const [kind, id] = key.split(':');
+    if (kind === 'model') delete P.equip.models[MODELS.find(m => m.id === id).kind]; else if (kind === 'motto') delete P.motto; else delete P.equip[kind];
+    if (HOOKS.lookChanged) HOOKS.lookChanged();
+  };
+  $('shop-body').querySelectorAll('[data-unequip]').forEach(b => b.onclick = () => { unequip(b.dataset.unequip); saveProfile(); renderShop(); tripMap.draw(); });
+  $('shop-body').querySelectorAll('[data-opendeck]').forEach(b => b.onclick = () => { $('dlg-shop').close(); openDeck(b.dataset.opendeck); });
+  $('shop-body').querySelectorAll('canvas[data-model]').forEach(c => paintModelPreview(c, c.dataset.model));
+  $('shop-body').querySelectorAll('canvas[data-exhaust]').forEach(c => paintExhaustPreview(c, c.dataset.exhaust));
   $('shop-body').querySelectorAll('[data-buy]').forEach(b => b.onclick = () => {
     const price = +b.dataset.price; if (P.coins < price) return;
     P.coins -= price; P.owned.push(b.dataset.buy); equip(b.dataset.buy);
     const [kind, id] = b.dataset.buy.split(':');
     saveProfile(); ensureEquipDefaults(); renderCoins(); renderShop(); applyCosmetics(); render(); renderLeagueChip();
-    toast(kind === 'perk' ? `${PERKS.find(p => p.id === id).name} is yours for good` : 'Bought and equipped');
+    toast(kind === 'perk' ? `${PERKS.find(p => p.id === id).name} is yours for good` : kind === 'deck' ? `${deckOf(id).name} is in Study now` : 'Bought and equipped');
   });
   $('shop-body').querySelectorAll('[data-equip]').forEach(b => b.onclick = () => { equip(b.dataset.equip); saveProfile(); ensureEquipDefaults(); renderShop(); applyCosmetics(); render(); tripMap.draw(); });
   $('shop-body').querySelectorAll('[data-supply]').forEach(b => b.onclick = () => {

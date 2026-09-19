@@ -6,7 +6,7 @@ const out = 'web/public';
 fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(out, { recursive: true });
 
-const js = ['core.js', 'extras.js', 'trip.js', 'isles.js', 'map.js', 'ui.js', 'passport.js', 'blind.js', 'flags.js', 'study.js', 'juice.js', 'online.js'].map(part).join('\n');
+const js = ['core.js', 'extras.js', 'trip.js', 'isles.js', 'map.js', 'ui.js', 'passport.js', 'blind.js', 'flags.js', 'study.js', 'juice.js', 'social.js', 'garage.js', 'sinks.js', 'online.js'].map(part).join('\n');
 // the gazetteer is its own file on the website, so the log-in screen doesn't wait for 7 MB and browsers can cache it
 const inlineGeo = "const b64 = $('geo').textContent.trim(), bin = atob(b64)";
 if (!js.includes(inlineGeo)) throw new Error('loadData changed: update build-web.mjs');

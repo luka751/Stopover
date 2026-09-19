@@ -1,7 +1,7 @@
 // Stopover online: accounts, cloud saves, the leaderboard and race lobbies.
 // Static files (the game itself) are served from ./public; only /api/* reaches this code.
 import { DurableObject } from 'cloudflare:workers';
-import { parseName } from './names.js';
+import { parseName, nickProblem } from './names.js';
 
 const SESSION_DAYS = 60, MAX_PLAYERS = 8, CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 
@@ -36,7 +36,41 @@ function cleanNick(raw, ownName) {
   if (!/^[\p{L}\p{N}][\p{L}\p{M}\p{N} ._'’-]*$/u.test(nick)) return { error: 'Use letters, numbers, spaces and . _ \' - only.' };
   const p = parseName(nick.replace(/\s+/g, ''));
   if (p && p.name.toLowerCase() !== String(ownName).toLowerCase()) return { error: 'That looks like someone’s username. Pick something else.' };
+  const bad = nickProblem(nick); if (bad) return { error: bad };
   return { nick };
+}
+
+// What a player shows beside their name: the flag they represent, the passport cover they carry, their league and
+// a title. The browser sends them with each save; the server only checks their shape, since the game that earns
+// them runs in the browser anyway.
+const CONTINENTS = ['EU', 'AS', 'AF', 'NA', 'SA', 'OC'];
+const cc2 = v => typeof v === 'string' && /^[A-Z]{2}$/.test(v) ? v : null;
+const cleanTitle = v => typeof v === 'string' && /^[a-z0-9-]{1,24}(:[A-Z]{2})?$/.test(v) ? v : null;
+const cleanWord = v => typeof v === 'string' && /^[a-z0-9-]{1,24}$/.test(v) ? v : null;
+// the drawn vehicle a player drives, per vehicle kind: what rivals see of them in a race
+const cleanRide = v => { if (!v || typeof v !== 'object') return null; const out = {}; for (const k of ['car', 'bike', 'boat', 'train', 'plane']) { const m = cleanWord(v[k]); if (m) out[k] = m; } return out; };
+// a player's full look in a lobby, from their saved stats or a message they sent
+const cleanLook = v => ({ flair: cc2(v.flair), cover: cc2(v.cover), league: typeof v.league === 'string' && /^[a-z-]{1,20}$/.test(v.league) ? v.league : null, title: cleanTitle(v.title), motto: cleanWord(v.motto), ride: cleanRide(v.ride), fx: cleanWord(v.fx) });
+const cleanCont = v => { if (!v || typeof v !== 'object') return null; const out = {}; for (const c of CONTINENTS) if (v[c] > 0) out[c] = int(v[c], 1e6); return JSON.stringify(out); };
+// the public parts of a profile save that aren't stats: pinned showcase items and the recent-expeditions feed
+const cleanShowcase = v => Array.isArray(v) ? v.filter(x => typeof x === 'string' && x.length <= 100 && /^(ach|flag|stamp|cover|crown):/.test(x)).slice(0, 3) : [];
+const cleanFeed = v => Array.isArray(v) ? v.slice(0, 30).filter(e => e && typeof e === 'object' && typeof e.k === 'string').map(e => {
+  const out = {}; for (const [k, x] of Object.entries(e).slice(0, 14)) if (/^[a-z]{1,8}$/i.test(k) && ((typeof x === 'string' && x.length <= 80) || Number.isFinite(x) || typeof x === 'boolean')) out[k] = x;
+  return out; }) : [];
+const IDENT = 's.flair, s.cover, s.league, s.title, s.motto';
+// leaderboard categories: the column each one ranks by
+const WINS = '(SELECT COUNT(*) FROM race_players p JOIN races r ON r.id = p.race_id WHERE p.user_id = u.id AND p.place = 1 AND r.players > 1)';
+const BOARD_BY = { flags: 's.flags', rating: 's.rating', places: 's.places', countries: 's.countries', wins: WINS,
+  ...Object.fromEntries(CONTINENTS.map(c => [c, `CAST(COALESCE(json_extract(s.cont, '$.${c}'), 0) AS INTEGER)`])) };
+
+// a bounty's route: fixed start and destination, the vehicle, length and rules it was driven under
+const BOUNTY_REWARDS = [100, 250, 500, 1000, 2000], BOUNTY_DAYS = 7;
+function cleanBountySpec(v) {
+  if (!v || typeof v !== 'object') return null;
+  const from = gidOrNull(v.from), to = gidOrNull(v.to);
+  if (!from || !to || from === to || !['car', 'bike', 'boat', 'train'].includes(v.vehicle) || !['short', 'medium', 'long', 'epic'].includes(v.length)) return null;
+  const t = cleanTripSettings({ rules: v.rules || {}, assist: v.assist });
+  return JSON.stringify({ from, to, vehicle: v.vehicle, length: v.length, rules: t.rules || {}, assist: t.assist || 'explorer' });
 }
 
 async function readJson(req, limit) {
@@ -108,7 +142,7 @@ async function api(req, env, url) {
         const s = body.summary || {};
         stats = { flags: Object.keys(val.flagsSeen || {}).length, coins: int(val.coins, 1e9), trips: int(val.trips, 1e6), km: int(val.km, 1e9),
           rating: int(s.rating, 1e5), league: /^[a-z-]{1,20}$/.test(s.league) ? s.league : 'travel-doc', places: int(s.places, 1e7), countries: int(s.countries, 400),
-          known: cleanKnown(s.known) };
+          known: cleanKnown(s.known), flair: cc2(s.flair), cover: cc2(s.cover), title: cleanTitle(s.title), motto: cleanWord(s.motto), cont: cleanCont(s.cont) };
       } else changes[k] = v;
     }
     const res = await acct.save(u.id, int(body.rev, 1e12), changes, stats);
@@ -127,7 +161,19 @@ async function api(req, env, url) {
     await acct.setNick(u.id, c.nick);
     return json({ ok: true, nick: c.nick });
   }
-  if (method === 'GET' && path === '/api/leaderboard') { await who(); return json({ rows: await acct.leaderboard() }); }
+  // a nickname anyone finds abusive can be reported; three different players reporting the same one takes it down
+  if (method === 'POST' && path === '/api/report') {
+    const u = await who(), body = await readJson(req, 1000), p = parseName(body.name);
+    if (!p) return fail(404, 'No such player');
+    const res = await acct.reportNick(u.id, p.name);
+    return res.error ? fail(res.status || 400, res.error) : json(res);
+  }
+  // ?by= picks the category, ?also= names players to rank even outside the top 200 (the ones you follow)
+  if (method === 'GET' && path === '/api/leaderboard') {
+    const u = await who(), by = BOARD_BY[url.searchParams.get('by')] ? url.searchParams.get('by') : 'flags';
+    const also = (url.searchParams.get('also') || '').split(',').map(n => parseName(n)).filter(Boolean).map(p => p.name).slice(0, 30);
+    return json(await acct.leaderboard(by, also, u.id));
+  }
   if (method === 'GET' && path === '/api/crowns') { await who(); return json({ crowns: await acct.crowns() }); }
   // daily trip and weekly challenge: a finished run posts its score; the first finish in each period is the one that counts
   if (method === 'POST' && path === '/api/score') {
@@ -135,6 +181,19 @@ async function api(req, env, url) {
     if (!['daily', 'weekly'].includes(b.kind) || !recentPeriod(b.kind, b.period)) return fail(400, 'That trip is not on the board any more');
     const r = { total: int(b.total, 60000), km: int(b.km, 60000), stops: int(b.stops, 500), squares: typeof b.squares === 'string' ? b.squares.slice(0, 400) : '' };
     return json(await acct.postScore(u.id, b.kind, b.period, r));
+  }
+  // bounties: a player stakes coins on a route they finished; the first to beat their score on it takes them
+  if (method === 'POST' && path === '/api/bounty') {
+    const u = await who(), b = await readJson(req, 6000), spec = cleanBountySpec(b.spec), target = b.target ? parseName(b.target) : null;
+    if (!spec) return fail(400, 'That route can\'t carry a bounty.');
+    if (!BOUNTY_REWARDS.includes(b.reward)) return fail(400, 'Pick one of the reward sizes.');
+    return json(await acct.postBounty(u.id, spec, int(b.beat, 60000), b.reward, target && target.name));
+  }
+  if (method === 'GET' && path === '/api/bounties') { const u = await who(); return json(await acct.bounties(u.id)); }
+  if (method === 'POST' && (m = /^\/api\/bounty\/(\d{1,9})\/(claim|refund)$/.exec(path))) {
+    const u = await who(), b = await readJson(req, 1000);
+    const res = m[2] === 'claim' ? await acct.claimBounty(u.id, +m[1], int(b.total, 60000)) : await acct.refundBounty(u.id, +m[1]);
+    return res.error ? fail(res.status || 400, res.error) : json(res);
   }
   if (method === 'GET' && (m = /^\/api\/board\/(daily|weekly)\/([0-9W-]{7,10})$/.exec(path))) { const u = await who(); return json(await acct.board(m[1], m[2], u.id)); }
   if (method === 'GET' && (m = /^\/api\/profile\/([A-Za-z]{4,30})$/.exec(path))) {
@@ -147,7 +206,8 @@ async function api(req, env, url) {
     const study = {}; for (const [cc, v] of Object.entries(prof.study || {})) if (v && typeof v === 'object') study[cc] = { known: Array.isArray(v.known) ? v.known : [], bestPct: v.bestPct ?? null, correct: int(v.correct, 1e7), answered: int(v.answered, 1e7) };
     const pick = { flagsSeen: prof.flagsSeen || {}, stamps: prof.stamps || {}, history: (prof.history || []).slice(0, 30), best: prof.best || {},
       achievements: prof.achievements || {}, trips: prof.trips || 0, km: prof.km || 0, ferries: prof.ferries || 0, cover: prof.cover || null, feats: prof.feats || {},
-      visits, study, holo: prof.holo || {}, flagSets: prof.flagSets || {}, flagStreak: prof.flagStreak || null, equip: { ink: ((prof.equip || {}).ink) || null } };
+      visits, study, holo: prof.holo || {}, flagSets: prof.flagSets || {}, flagStreak: prof.flagStreak || null, equip: { ink: ((prof.equip || {}).ink) || null, finish: cleanWord((prof.equip || {}).finish) },
+      showcase: cleanShowcase(prof.showcase), feed: cleanFeed(prof.feed) };
     return json({ ...data, profile: pick });
   }
   if (method === 'POST' && path === '/api/lobby') {
@@ -163,6 +223,7 @@ async function api(req, env, url) {
     if (req.headers.get('upgrade') !== 'websocket') return fail(426, 'WebSocket only');
     const u = await who(), headers = new Headers(req.headers);
     headers.set('x-uid', String(u.id)); headers.set('x-name', u.name); headers.set('x-nick', encodeURIComponent(u.nick || ''));
+    headers.set('x-ident', encodeURIComponent(JSON.stringify({ flair: u.flair, cover: u.cover, league: u.league, title: u.title, motto: u.motto })));
     return lobby(env, m[1].toUpperCase()).fetch(new Request(req.url, { headers }));
   }
   return fail(404, 'Not found');
@@ -184,6 +245,9 @@ export class Accounts extends DurableObject {
     // added after launch: databases from before nicknames get the column on their next start
     try { this.sql.exec('ALTER TABLE users ADD COLUMN nick TEXT'); } catch { /* already there */ }
     try { this.sql.exec('ALTER TABLE stats ADD COLUMN known TEXT'); } catch { /* already there */ }
+    for (const col of ['flair', 'cover', 'title', 'cont', 'motto']) try { this.sql.exec(`ALTER TABLE stats ADD COLUMN ${col} TEXT`); } catch { /* already there */ }
+    this.sql.exec('CREATE TABLE IF NOT EXISTS bounties (id INTEGER PRIMARY KEY AUTOINCREMENT, poster INTEGER NOT NULL, target INTEGER, spec TEXT NOT NULL, beat INTEGER NOT NULL, reward INTEGER NOT NULL, created INTEGER NOT NULL, expires INTEGER NOT NULL, claimed_by INTEGER, claimed_at INTEGER, claim_total INTEGER, refunded INTEGER NOT NULL DEFAULT 0)');
+    this.sql.exec('CREATE TABLE IF NOT EXISTS reports (target INTEGER NOT NULL, reporter INTEGER NOT NULL, nick TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (target, reporter, nick))');
     this.sql.exec('CREATE TABLE IF NOT EXISTS scores (kind TEXT NOT NULL, period TEXT NOT NULL, user_id INTEGER NOT NULL, total INTEGER NOT NULL, km INTEGER NOT NULL, stops INTEGER NOT NULL, squares TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (kind, period, user_id))');
     this.crownCache = null;
   }
@@ -226,12 +290,58 @@ export class Accounts extends DurableObject {
   }
   endSession(tokenHash) { this.sql.exec('DELETE FROM sessions WHERE token = ?', tokenHash); }
   userBySession(tokenHash) {
-    const now = Date.now(), r = this.row('SELECT u.id, u.name, u.nick, u.last_seen FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ? AND s.expires > ?', tokenHash, now);
+    const now = Date.now(), r = this.row(`SELECT u.id, u.name, u.nick, u.last_seen, ${IDENT} FROM sessions x JOIN users u ON u.id = x.user_id LEFT JOIN stats s ON s.user_id = u.id WHERE x.token = ? AND x.expires > ?`, tokenHash, now);
     if (!r) return null;
     if (now - r.last_seen > 60000) this.sql.exec('UPDATE users SET last_seen = ? WHERE id = ?', now, r.id);
-    return { id: r.id, name: r.name, nick: r.nick || null };
+    return { id: r.id, name: r.name, nick: r.nick || null, flair: r.flair || null, cover: r.cover || null, league: r.league || null, title: r.title || null, motto: r.motto || null };
   }
-  setNick(userId, nick) { this.sql.exec('UPDATE users SET nick = ? WHERE id = ?', nick, userId); 
+  setNick(userId, nick) { this.sql.exec('UPDATE users SET nick = ? WHERE id = ?', nick, userId); }
+  // ---- bounties. The coins move in the players' saves; the server keeps who posted, who beat it and when.
+  postBounty(userId, spec, beat, reward, targetName) {
+    const now = Date.now();
+    if (this.row('SELECT COUNT(*) AS n FROM bounties WHERE poster = ? AND claimed_by IS NULL AND refunded = 0 AND expires > ?', userId, now).n >= 3) return { error: 'You have 3 bounties out already. Wait for one to be claimed or run out.' };
+    let target = null;
+    if (targetName) { const t = this.row('SELECT id FROM users WHERE name_lc = ?', targetName.toLowerCase()); if (!t || t.id === userId) return { error: 'No such player to challenge.' }; target = t.id; }
+    this.sql.exec('INSERT INTO bounties (poster, target, spec, beat, reward, created, expires) VALUES (?, ?, ?, ?, ?, ?, ?)', userId, target, spec, beat, reward, now, now + BOUNTY_DAYS * 864e5);
+    return { ok: true, id: this.row('SELECT last_insert_rowid() AS id').id };
+  }
+  bounties(userId) {
+    const now = Date.now(), who = p => `${p}.name AS ${p}_name, ${p}.nick AS ${p}_nick`;
+    const q = where => this.sql.exec(`SELECT b.*, ${who('up')}, ${who('ut')}, ${who('uc')}, sp.flair AS up_flair FROM bounties b JOIN users up ON up.id = b.poster LEFT JOIN stats sp ON sp.user_id = b.poster
+      LEFT JOIN users ut ON ut.id = b.target LEFT JOIN users uc ON uc.id = b.claimed_by WHERE ${where} ORDER BY b.reward DESC, b.id DESC LIMIT 60`, userId, now).toArray()
+      .map(b => ({ id: b.id, spec: JSON.parse(b.spec), beat: b.beat, reward: b.reward, created: b.created, expires: b.expires, refunded: !!b.refunded, claimTotal: b.claim_total, claimedAt: b.claimed_at,
+        poster: { name: b.up_name, nick: b.up_nick, flair: b.up_flair }, target: b.ut_name ? { name: b.ut_name, nick: b.ut_nick } : null, claimer: b.uc_name ? { name: b.uc_name, nick: b.uc_nick } : null }));
+    return { open: q('b.poster != ?1 AND b.claimed_by IS NULL AND b.refunded = 0 AND b.expires > ?2 AND (b.target IS NULL OR b.target = ?1)'),
+      mine: q('b.poster = ?1 AND b.created > ?2 - 30 * 864e5') };
+  }
+  claimBounty(userId, id, total) {
+    const b = this.row('SELECT * FROM bounties WHERE id = ?', id), now = Date.now();
+    if (!b || b.refunded || b.expires < now) return { status: 404, error: 'That bounty has run out.' };
+    if (b.claimed_by) return { status: 409, error: 'Someone beat it first.' };
+    if (b.poster === userId) return { error: 'You can\'t claim your own bounty.' };
+    if (b.target && b.target !== userId) return { status: 403, error: 'That bounty is for someone else.' };
+    if (total <= b.beat) return { ok: false, beat: b.beat };
+    this.sql.exec('UPDATE bounties SET claimed_by = ?, claimed_at = ?, claim_total = ? WHERE id = ? AND claimed_by IS NULL', userId, now, total, id);
+    return { ok: true, reward: b.reward };
+  }
+  // an unclaimed bounty that ran out goes back to whoever posted it, once
+  refundBounty(userId, id) {
+    const b = this.row('SELECT * FROM bounties WHERE id = ?', id);
+    if (!b || b.poster !== userId || b.claimed_by || b.refunded || b.expires > Date.now()) return { error: 'Nothing to refund.' };
+    this.sql.exec('UPDATE bounties SET refunded = 1 WHERE id = ?', id);
+    return { ok: true, reward: b.reward };
+  }
+  reportNick(reporterId, name) {
+    const t = this.row('SELECT id, nick FROM users WHERE name_lc = ?', name.toLowerCase()), now = Date.now();
+    if (!t) return { status: 404, error: 'No such player' };
+    if (t.id === reporterId) return { error: 'That is your own nickname.' };
+    if (!t.nick) return { error: 'That player has no nickname to report.' };
+    if (this.row('SELECT COUNT(*) AS n FROM reports WHERE reporter = ? AND at > ?', reporterId, now - 864e5).n >= 20) return { status: 429, error: 'You have reported a lot today. Try again tomorrow.' };
+    this.sql.exec('INSERT OR IGNORE INTO reports (target, reporter, nick, at) VALUES (?, ?, ?, ?)', t.id, reporterId, t.nick, now);
+    // reports count against the nickname they were made about, so a new nickname starts clean
+    const n = this.row('SELECT COUNT(*) AS n FROM reports WHERE target = ? AND nick = ?', t.id, t.nick).n;
+    if (n >= 3) { this.sql.exec('UPDATE users SET nick = NULL WHERE id = ?', t.id); this.sql.exec('DELETE FROM reports WHERE target = ?', t.id); return { ok: true, removed: true }; }
+    return { ok: true, removed: false };
   }
 
   load(userId) {
@@ -247,7 +357,8 @@ export class Accounts extends DurableObject {
     if (stats) {
       // a browser game can be edited from the developer console, so progress that jumps faster than play allows is refused
       const secs = Math.min(300, Math.max(0, (now - cur.updated) / 1000));
-      if (stats.flags > cur.flags + 60 + 2 * secs || stats.coins > cur.coins + 1500 + 15 * secs)
+      // coins allow for the biggest single payouts: a won race pot (8 × 500), a bounty (2,000) or a doubled wager (2,000)
+      if (stats.flags > cur.flags + 60 + 2 * secs || stats.coins > cur.coins + 6000 + 15 * secs)
         return { status: 422, error: 'That progress jumped too fast to be real, so it was not saved. Reload to go back to your last save.' };
     }
     for (const [k, v] of Object.entries(changes)) this.sql.exec('INSERT INTO save_keys (user_id, k, v) VALUES (?, ?, ?) ON CONFLICT (user_id, k) DO UPDATE SET v = excluded.v', userId, k, v);
@@ -255,6 +366,8 @@ export class Accounts extends DurableObject {
       this.sql.exec('UPDATE stats SET rev = rev + 1, updated = ?, flags = ?, coins = ?, trips = ?, km = ?, rating = ?, league = ?, places = ?, countries = ? WHERE user_id = ?',
         now, stats.flags, stats.coins, stats.trips, stats.km, stats.rating, stats.league, stats.places, stats.countries, userId);
       if (stats.known) { this.sql.exec('UPDATE stats SET known = ? WHERE user_id = ?', stats.known, userId); this.crownCache = null; }
+      this.sql.exec('UPDATE stats SET flair = ?, cover = ?, title = ?, motto = ? WHERE user_id = ?', stats.flair, stats.cover, stats.title, stats.motto, userId);
+      if (stats.cont) this.sql.exec('UPDATE stats SET cont = ? WHERE user_id = ?', stats.cont, userId);
     }
     else this.sql.exec('UPDATE stats SET rev = rev + 1 WHERE user_id = ?', userId);
     return { rev: cur.rev + 1 };
@@ -265,13 +378,13 @@ export class Accounts extends DurableObject {
   crowns() {
     if (this.crownCache && Date.now() - this.crownCache.at < 30000) return this.crownCache.data;
     const best = {};
-    for (const r of this.sql.exec('SELECT u.id, u.name, u.nick, s.known FROM users u JOIN stats s ON s.user_id = u.id WHERE s.known IS NOT NULL ORDER BY u.id')) {
+    for (const r of this.sql.exec('SELECT u.id, u.name, u.nick, s.flair, s.known FROM users u JOIN stats s ON s.user_id = u.id WHERE s.known IS NOT NULL ORDER BY u.id')) {
       let k; try { k = JSON.parse(r.known); } catch { continue; }
       for (const [cc, n] of Object.entries(k)) {
         if (n < 10) continue;
         const b = best[cc];
-        if (!b) best[cc] = { name: r.name, nick: r.nick || null, n, next: 0 };
-        else if (n > b.n) best[cc] = { name: r.name, nick: r.nick || null, n, next: b.n };
+        if (!b) best[cc] = { name: r.name, nick: r.nick || null, flair: r.flair || null, n, next: 0 };
+        else if (n > b.n) best[cc] = { name: r.name, nick: r.nick || null, flair: r.flair || null, n, next: b.n };
         else if (n > b.next) b.next = n;
       }
     }
@@ -283,21 +396,27 @@ export class Accounts extends DurableObject {
     return this.board(kind, period, userId);
   }
   board(kind, period, userId) {
-    const rows = this.sql.exec(`SELECT u.name, u.nick, s.total, s.km, s.stops, s.squares, s.user_id = ? AS me FROM scores s JOIN users u ON u.id = s.user_id
-      WHERE s.kind = ? AND s.period = ? ORDER BY s.total DESC, s.at ASC LIMIT 100`, userId, kind, period).toArray();
+    const rows = this.sql.exec(`SELECT u.name, u.nick, st.flair, st.cover, st.league, st.title, s.total, s.km, s.stops, s.squares, s.user_id = ? AS me FROM scores s JOIN users u ON u.id = s.user_id
+      LEFT JOIN stats st ON st.user_id = u.id WHERE s.kind = ? AND s.period = ? ORDER BY s.total DESC, s.at ASC LIMIT 100`, userId, kind, period).toArray();
     const mine = this.row('SELECT total, at FROM scores WHERE kind = ? AND period = ? AND user_id = ?', kind, period, userId);
     const rank = mine ? this.row('SELECT COUNT(*) + 1 AS r FROM scores WHERE kind = ? AND period = ? AND (total > ? OR (total = ? AND at < ?))', kind, period, mine.total, mine.total, mine.at).r : null;
     const players = this.row('SELECT COUNT(*) AS n FROM scores WHERE kind = ? AND period = ?', kind, period).n;
     return { kind, period, rows: rows.map(x => ({ ...x, me: !!x.me })), rank, players, mine: mine ? mine.total : null };
   }
-  leaderboard() {
-    return this.sql.exec(`SELECT u.name, u.nick, s.flags, s.rating, s.league, s.trips, s.places, s.countries, s.km, u.last_seen AS seen,
-        (SELECT COUNT(*) FROM race_players p WHERE p.user_id = u.id) AS races,
-        (SELECT COUNT(*) FROM race_players p JOIN races r ON r.id = p.race_id WHERE p.user_id = u.id AND p.place = 1 AND r.players > 1) AS wins
-      FROM users u JOIN stats s ON s.user_id = u.id ORDER BY s.flags DESC, s.rating DESC, u.id ASC LIMIT 200`).toArray();
+  // the top 200 in one category, plus where you and the players you follow stand in it
+  leaderboard(by, also, userId) {
+    const score = BOARD_BY[by], cols = `u.name, u.nick, ${IDENT}, s.flags, s.rating, s.trips, s.places, s.countries, s.km, u.last_seen AS seen,
+        (SELECT COUNT(*) FROM race_players p WHERE p.user_id = u.id) AS races, ${WINS} AS wins, ${score} AS score`;
+    // a continent board lists only players who know somewhere on it
+    const floor = CONTINENTS.includes(by) || by === 'wins' ? `WHERE ${score} > 0` : '';
+    const rows = this.sql.exec(`SELECT ${cols} FROM users u JOIN stats s ON s.user_id = u.id ${floor} ORDER BY score DESC, s.flags DESC, s.rating DESC, u.id ASC LIMIT 200`).toArray();
+    const rankOf = n => this.row(`SELECT COUNT(*) + 1 AS r FROM users u JOIN stats s ON s.user_id = u.id WHERE ${score} > ?`, n).r;
+    const me = this.row(`SELECT ${cols} FROM users u JOIN stats s ON s.user_id = u.id WHERE u.id = ?`, userId);
+    const pinned = also.length ? this.sql.exec(`SELECT ${cols} FROM users u JOIN stats s ON s.user_id = u.id WHERE u.name_lc IN (${also.map(() => '?').join(',')})`, ...also.map(n => n.toLowerCase())).toArray() : [];
+    return { by, rows, me: me && { ...me, rank: rankOf(me.score) }, pinned: pinned.map(x => ({ ...x, rank: rankOf(x.score) })), players: this.row('SELECT COUNT(*) AS n FROM users').n };
   }
   profile(name) {
-    const u = this.row(`SELECT u.id, u.name, u.nick, u.created, u.last_seen AS seen, s.flags, s.rating, s.league, s.trips, s.places, s.countries, s.km FROM users u JOIN stats s ON s.user_id = u.id WHERE u.name_lc = ?`, name.toLowerCase());
+    const u = this.row(`SELECT u.id, u.name, u.nick, u.created, u.last_seen AS seen, s.flags, s.rating, s.league, s.trips, s.places, s.countries, s.km, s.flair, s.cover, s.title, s.motto FROM users u JOIN stats s ON s.user_id = u.id WHERE u.name_lc = ?`, name.toLowerCase());
     if (!u) return null;
     const rank = this.row('SELECT COUNT(*) + 1 AS rank FROM stats WHERE flags > ?', u.flags).rank;
     const races = this.sql.exec(`SELECT r.mode, r.players, r.finished, p.place FROM race_players p JOIN races r ON r.id = p.race_id WHERE p.user_id = ? ORDER BY r.id DESC LIMIT 10`, u.id).toArray();
@@ -320,7 +439,7 @@ const MODES = ['time', 'points', 'distance', 'stops'];
 const SETTING_CHOICES = {
   mode: MODES, limit: [0, 5, 10, 15, 20, 30], vehicle: ['car', 'bike', 'boat', 'train'],
   length: ['short', 'medium', 'long', 'epic'],
-  preset: ['beginner', 'standard', 'expert', 'purist'], show: ['live', 'hidden'],
+  preset: ['beginner', 'standard', 'expert', 'purist'], show: ['live', 'hidden'], stake: [0, 50, 100, 250, 500],
 };
 // regions is a set now, so a host can race Europe + Asia. It is the one setting that isn't a single choice.
 const REGION_IDS = ['EU', 'AS', 'AF', 'NA', 'SA', 'OC', 'ALL', 'UNCHARTED'];
@@ -352,7 +471,7 @@ function cleanTripSettings(m) {
   }
   return out;
 }
-const DEFAULT_SETTINGS = { mode: 'time', limit: 15, vehicle: 'car', regions: ['EU'], length: 'short', preset: 'standard', show: 'live' };
+const DEFAULT_SETTINGS = { mode: 'time', limit: 15, vehicle: 'car', regions: ['EU'], length: 'short', preset: 'standard', show: 'live', stake: 0 };
 
 export class Lobby extends DurableObject {
   constructor(ctx, env) {
@@ -377,11 +496,13 @@ export class Lobby extends DurableObject {
   async fetch(req) {
     const uid = +req.headers.get('x-uid'), name = req.headers.get('x-name') || '?';
     let nick = null; try { nick = decodeURIComponent(req.headers.get('x-nick') || '') || null; } catch {}
+    let ident = {}; try { ident = JSON.parse(decodeURIComponent(req.headers.get('x-ident') || '{}')) || {}; } catch {}
+    const look = cleanLook(ident);
     if (!this.st) return new Response('No lobby with that code', { status: 404 });
     const st = this.st;
     if (!st.players[uid] && st.order.length >= MAX_PLAYERS) return new Response('That lobby is full', { status: 403 });
-    if (!st.players[uid]) { st.players[uid] = { id: uid, name, nick, ready: false }; st.order.push(uid); }
-    else st.players[uid].nick = nick;
+    if (!st.players[uid]) { st.players[uid] = { id: uid, name, nick, ...look, ready: false }; st.order.push(uid); }
+    else Object.assign(st.players[uid], { nick, ...look });
     if (!st.players[st.host]) st.host = uid;
     const pair = new WebSocketPair();
     this.ctx.acceptWebSocket(pair[1]);
@@ -399,7 +520,7 @@ export class Lobby extends DurableObject {
       const mine = r.progress[uid], reveal = st.phase === 'results' || st.settings.show === 'live' || (mine && (mine.done || mine.gaveUp));
       const progress = {};
       for (const [id, p] of Object.entries(r.progress)) progress[id] = reveal || +id === uid ? p : { ...p, cur: null };
-      race = { n: r.n, trip: r.trip, mode: r.mode, startAt: r.startAt, endAt: r.endAt, entrants: r.entrants, names: r.names || {}, progress };
+      race = { n: r.n, trip: r.trip, mode: r.mode, stake: r.stake || 0, pot: r.pot || 0, startAt: r.startAt, endAt: r.endAt, entrants: r.entrants, names: r.names || {}, progress };
     }
     return { t: 'state', now: Date.now(), me: uid, code: st.code, host: st.host, phase: st.phase, settings: st.settings,
       players: st.order.map(id => ({ ...st.players[id], online: online.has(id) })), race, results: st.results };
@@ -423,15 +544,21 @@ export class Lobby extends DurableObject {
         for (const p of Object.values(st.players)) p.ready = false;
         break;
       }
-      case 'ready': me.ready = !!msg.on; break;
+      // pay: whether this player has the coins for the entry fee
+      case 'ready': me.ready = !!msg.on; me.canPay = !!msg.pay; break;
+      // your flag, cover, league or title changed since you joined
+      case 'ident': Object.assign(me, cleanLook(msg)); break;
       case 'start': {
         if (!isHost || st.phase === 'racing') return;
         const trip = msg.trip, size = JSON.stringify(trip || null).length;
         if (!trip || size > 40000 || !Number.isInteger(trip.start) || !Number.isInteger(trip.dest)) return this.sendError(ws, 'The trip could not be sent.');
-        const online = this.online(), entrants = st.order.filter(id => online.has(id));
+        // with an entry fee, only players who said they're ready and can pay are in; the host pays by starting
+        const online = this.online(), stake = st.settings.stake || 0;
+        const entrants = st.order.filter(id => online.has(id) && (!stake || (id === uid ? !!msg.pay : st.players[id].ready && st.players[id].canPay)));
+        if (!entrants.length) return this.sendError(ws, 'You need the coins for the entry fee to start this race.');
         const startAt = now + 6000, limit = st.settings.limit;
         st.raceN = (st.raceN || 0) + 1;
-        st.race = { n: st.raceN, trip, mode: st.settings.mode, startAt, endAt: limit ? startAt + limit * 60000 : null, entrants, names: Object.fromEntries(entrants.map(id => [id, st.players[id].name])),
+        st.race = { n: st.raceN, trip, mode: st.settings.mode, stake, pot: stake * entrants.length, startAt, endAt: limit ? startAt + limit * 60000 : null, entrants, names: Object.fromEntries(entrants.map(id => [id, st.players[id].name])),
           progress: Object.fromEntries(entrants.map(id => [id, { stops: 0, cur: trip.start, km: 0, pts: 0, done: false, gaveUp: false, finishMs: null, total: null }])) };
         st.phase = 'racing'; st.results = null;
         for (const p of Object.values(st.players)) p.ready = false;

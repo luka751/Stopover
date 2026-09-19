@@ -1,7 +1,26 @@
 /* ================= online: log-in, lobby, race, leaderboard, profiles ================= */
 .uname { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; color: color-mix(in srgb, var(--uc) 78%, var(--ink)); white-space: nowrap; }
-.uname i { font-style: normal; }
 .uname.big { font: 800 26px/1 var(--display); letter-spacing: .02em; }
+/* three different pictures can sit by a name, so each has its own shape:
+   the username's fruit is round, on a disc of the username's colour */
+.avfruit { font-style: normal; display: inline-grid; place-items: center; flex: none; width: 1.55em; height: 1.55em; border-radius: 50%; font-size: .85em; line-height: 1;
+  background: color-mix(in srgb, var(--uc) 22%, var(--panel)); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--uc) 70%, transparent); }
+.uname.big .avfruit { font-size: .7em; }
+/* the represented country's flag is a small framed rectangle, like a pin on a lapel */
+.flair { display: inline-grid; place-items: center; flex: none; height: .95em; aspect-ratio: 3 / 2; border-radius: 2px; overflow: hidden; background: var(--panel-2);
+  box-shadow: 0 0 0 1.5px var(--panel), 0 0 0 2.5px color-mix(in srgb, var(--ink) 35%, transparent); margin-left: 2px; }
+.flair img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.flair b { font-size: .8em; line-height: 1; font-weight: 400; }
+.uname.big .flair { height: .7em; }
+.avfruit.sample, .flair.sample { vertical-align: -0.3em; margin: 0 2px; }
+.avfruit.sample { --uc: #1B8A4C; }
+/* the passport a player carries, in miniature */
+.minicover { display: inline-block; flex: none; width: 15px; height: 21px; border-radius: 2px 3px 3px 2px; background: var(--cv); position: relative; box-shadow: inset 2px 0 0 rgba(0,0,0,.25), 0 1px 2px rgba(0,0,0,.25); vertical-align: middle; }
+.minicover i { position: absolute; left: 50%; top: 50%; width: 7px; height: 7px; margin: -4px 0 0 -3px; border-radius: 50%; border: 1.2px solid var(--ci); }
+.ptitle { display: inline-block; font: italic 600 12px/1.2 Georgia, 'Times New Roman', serif; color: var(--muted); margin-left: 6px; white-space: nowrap; }
+.uname.big + .ptitle, #profile-title .ptitle { font-size: 14px; }
+.lobbyname { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; min-width: 0; }
+.resname { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
 .linkish { border: 0; background: none; padding: 0; cursor: pointer; font: inherit; text-align: left; }
 .linkish:hover .uname { text-decoration: underline; }
 .btn.mebtn .uname { font-size: 14px; }
@@ -90,3 +109,26 @@
 .profilecover { display: grid; gap: 6px; justify-items: center; }
 .pfleague { display: inline-flex; align-items: center; gap: 6px; font: 700 12px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; padding: 5px 9px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); white-space: nowrap; }
 .pfleague i { width: 9px; height: 12px; border-radius: 2px; background: var(--lc); }
+
+/* leaderboards: categories, following, row tools */
+.catrow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.catrow select { flex: 1; min-width: 180px; max-width: 320px; }
+.rowtools { display: inline-flex; gap: 2px; justify-content: flex-end; }
+.iconbtn { border: 0; background: transparent; cursor: pointer; font-size: 16px; line-height: 1; padding: 4px 5px; border-radius: 6px; color: var(--muted); }
+.iconbtn:hover { background: var(--panel-2); color: var(--ink); }
+.iconbtn[aria-pressed="true"] { color: #D99A00; }
+.board tr.rival td { background: color-mix(in srgb, #E0A100 9%, transparent); }
+.board small.ahead { color: var(--danger); font-weight: 600; }
+.board small.behind { color: var(--good); font-weight: 600; }
+.board td:last-child { width: 1%; white-space: nowrap; }
+.pfactions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.pfactions .msg { flex-basis: 100%; margin: 0; }
+.pfactions .msg:empty { display: none; }
+.pfactions #pf-report { margin-left: auto; }
+/* identity editor */
+.idpreview { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin: 10px 0 2px; padding: 10px 12px; border-radius: 10px; background: var(--panel-2); }
+.idgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+.idgrid label { display: grid; gap: 6px; }
+.titlelist { margin-top: 10px; }
+.titlelist .list li { gap: 10px; }
+@media (max-width: 520px) { .idgrid { grid-template-columns: 1fr; } }

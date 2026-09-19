@@ -114,7 +114,7 @@ function ensureEquipDefaults() {
   // Winter was retired (it looked like Satellite): anyone who owned it gets Satellite
   if (P.owned.includes('style:winter')) { P.owned = P.owned.filter(x => x !== 'style:winter'); if (!P.owned.includes('style:satellite')) P.owned.push('style:satellite'); }
   if (P.equip.style === 'winter') P.equip.style = 'satellite';
-  const e = P.equip; e.sign ||= 'eroad'; e.trail ||= 'solid'; e.effect ||= 'puff'; if (e.effect === 'none' && !P.effectChosen) e.effect = 'puff'; e.ink ||= 'classic'; e.sound ||= 'bells'; e.theme ||= 'field';
+  const e = P.equip; e.models ||= {}; e.sign ||= 'eroad'; e.trail ||= 'solid'; e.effect ||= 'puff'; if (e.effect === 'none' && !P.effectChosen) e.effect = 'puff'; e.ink ||= 'classic'; e.sound ||= 'bells'; e.theme ||= 'field';
   if (!THEMES[e.theme]) e.theme = 'field';
   document.documentElement.classList.toggle('holo', !!e.holo);
   applyInterfaceTheme();

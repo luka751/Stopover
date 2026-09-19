@@ -31,7 +31,7 @@ const visaArea = id => areaName(id) || VISA_AREAS[admOf(id)[2]];
 function recordStamp(id, via) {
   P.stamps = P.stamps || {};
   const cc = ccOf(id), area = visaArea(id), now = Date.now();
-  const add = (key, kind) => { if (!P.stamps[key]) P.stamps[key] = { g: G.gid[id], t: now, via, kind }; };
+  const add = (key, kind) => { if (!P.stamps[key]) { P.stamps[key] = { g: G.gid[id], t: now, via, kind }; if (kind === 'entry') feedAdd({ k: 'stamp', cc: key }); } };
   add(cc, 'entry');
   if (area) add('area:' + area, 'visa');
 }
@@ -70,11 +70,15 @@ const EMBLEMS = {
   globe: ink => `<circle r="26" fill="none" stroke="${ink}" stroke-width="3"/><ellipse rx="11" ry="26" fill="none" stroke="${ink}" stroke-width="2.4"/><path d="M-26 0h52M-22 -13h44M-22 13h44" stroke="${ink}" stroke-width="2.4"/>`,
   laurel: ink => `<circle r="20" fill="none" stroke="${ink}" stroke-width="3"/><ellipse rx="8" ry="20" fill="none" stroke="${ink}" stroke-width="2"/><path d="M-20 0h40" stroke="${ink}" stroke-width="2"/>${[...Array(6)].map((_, i) => `<ellipse cx="${-30 + i * 1}" cy="${18 - i * 8}" rx="3.5" ry="7" transform="rotate(${-30 + i * 12} ${-30 + i} ${18 - i * 8})" fill="${ink}"/><ellipse cx="${30 - i}" cy="${18 - i * 8}" rx="3.5" ry="7" transform="rotate(${30 - i * 12} ${30 - i} ${18 - i * 8})" fill="${ink}"/>`).join('')}`,
 };
-function coverSvg({ color, ink, emblem, title, top, bottom, emblemImg }) {
-  return `<svg viewBox="0 0 220 310" role="img" aria-label="${esc(title)} cover"><rect x="0" y="0" width="220" height="310" rx="10" fill="${color}"/><rect x="0" y="0" width="12" height="310" rx="4" fill="rgba(0,0,0,.22)"/>
+// sub: an earned title, lettered small between the document type and the holder's name
+// finish: a bought cover finish (garage.js) laid over the league or country colours
+function coverSvg({ color, ink, emblem, title, top, bottom, emblemImg, sub, finish }) {
+  const F = finish && COVER_FINISHES[finish]; if (F) { color = F.color || color; ink = F.ink || ink; }
+  return `<svg viewBox="0 0 220 310" role="img" aria-label="${esc(title)} cover${F ? ', ' + esc(F.name.toLowerCase()) : ''}">${F ? `<defs>${F.defs}</defs>` : ''}<rect x="0" y="0" width="220" height="310" rx="10" fill="${color}"/>${F ? F.over : ''}<rect x="0" y="0" width="12" height="310" rx="4" fill="rgba(0,0,0,.22)"/>
     <text x="116" y="46" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="15" letter-spacing="3" fill="${ink}">${esc(top)}</text>
     ${emblemImg ? `<image href="${emblemImg}" x="66" y="92" width="100" height="100" preserveAspectRatio="xMidYMid meet"/>` : `<g transform="translate(116 142)">${EMBLEMS[emblem](ink)}</g>`}
     <text x="116" y="236" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="${title.length > 16 ? 13 : 17}" letter-spacing="2.5" fill="${ink}">${esc(title)}</text>
+    ${sub ? `<text x="116" y="259" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-style="italic" font-size="${sub.length > 22 ? 9.5 : 11}" letter-spacing="1" fill="${ink}" opacity=".9">${esc(sub)}</text>` : ''}
     <text x="116" y="278" text-anchor="middle" font-family="'Barlow Condensed', sans-serif" font-size="12" letter-spacing="2" fill="${ink}" opacity=".85">${esc(bottom)}</text>
     <rect x="98" y="286" width="36" height="12" rx="2" fill="none" stroke="${ink}" stroke-width="1.4" opacity=".7"/><circle cx="106" cy="292" r="2.4" fill="${ink}" opacity=".7"/></svg>`;
 }
@@ -82,22 +86,33 @@ function renderBook(body) {
   const p = pp(), view = !!PV.other;
   if (!view && (!P.stamps || !Object.keys(P.stamps).length)) backfillStamps();
   const r = explorerRating(p), league = leagueOf(r.total), next = LEAGUES[LEAGUES.indexOf(league) + 1];
-  const name = view ? PV.other.label : P.playerName || 'Traveller';
+  // online, your cover carries your nickname like everyone else sees it
+  const name = view ? PV.other.label : HOOKS.greetName ? HOOKS.greetName() : P.playerName || 'Traveller';
   const stamps = Object.entries(p.stamps || {}).sort((a, b) => a[1].t - b[1].t), PER_PAGE = 6, pages = Math.max(1, Math.ceil(stamps.length / PER_PAGE));
   bookPage = Math.min(bookPage, pages - 1);
   const pageStamps = stamps.slice(bookPage * PER_PAGE, (bookPage + 1) * PER_PAGE);
+  const owner = view ? PV.other.name : CLOUD && CLOUD.user.name, show = showcaseOf(p, owner), title = titleName(view ? p.title : myTitle());
+  const cover = coverSvg({ ...((p.cover && countryCover(p.cover, league)) || { color: league.color, ink: league.ink, emblem: league.emblem, title: league.title, top: 'STOPOVER' }), bottom: name.toUpperCase(), sub: title, finish: finishOf(p) });
+  const motto = mottoText(view ? p.motto : myMotto());
   body.innerHTML = `
     <div style="display:grid;grid-template-columns:140px 1fr;gap:14px;align-items:center">
-      <div>${coverSvg({ ...((p.cover && countryCover(p.cover, league)) || { color: league.color, ink: league.ink, emblem: league.emblem, title: league.title, top: 'STOPOVER' }), bottom: name.toUpperCase() })}</div>
+      <div>${coverWithShowcase(cover, show)}</div>
       <div style="display:grid;gap:6px">
         <div class="label">${view ? 'League' : 'Your league'}</div>
         <b style="font:800 24px/1 var(--display);text-transform:uppercase">${league.name}</b>
+        ${motto ? `<span class="motto">“${esc(motto)}”</span>` : ''}
         <div class="chipline"><span class="chip">Rating ${fmt(r.total)}</span><span class="chip">Trips ${fmt(r.trips)}/600</span><span class="chip">Knowledge ${fmt(r.knowledge)}/400</span><span class="chip">Flags ${fmt(r.flags)}/${FLAG_RATING_MAX}</span></div>
         <div class="levelbar"><div style="width:${next ? Math.min(100, (r.total - league.at) / (next.at - league.at) * 100) : 100}%;background:${league.color}"></div></div>
         <span class="hint">${view ? `${fmt(r.flagsHave)} flags make them a ${flagRankOf(r.flagsHave).name}. Rating counts their last 10 trips (${r.tripsCounted} so far), the places they know and their flags.` : `${next ? `${next.at - r.total} more rating for ${next.name}.` : 'The top document there is.'} Trips count your last 10 (${r.tripsCounted} so far), so harder rules and fewer flights raise it fastest. Your ${fmt(r.flagsHave)} flags make you a ${flagRankOf(r.flagsHave).name}.`}</span>
         ${CLOUD || view ? '' : `<label class="hint" for="pp-name" style="margin-top:4px">Name on your passport</label>
         <input class="field" id="pp-name" maxlength="24" value="${esc(name)}">`}
+        ${view && CLOUD ? '<div class="tools" style="margin-top:4px"><button class="btn go" type="button" data-goto-tab="compare">⚖️ Compare with me</button></div>' : ''}
       </div>
+    </div>
+    <div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div class="label">Showcase${show.length ? ` · ${show.length}` : ''}</div>${view ? '' : `<button class="btn small" type="button" id="sc-edit">${showcaseEditing ? 'Close' : show.length ? 'Edit showcase' : 'Pin to showcase'}</button>`}</div>
+      ${show.length ? showcaseListHtml(show) : `<p class="hint" style="margin:6px 0 0">${view ? 'Nothing pinned.' : `Pin up to ${SHOWCASE_MAX} favourites (achievements, rare flags, stamps, covers or crowns) to the top of your cover. Other players see them.`}</p>`}
+      <div id="sc-editor"></div>
     </div>
     <div>
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div class="label">Visas and entry stamps · ${stamps.length}</div>
@@ -113,6 +128,7 @@ function renderBook(body) {
   $('bk-prev').onclick = () => { bookPage--; renderBook(body); };
   $('bk-next').onclick = () => { bookPage++; renderBook(body); };
   if ($('pp-name')) $('pp-name').onchange = e => { P.playerName = e.target.value.trim().slice(0, 24) || 'Traveller'; saveProfile(); renderBook(body); publishScore(); };
+  if ($('sc-edit')) { $('sc-edit').onclick = () => { showcaseEditing = !showcaseEditing; renderBook(body); }; renderShowcaseEditor($('sc-editor')); }
   renderCovers($('covers'), league, p);
   if (p.cover && !COVERS.data) loadCovers().then(() => renderPassport());
   if (!view) renderLeaderboard();
@@ -155,9 +171,11 @@ $('league-chip').onclick = () => { if (!P.flagsNew) ppTab = 'book'; $('btn-passp
 const COVER_UNLOCK = 25;
 const COVERS = { data: null, loading: null };
 function loadCovers() { return COVERS.loading ||= fetch('covers.json').then(r => r.ok ? r.json() : null).then(d => { COVERS.data = d; }).catch(() => {}); }
+// a country's own cover colour: measured from its passport where known, else the nearest of the common cover colours
+const coverColour = cc => { const c = COVERS.data && COVERS.data.countries[cc]; return !c ? null : c.hex || (c.colour ? COVERS.data.palette[c.colour] : '#1B2A44'); };
 function countryCover(cc, league) {
   const c = COVERS.data && COVERS.data.countries[cc]; if (!c) return null;
-  return { color: c.colour ? COVERS.data.palette[c.colour] : '#1B2A44', ink: '#E3BD5A', emblem: 'globe', emblemImg: c.arms ? 'data:image/webp;base64,' + c.arms : null, title: league.title, top: (c.name || ccName(cc)).toUpperCase() };
+  return { color: coverColour(cc), ink: '#E3BD5A', emblem: 'globe', emblemImg: c.arms ? 'data:image/webp;base64,' + c.arms : null, title: league.title, top: (c.name || ccName(cc)).toUpperCase() };
 }
 function renderCovers(el, league, p = P) {
   const view = p !== P;

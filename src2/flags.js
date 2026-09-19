@@ -103,7 +103,9 @@ function wantedToday() {
   let anchor = S && !S.classic ? S.cur : null;
   if (anchor == null) { const last = Object.entries(P.visits).sort((a, b) => b[1].last - a[1].last)[0]; anchor = last ? G.byGid.get(+last[0].slice(1)) : null; }
   if (anchor == null) anchor = G.byGid.get(2988507) ?? 0; // Paris
-  const r = rng('wanted-' + day + '-' + PLAYER_ID), taken = new Set();
+  // a bought reroll (sinks.js) seeds a new board and keeps away from the flags it replaced
+  const roll = P.wantedRoll && P.wantedRoll.day === day ? P.wantedRoll : null;
+  const r = rng('wanted-' + day + '-' + PLAYER_ID + (roll ? '-r' + roll.n : '')), taken = new Set(roll ? roll.avoid : []);
   const open = cat.all.filter(f => f.at != null && !owns(f.key)).map(f => ({ f, d: dist(G.lat[anchor], G.lon[anchor], G.lat[f.at], G.lon[f.at]) }));
   const pick = (lo, hi) => {
     const band = open.filter(x => x.d >= lo && x.d <= hi && !taken.has(x.f.key) && x.f.kind !== 'country').sort((a, b) => (G.pop[b.f.at] || 0) - (G.pop[a.f.at] || 0)).slice(0, 40);
@@ -257,7 +259,8 @@ function wantedHtml(compact) {
     const hint = f.kind === 'region' ? `stop anywhere in ${esc(f.label)}` : f.kind === 'city' ? `stop in ${esc(f.label)}` : `stop anywhere in ${esc(f.label)}`;
     return `<li class="${b.done ? 'done' : ''}" style="--rc:${RARITY[f.rarity].color}">${src ? `<img src="${src}" alt="">` : `<span class="unknown">?</span>`}<div><b>${esc(f.label)}</b><small>${RARITY[f.rarity].name} ${FLAG_KINDS.find(k => k.id === f.kind).one.toLowerCase()} · ${b.done ? 'found' : `${hint} · ${where}`}</small></div><span class="reward">${b.done ? '✓' : '+' + (RARITY[f.rarity].coins * wantedMult() + WANTED_BONUS)}</span></li>`;
   }).join('');
-  return `<div class="wanted${compact ? ' compact' : ''}"><div class="wantedhead"><span class="label">🎯 Wanted today</span><span class="hint">${w.swept ? 'Board cleared' : `All three: +${SWEEP_BONUS}`} · new board in ${untilMidnight()}</span></div><ol>${rows}</ol></div>`;
+  const reroll = !w.swept && w.list.some(b => !b.done) ? `<button type="button" class="btn small reroll" data-reroll-wanted title="Swap the flags you haven't found for new ones">🎲 New board · ${rerollPrice()}</button>` : '';
+  return `<div class="wanted${compact ? ' compact' : ''}"><div class="wantedhead"><span class="label">🎯 Wanted today</span><span class="hint">${w.swept ? 'Board cleared' : `All three: +${SWEEP_BONUS}`} · new board in ${untilMidnight()}</span>${reroll}</div><ol>${rows}</ol></div>`;
 }
 function renderWanted() {
   const el = $('wanted'); if (!el) return;

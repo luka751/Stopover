@@ -115,8 +115,9 @@ function computeStats(p = P) {
   return st;
 }
 function checkAchievements() {
-  if (!G) return; const st = computeStats();
-  for (const a of ACHIEVEMENTS) { if (P.achievements[a.id]) continue; const [have, need] = a.progress(st); if (have >= need) { P.achievements[a.id] = Date.now(); saveProfile(); addCoins(a.coins, `Achievement: ${a.name}`); } }
+  if (!G) return; if (!P.feed) feedBackfill(); const st = computeStats();
+  for (const a of ACHIEVEMENTS) { if (P.achievements[a.id]) continue; const [have, need] = a.progress(st); if (have >= need) { P.achievements[a.id] = Date.now(); saveProfile(); addCoins(a.coins, `Achievement: ${a.name}`); feedAdd({ k: 'ach', id: a.id }); } }
+  feedMastery();
 }
 function renderAwards(body, p = P) {
   const got = id => !!(p.achievements || {})[id], st = computeStats(p), done = ACHIEVEMENTS.filter(a => got(a.id)).length;
@@ -129,7 +130,7 @@ function renderAwards(body, p = P) {
 let ppSel = null, ppTab = 'country';
 const ppMap = new MapView($('pp-map'), {
   style: () => 'atlas', overlays: () => ({ names: true }),
-  tint: () => { const k = countryKnowledge(pp()); return ci => { const lv = masteryLevel(k[ci]); if (lv) return MASTERY[lv].color + (ci === ppSel ? 'FF' : 'B8'); return ci === ppSel ? 'rgba(29,111,184,.3)' : null; }; },
+  tint: () => { if (ppTab === 'compare' && PV.other) return compareTint(); const k = countryKnowledge(pp()); return ci => { const lv = masteryLevel(k[ci]); if (lv) return MASTERY[lv].color + (ci === ppSel ? 'FF' : 'B8'); return ci === ppSel ? 'rgba(29,111,184,.3)' : null; }; },
   avoid: () => G && !PV.other ? new Set(opts.avoid.map(cc => G.ccIndex[cc]).filter(x => x != null)) : null,
   click: p => { const ci = countryAt(p.lat, p.lon); if (ci >= 0 && G.placeCount[ci]) { ppSel = ci; ppTab = 'country'; renderPassport(); ppMap.draw(); } },
   layer: (m, ctx) => {
@@ -146,7 +147,11 @@ const ppMap = new MapView($('pp-map'), {
   },
 });
 function renderPassport() {
-  $('pp-legend').innerHTML = MASTERY.slice(1).map(m => `<span style="background:${m.color}" title="${m.name}: ${m.at}+ places known"></span>`).join('');
+  if (ppTab === 'compare' && !PV.other) ppTab = 'book';
+  const comparing = ppTab === 'compare';
+  $('pp-legend').innerHTML = comparing ? compareLegendHtml() : MASTERY.slice(1).map(m => `<span style="background:${m.color}" title="${m.name}: ${m.at}+ places known"></span>`).join('');
+  $('pp-legend').classList.toggle('masterylegend', !comparing); $('pp-legend').nextElementSibling.hidden = comparing;
+  $('pp-tabs').querySelector('[data-tab="compare"]').hidden = !(PV.other && CLOUD);
   $('pp-tabs').querySelectorAll('[data-tab]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === ppTab)));
   const p = pp(), view = !!PV.other, who = view ? PV.other.label : null, k = countryKnowledge(p), body = $('pp-body');
   if (ppTab === 'book') { renderBook(body); return; }
@@ -205,6 +210,10 @@ function renderPassport() {
       ${newestFlags.length ? `<div><div class="label" style="margin-bottom:6px">Newest flags</div><div class="flagrow">${newestFlags.map(s => `<img src="${s}" alt="" style="width:54px;height:36px;object-fit:contain;border-radius:3px;box-shadow:0 0 0 1px var(--line)">`).join('')}</div></div>` : ''}`;
   } else if (ppTab === 'awards') {
     renderAwards(body, p);
+  } else if (ppTab === 'feed') {
+    renderFeedTab(body, p);
+  } else if (ppTab === 'compare') {
+    renderCompare(body);
   } else {
     const hist = p.history || [];
     body.innerHTML = hist.length ? `<p class="hint" style="margin:0">${view ? 'Their' : 'Your'} last ${hist.length} finished trips, drawn on the map.</p><ul class="list">${hist.map(h => { const s = G.byGid.get(h.route[0]), d = G.byGid.get(h.dest); return `<li><span>${s != null ? esc(G.name[s]) : '?'} → ${d != null ? esc(G.name[d]) : '?'}</span><span>${(VEHICLES[h.vehicle] || VEHICLES.car).icon} ${fmt(h.km)} km · ${fmt(h.total)} pts</span></li>`; }).join('')}</ul>` : `<p class="hint">${view ? 'No finished trips yet.' : 'Finish a trip and it shows up here.'}</p>`;
@@ -213,10 +222,10 @@ function renderPassport() {
 $('pp-body').addEventListener('click', e => { const b = e.target.closest('[data-goto-tab]'); if (b) { ppTab = b.dataset.gotoTab; if (ppTab === 'flags' && !PV.other) openedFlagTab(); renderPassport(); ppMap.draw(); } });
 $('pp-tabs').onclick = e => { const b = e.target.closest('[data-tab]'); if (!b) return; ppTab = b.dataset.tab; if (ppTab === 'flags' && !PV.other) openedFlagTab(); renderPassport(); ppMap.draw(); };
 // other: null for your own passport, or { label, data } for another player's, read-only
-function openPassport(other) {
-  const was = PV.other; PV.other = other || null;
+function openPassport(other, tab) {
+  const was = PV.other; PV.other = other || null; showcaseEditing = false;
   if (!other && was) { ppSel = null; ppTab = 'book'; FL.cc = ''; }
-  if (other) { ppSel = null; ppTab = 'book'; FL.cc = ''; FL.kind = 'country'; }
+  if (other) { ppSel = null; ppTab = tab || 'book'; FL.cc = ''; FL.kind = 'country'; }
   $('pp-title').textContent = other ? `${other.label}'s passport` : 'Passport';
   $('pp-lead').textContent = other ? 'Read-only. Their mastery map, stamps, covers, flags and trips. Click a country to see how well they know it.' : 'How well you know each country. Click one on the map.';
   if (!other && P.flagsNew) { ppTab = 'flags'; openedFlagTab(); }
@@ -232,7 +241,7 @@ const Q = { cc: null, adm: '', level: 1, mode: 'find', items: [], order: [], idx
 const stMap = new MapView($('st-map'), {
   style: () => ['night', 'blueprint', 'antique', 'political', 'terrain', 'outdoor', 'midcentury', 'satellite', 'nightlights', 'grey', 'metro', 'newsprint', 'topo', 'synthwave'].includes(P.equip.style) ? P.equip.style : 'atlas',
   overlays: () => ({}),
-  tint: () => { if (Q.cc == null || !G) return null; const ci = G.ccIndex[Q.cc]; return c => c === ci ? null : 'rgba(128,128,128,.35)'; },
+  tint: () => { if (Q.cc == null || !G || Q.deck) return null; const ci = G.ccIndex[Q.cc]; return c => c === ci ? null : 'rgba(128,128,128,.35)'; },
   click: p => studyClick(p),
   layer: (m, ctx, pal) => {
     if (!Q.items.length) return;
@@ -250,6 +259,7 @@ const stMap = new MapView($('st-map'), {
 });
 function studyPool(cc, adm) {
   if (Q.custom) return Q.custom.slice();
+  if (Q.deck) return deckPool(Q.deck);
   const ci = G.ccIndex[cc], out = [];
   for (let i = 0; i < G.n && out.length < 160; i++) {
     if (G.cc[i] !== ci || (adm && admOf(i)[2] !== adm)) continue;
@@ -260,18 +270,20 @@ function studyPool(cc, adm) {
 }
 function openStudy(cc) {
   if (!G) return;
-  Q.custom = null;
+  Q.custom = null; if (cc) Q.deck = null;
   Q.cc = cc || Q.cc || (S ? ccOf(S.cur) : 'DE'); Q.adm = cc ? '' : Q.adm; Q.running = false; Q.done = false; Q.items = [];
   renderStudySide(); $('dlg-study').showModal();
-  requestAnimationFrame(() => { stMap.resize(); zoomToCountry(stMap, G.ccIndex[Q.cc], true); applyCosmetics(); });
+  requestAnimationFrame(() => { stMap.resize(); if (Q.deck) previewStudy(); else zoomToCountry(stMap, G.ccIndex[Q.cc], true); applyCosmetics(); });
 }
+// a bought deck (sinks.js) opens Study on it
+function openDeck(id) { if (!ownsDeck(id)) return; Q.deck = id; Q.custom = null; Q.done = false; Q.items = []; openStudy(); }
 $('btn-study').onclick = () => openStudy();
 $('dlg-study').addEventListener('close', () => { Q.running = false; });
 function renderStudySide() {
   const ci = G.ccIndex[Q.cc], side = $('st-side');
   if (Q.running) {
     const target = Q.order[Q.idx], areaName = Q.adm ? G.admList[G.admIndex.get(Q.adm)][0] : '';
-    side.innerHTML = `<div><div class="label">${esc(G.countries[ci][1])}${areaName ? ' · ' + esc(areaName) : ''} · level ${Q.level}</div>
+    side.innerHTML = `<div><div class="label">${Q.deck ? esc(deckOf(Q.deck).name) : esc(G.countries[ci][1])}${areaName ? ' · ' + esc(areaName) : ''} · level ${Q.level}</div>
         <h3 style="margin:6px 0 0;font:800 26px/1 var(--display);text-transform:uppercase">${Q.idx + 1} of ${Q.order.length}</h3></div>
       <div class="stats"><div class="stat"><span class="label">Score</span><b>${Q.score}</b></div><div class="stat"><span class="label">Out of</span><b>${Q.order.length * 3}</b></div><div class="stat"><span class="label">Tries left</span><b id="st-tries">${3 - Q.tries}</b></div></div>
       ${Q.mode === 'name' ? `<form id="st-form" class="entryrow" autocomplete="off"><input class="bigfield" type="text" id="st-input" placeholder="Name the blue dot" spellcheck="false" aria-label="Name of the blue dot"><button class="btn go" type="submit">Check</button></form>` : '<p class="hint" style="margin:0">Click the dot for the place named at the top of the map.</p>'}
@@ -279,8 +291,8 @@ function renderStudySide() {
       <div class="tools"><button class="btn small" type="button" id="st-skip">Skip</button><button class="btn small" type="button" id="st-stop">End session</button></div>`;
     $('st-bar').hidden = false;
     $('st-bar').innerHTML = Q.mode === 'find'
-      ? `<small>Find</small><b>${esc(G.name[target])}</b><small>${esc(tierOf(target).label)}${admOf(target)[0] && !Q.adm ? ' · ' + esc(admOf(target)[0]) : ''}</small>`
-      : `<small>Name the blue dot</small><b>?</b><small>${esc(tierOf(target).label)}${admOf(target)[0] && !Q.adm ? ' · ' + esc(admOf(target)[0]) : ''}</small>`;
+      ? `<small>Find</small><b>${esc(G.name[target])}</b><small>${esc(tierOf(target).label)}${Q.deck ? ' · ' + esc(countryName(target)) : admOf(target)[0] && !Q.adm ? ' · ' + esc(admOf(target)[0]) : ''}</small>`
+      : `<small>Name the blue dot</small><b>?</b><small>${esc(tierOf(target).label)}${Q.deck ? ' · ' + esc(countryName(target)) : admOf(target)[0] && !Q.adm ? ' · ' + esc(admOf(target)[0]) : ''}</small>`;
     $('st-skip').onclick = () => studyAnswer(false, true);
     $('st-stop').onclick = () => finishStudy();
     if (Q.mode === 'name') {
@@ -293,12 +305,13 @@ function renderStudySide() {
   const regions = [];
   G.admList.forEach((a, i) => { if (a[2] && a[2].startsWith(Q.cc + '.') && G.admCount[i] >= 5) regions.push([a[2], a[0], G.admCount[i]]); });
   regions.sort((a, b) => a[1].localeCompare(b[1]));
-  const pool = studyPool(Q.cc, Q.adm), N = Q.custom ? pool.length : Math.min(LEVELS[Q.level - 1], pool.length), study = P.study[Q.cc] || {}, pct = Q.order.length ? Math.round(Q.score / (Q.order.length * 3) * 100) : 0;
+  const pool = studyPool(Q.cc, Q.adm), N = Q.custom ? pool.length : Math.min(LEVELS[Q.level - 1], pool.length), study = Q.deck ? (P.deckBest || {})[Q.deck] || {} : P.study[Q.cc] || {}, pct = Q.order.length ? Math.round(Q.score / (Q.order.length * 3) * 100) : 0;
   side.innerHTML = `
     ${Q.done ? `<div class="finish"><h2>${Q.score} / ${Q.order.length * 3}</h2><p>${pct}% · ${[...Q.results.values()].filter(v => v > 0).length} of ${Q.order.length} found${Q.learned ? ` · ${Q.learned} new` : ''} · +${Q.coins} coins. Names are now shown on the map, so have a look before you go again.</p><div class="tools"><button class="btn go" type="button" id="st-again">Again</button>${Q.level < 10 && N < pool.length + 1 ? '<button class="btn" type="button" id="st-harder">Harder</button>' : ''}</div></div>` : ''}
     ${Q.custom ? `<div class="news-perk"><span><strong>Blind-spot drill · ${Q.custom.length} places</strong><br><span class="hint">Only the places you keep missing in ${esc(G.countries[ci][1])}. A right answer on the first try moves its card up a box.</span></span></div>` : ''}
-    <div><label class="label" for="st-country">Country or territory</label><select class="field" id="st-country" style="width:100%;margin-top:6px">${G.countries.map((c, i) => [c, i]).filter(([, i]) => G.placeCount[i] >= 5).sort((a, b) => a[0][1].localeCompare(b[0][1])).map(([c]) => `<option value="${c[0]}" ${c[0] === Q.cc ? 'selected' : ''}>${esc(c[1])}</option>`).join('')}</select></div>
-    <div><label class="label" for="st-adm">Area</label><select class="field" id="st-adm" style="width:100%;margin-top:6px"><option value="">The whole country</option>${regions.map(([key, nm, n]) => `<option value="${key}" ${key === Q.adm ? 'selected' : ''}>${esc(nm)} (${fmt(n)} places)</option>`).join('')}</select>
+    ${STUDY_DECKS.some(d => ownsDeck(d.id)) ? `<div><label class="label" for="st-deck">Deck</label><select class="field" id="st-deck" style="width:100%;margin-top:6px"><option value="">One country</option>${STUDY_DECKS.filter(d => ownsDeck(d.id)).map(d => `<option value="${d.id}" ${Q.deck === d.id ? 'selected' : ''}>${esc(d.name)} (${fmt(deckPool(d.id).length)})</option>`).join('')}</select></div>` : ''}
+    <div ${Q.deck ? 'hidden' : ''}><label class="label" for="st-country">Country or territory</label><select class="field" id="st-country" style="width:100%;margin-top:6px">${G.countries.map((c, i) => [c, i]).filter(([, i]) => G.placeCount[i] >= 5).sort((a, b) => a[0][1].localeCompare(b[0][1])).map(([c]) => `<option value="${c[0]}" ${c[0] === Q.cc ? 'selected' : ''}>${esc(c[1])}</option>`).join('')}</select></div>
+    <div ${Q.deck ? 'hidden' : ''}><label class="label" for="st-adm">Area</label><select class="field" id="st-adm" style="width:100%;margin-top:6px"><option value="">The whole country</option>${regions.map(([key, nm, n]) => `<option value="${key}" ${key === Q.adm ? 'selected' : ''}>${esc(nm)} (${fmt(n)} places)</option>`).join('')}</select>
       <p class="hint" style="margin:6px 0 0">States, provinces, constituent countries and autonomous republics, like Bavaria, Texas, Scotland or Crimea. Territories like Greenland or Puerto Rico are in the country list.</p></div>
     <div><label class="label" for="st-level">Difficulty · level ${Q.level}</label><input type="range" id="st-level" min="1" max="10" step="1" value="${Q.level}">
       <p class="hint" style="margin:0">${N} places, the ${N} biggest${N >= pool.length ? ' (all of them)' : ''}. ${Q.level <= 2 ? 'Major cities only.' : Q.level <= 5 ? 'Cities and bigger towns.' : Q.level <= 8 ? 'Down to small towns.' : 'Deep cuts, villages included.'}</p></div>
@@ -306,9 +319,10 @@ function renderStudySide() {
       <button type="button" class="choice" data-mode="find" aria-pressed="${Q.mode === 'find'}">Find on map<small>Click the named place</small></button>
       <button type="button" class="choice" data-mode="name" aria-pressed="${Q.mode === 'name'}">Name the dot<small>Type the highlighted place</small></button></div></div>
     <button class="btn go" type="button" id="st-start" ${N ? '' : 'disabled'}>Start · ${N} places</button>
-    <ul class="list"><li><span>Best score in ${esc(G.countries[ci][1])}</span><span>${study.bestPct != null ? study.bestPct + '%' : '—'}</span></li><li><span>Places learned here</span><span>${fmt((study.known || []).length)}</span></li></ul>
+    <ul class="list"><li><span>Best score in ${Q.deck ? esc(deckOf(Q.deck).name) : esc(G.countries[ci][1])}</span><span>${study.bestPct != null ? study.bestPct + '%' : '—'}</span></li>${Q.deck ? '' : `<li><span>Places learned here</span><span>${fmt((study.known || []).length)}</span></li>`}</ul>
     <p class="hint" style="margin:0">3 points on the first try, 2 on the second, 1 on the third. Every place you get right counts towards your mastery of the country. Coins: 1 for every place you learn for the first time, 1 per 6 points, and a bonus of half the round's size (up to 40) for 90% or better.</p>`;
-  $('st-country').onchange = e => { Q.custom = null; Q.cc = e.target.value; Q.adm = ''; Q.done = false; Q.items = []; renderStudySide(); zoomToCountry(stMap, G.ccIndex[Q.cc]); };
+  if ($('st-deck')) $('st-deck').onchange = e => { Q.deck = e.target.value || null; Q.custom = null; Q.done = false; Q.items = []; renderStudySide(); if (Q.deck) previewStudy(); else zoomToCountry(stMap, G.ccIndex[Q.cc]); stMap.draw(); };
+  $('st-country').onchange = e => { Q.custom = null; Q.deck = null; Q.cc = e.target.value; Q.adm = ''; Q.done = false; Q.items = []; renderStudySide(); zoomToCountry(stMap, G.ccIndex[Q.cc]); };
   $('st-adm').onchange = e => { Q.custom = null; Q.adm = e.target.value; Q.done = false; Q.items = []; renderStudySide(); previewStudy(); };
   $('st-level').oninput = e => { Q.level = +e.target.value; renderStudySide(); };
   $('st-level').onchange = () => previewStudy();
@@ -335,7 +349,7 @@ function studyClick(p) {
   else { flashDot(best, '#C42B2B', 1400); const m = $('st-msg'); m.textContent = `That's ${G.name[best]}.`; m.className = 'msg bad'; studyAnswer(false); }
 }
 function studyAnswer(ok, skip) {
-  const target = Q.order[Q.idx], rec = P.study[Q.cc] = P.study[Q.cc] || { known: [], answered: 0, correct: 0 };
+  const target = Q.order[Q.idx], qcc = Q.deck ? ccOf(target) : Q.cc, rec = P.study[qcc] = P.study[qcc] || { known: [], answered: 0, correct: 0 };
   if (ok) {
     const pts = 3 - Q.tries; Q.score += pts; Q.results.set(target, pts); rec.answered++; rec.correct++;
     if (Q.tries) bsNote(target, 'miss'); else bsGrade(target, true, true);
@@ -361,7 +375,7 @@ function nextQuestion(msg, cls) {
 function finishStudy() {
   const complete = Q.idx >= Q.order.length, answered = Math.max(1, Math.min(Q.idx, Q.order.length));
   Q.running = false; Q.done = true; Q.order = Q.order.slice(0, answered);
-  const pct = Math.round(Q.score / (answered * 3) * 100), rec = P.study[Q.cc] = P.study[Q.cc] || { known: [], answered: 0, correct: 0 };
+  const pct = Math.round(Q.score / (answered * 3) * 100), rec = Q.deck ? ((P.deckBest = P.deckBest || {})[Q.deck] = P.deckBest[Q.deck] || {}) : P.study[Q.cc] = P.study[Q.cc] || { known: [], answered: 0, correct: 0 };
   if (complete) rec.bestPct = Math.max(rec.bestPct || 0, pct);
   // coins reward learning: 1 per place you get right for the first time ever, plus a little for the score,
   // plus an accuracy bonus that grows with the round's size (so replaying a 5-place round is not a coin farm)
