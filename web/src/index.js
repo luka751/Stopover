@@ -1,9 +1,13 @@
 // Stopover online: accounts, cloud saves, the leaderboard and race lobbies.
 // Static files (the game itself) are served from ./public; only /api/* reaches this code.
 import { DurableObject } from 'cloudflare:workers';
-import { parseName, nickProblem } from './names.js';
+import { parseName, nickProblem, randomName } from './names.js';
 
 const SESSION_DAYS = 60, MAX_PLAYERS = 8, CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+// Guests play without an account under a random fruit name. Their key lives only in the browser tab (sessionStorage),
+// so closing the tab loses it; the tab pings while it is open, and a guest nobody has heard from in GUEST_IDLE_HOURS
+// is deleted with everything they saved.
+const GUEST_IDLE_HOURS = 6, GUEST_SESSION_DAYS = 7;
 
 const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...headers } });
 const fail = (status, error) => json({ error }, status);
@@ -11,7 +15,10 @@ const hex = buf => [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, 
 const sha256 = async text => hex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)));
 const randomHex = n => hex(crypto.getRandomValues(new Uint8Array(n)));
 const randomToken = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const TOKEN_RE = /^[A-Za-z0-9_-]{30,60}$/;
 const cookieToken = req => (/(?:^|;\s*)sid=([A-Za-z0-9_-]{30,60})/.exec(req.headers.get('cookie') || '') || [])[1] || null;
+// a guest's tab sends its key in a header; a WebSocket can't carry headers, so the lobby socket sends it in the address
+const guestToken = (req, url) => { const t = req.headers.get('x-guest') || (url.pathname.endsWith('/ws') ? url.searchParams.get('gt') : null); return t && TOKEN_RE.test(t) ? t : null; };
 const sidCookie = (token, days) => `sid=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${Math.round(days * 86400)}`;
 const accounts = env => env.ACCOUNTS.get(env.ACCOUNTS.idFromName('main'));
 const lobby = (env, code) => env.LOBBY.get(env.LOBBY.idFromName('lobby:' + code));
@@ -94,8 +101,10 @@ async function api(req, env, url) {
   // requests that change something must come from this site
   const origin = req.headers.get('origin');
   if (origin && new URL(origin).host !== url.host) return fail(403, 'Wrong origin');
-  const token = cookieToken(req), th = token ? await sha256(token) : null;
+  const token = guestToken(req, url) || cookieToken(req), th = token ? await sha256(token) : null;
   const who = async () => { const u = th && await acct.userBySession(th); if (!u) throw new HttpError(401, 'Log in first'); return u; };
+  // the things other players see or that move coins between players need a real account
+  const member = async what => { const u = await who(); if (u.guest) throw new HttpError(403, `Create an account to ${what}.`); return u; };
   const startSession = async userId => { const t = randomToken(); await acct.createSession(await sha256(t), userId, SESSION_DAYS); return sidCookie(t, SESSION_DAYS); };
 
   let m;
@@ -103,11 +112,18 @@ async function api(req, env, url) {
     const p = parseName(m[1]); if (!p) return json({ valid: false, available: false });
     return json({ valid: true, name: p.name, available: !(await acct.nameTaken(p.name)) });
   }
+  // a new guest: a random fruit name and a key for this browser tab only
+  if (method === 'POST' && path === '/api/guest') {
+    const t = randomToken(), res = await acct.createGuest(await sha256(t), GUEST_SESSION_DAYS);
+    return json({ token: t, name: res.name });
+  }
   if (method === 'POST' && path === '/api/register') {
     const body = await readJson(req, 2000), p = parseName(body.name);
     if (!p) return fail(400, 'Usernames are a colour and a fruit. Spin for one.');
     if (!validKey(body.key)) return fail(400, 'Bad password data');
-    const res = await acct.register(p.name, body.key);
+    // a guest who signs up keeps everything they played so far: their guest row becomes the account
+    const cur = th && await acct.userBySession(th);
+    const res = cur && cur.guest ? await acct.claimGuest(cur.id, p.name, body.key) : await acct.register(p.name, body.key);
     if (res.error) return fail(409, res.error);
     return json({ ok: true }, 200, { 'set-cookie': await startSession(res.id) });
   }
@@ -116,12 +132,17 @@ async function api(req, env, url) {
     if (!p || !validKey(body.key)) return fail(401, 'Wrong username or password');
     const res = await acct.login(p.name, body.key);
     if (res.error) return fail(res.status || 401, res.error);
+    // logging in from a guest tab leaves the guest behind, so it goes now rather than when it idles out
+    const cur = th && await acct.userBySession(th);
+    if (cur && cur.guest) await acct.deleteGuest(cur.id);
     return json({ ok: true }, 200, { 'set-cookie': await startSession(res.id) });
   }
   if (method === 'POST' && path === '/api/logout') {
     if (th) await acct.endSession(th);
     return json({ ok: true }, 200, { 'set-cookie': sidCookie('', 0) });
   }
+  // an open guest tab says it's still there, so the guest isn't cleared while someone is playing
+  if (method === 'POST' && path === '/api/ping') { await who(); return json({ ok: true }); }
   if (method === 'GET' && path === '/api/me') {
     const u = await who(), data = await acct.load(u.id);
     // saved values are JSON text already: splice them in rather than parsing megabytes on the server
@@ -150,20 +171,20 @@ async function api(req, env, url) {
     return json({ rev: res.rev });
   }
   if (method === 'POST' && path === '/api/password') {
-    const u = await who(), body = await readJson(req, 2000);
+    const u = await member('set a password'), body = await readJson(req, 2000);
     if (!validKey(body.old) || !validKey(body.key)) return fail(400, 'Bad password data');
     const res = await acct.changePassword(u.id, body.old, body.key, th);
     return res.error ? fail(401, res.error) : json({ ok: true });
   }
   if (method === 'POST' && path === '/api/nick') {
-    const u = await who(), body = await readJson(req, 1000), c = cleanNick(body.nick, u.name);
+    const u = await member('pick a nickname'), body = await readJson(req, 1000), c = cleanNick(body.nick, u.name);
     if (c.error) return fail(400, c.error);
     await acct.setNick(u.id, c.nick);
     return json({ ok: true, nick: c.nick });
   }
   // a nickname anyone finds abusive can be reported; three different players reporting the same one takes it down
   if (method === 'POST' && path === '/api/report') {
-    const u = await who(), body = await readJson(req, 1000), p = parseName(body.name);
+    const u = await member('report nicknames'), body = await readJson(req, 1000), p = parseName(body.name);
     if (!p) return fail(404, 'No such player');
     const res = await acct.reportNick(u.id, p.name);
     return res.error ? fail(res.status || 400, res.error) : json(res);
@@ -177,28 +198,29 @@ async function api(req, env, url) {
   if (method === 'GET' && path === '/api/crowns') { await who(); return json({ crowns: await acct.crowns() }); }
   // daily trip and weekly challenge: a finished run posts its score; the first finish in each period is the one that counts
   if (method === 'POST' && path === '/api/score') {
-    const u = await who(), b = await readJson(req, 4000);
+    const u = await member('get on the daily and weekly boards'), b = await readJson(req, 4000);
     if (!['daily', 'weekly'].includes(b.kind) || !recentPeriod(b.kind, b.period)) return fail(400, 'That trip is not on the board any more');
     const r = { total: int(b.total, 60000), km: int(b.km, 60000), stops: int(b.stops, 500), squares: typeof b.squares === 'string' ? b.squares.slice(0, 400) : '' };
     return json(await acct.postScore(u.id, b.kind, b.period, r));
   }
   // bounties: a player stakes coins on a route they finished; the first to beat their score on it takes them
   if (method === 'POST' && path === '/api/bounty') {
-    const u = await who(), b = await readJson(req, 6000), spec = cleanBountySpec(b.spec), target = b.target ? parseName(b.target) : null;
+    const u = await member('post bounties'), b = await readJson(req, 6000), spec = cleanBountySpec(b.spec), target = b.target ? parseName(b.target) : null;
     if (!spec) return fail(400, 'That route can\'t carry a bounty.');
     if (!BOUNTY_REWARDS.includes(b.reward)) return fail(400, 'Pick one of the reward sizes.');
     return json(await acct.postBounty(u.id, spec, int(b.beat, 60000), b.reward, target && target.name));
   }
   if (method === 'GET' && path === '/api/bounties') { const u = await who(); return json(await acct.bounties(u.id)); }
   if (method === 'POST' && (m = /^\/api\/bounty\/(\d{1,9})\/(claim|refund)$/.exec(path))) {
-    const u = await who(), b = await readJson(req, 1000);
+    const u = await member('claim bounties'), b = await readJson(req, 1000);
     const res = m[2] === 'claim' ? await acct.claimBounty(u.id, +m[1], int(b.total, 60000)) : await acct.refundBounty(u.id, +m[1]);
     return res.error ? fail(res.status || 400, res.error) : json(res);
   }
   if (method === 'GET' && (m = /^\/api\/board\/(daily|weekly)\/([0-9W-]{7,10})$/.exec(path))) { const u = await who(); return json(await acct.board(m[1], m[2], u.id)); }
   if (method === 'GET' && (m = /^\/api\/profile\/([A-Za-z]{4,30})$/.exec(path))) {
-    await who();
-    const p = parseName(m[1]), data = p && await acct.profile(p.name);
+    const u = await who(), p = parseName(m[1]);
+    // guests aren't listed by name, but can open their own profile
+    const data = p && (u.guest && p.name === u.name ? await acct.profile(null, u.id) : await acct.profile(p.name));
     if (!data) return fail(404, 'No such player');
     let prof = {}; try { prof = JSON.parse(data.profile || '{}') || {}; } catch {}
     // only what a profile page shows: no study decks, blind spots or trip in progress
@@ -222,7 +244,7 @@ async function api(req, env, url) {
   if (method === 'GET' && (m = /^\/api\/lobby\/([A-Za-z]{4})\/ws$/.exec(path))) {
     if (req.headers.get('upgrade') !== 'websocket') return fail(426, 'WebSocket only');
     const u = await who(), headers = new Headers(req.headers);
-    headers.set('x-uid', String(u.id)); headers.set('x-name', u.name); headers.set('x-nick', encodeURIComponent(u.nick || ''));
+    headers.set('x-uid', String(u.id)); headers.set('x-name', u.name); headers.set('x-nick', encodeURIComponent(u.nick || '')); headers.set('x-guest', u.guest ? '1' : '');
     headers.set('x-ident', encodeURIComponent(JSON.stringify({ flair: u.flair, cover: u.cover, league: u.league, title: u.title, motto: u.motto })));
     return lobby(env, m[1].toUpperCase()).fetch(new Request(req.url, { headers }));
   }
@@ -245,6 +267,7 @@ export class Accounts extends DurableObject {
     // added after launch: databases from before nicknames get the column on their next start
     try { this.sql.exec('ALTER TABLE users ADD COLUMN nick TEXT'); } catch { /* already there */ }
     try { this.sql.exec('ALTER TABLE stats ADD COLUMN known TEXT'); } catch { /* already there */ }
+    try { this.sql.exec('ALTER TABLE users ADD COLUMN guest INTEGER NOT NULL DEFAULT 0'); } catch { /* already there */ }
     for (const col of ['flair', 'cover', 'title', 'cont', 'motto']) try { this.sql.exec(`ALTER TABLE stats ADD COLUMN ${col} TEXT`); } catch { /* already there */ }
     this.sql.exec('CREATE TABLE IF NOT EXISTS bounties (id INTEGER PRIMARY KEY AUTOINCREMENT, poster INTEGER NOT NULL, target INTEGER, spec TEXT NOT NULL, beat INTEGER NOT NULL, reward INTEGER NOT NULL, created INTEGER NOT NULL, expires INTEGER NOT NULL, claimed_by INTEGER, claimed_at INTEGER, claim_total INTEGER, refunded INTEGER NOT NULL DEFAULT 0)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS reports (target INTEGER NOT NULL, reporter INTEGER NOT NULL, nick TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (target, reporter, nick))');
@@ -254,6 +277,36 @@ export class Accounts extends DurableObject {
   row(query, ...args) { return this.sql.exec(query, ...args).toArray()[0] || null; }
 
   nameTaken(name) { return !!this.row('SELECT 1 AS x FROM users WHERE name_lc = ?', name.toLowerCase()); }
+  // Guests don't hold their fruit name: name_lc is a private placeholder, so the name stays free for anyone to sign
+  // up with. Guests are handed a name nobody (account or guest) is using right now, when one can be found quickly.
+  createGuest(tokenHash, days) {
+    this.purgeGuests();
+    let name = randomName();
+    for (let i = 0; i < 30 && this.row('SELECT 1 AS x FROM users WHERE name = ?', name); i++) name = randomName();
+    const now = Date.now();
+    this.sql.exec('INSERT INTO users (name, name_lc, salt, hash, created, last_seen, guest) VALUES (?, ?, \'\', \'\', ?, ?, 1)', name, 'guest:' + randomHex(12), now, now);
+    const id = this.row('SELECT last_insert_rowid() AS id').id;
+    this.sql.exec('INSERT INTO stats (user_id, updated) VALUES (?, ?)', id, now);
+    this.createSession(tokenHash, id, days);
+    return { id, name };
+  }
+  async claimGuest(id, name, key) {
+    if (this.nameTaken(name)) return { error: `${name} is taken. Spin again.` };
+    const salt = randomHex(16), now = Date.now();
+    this.sql.exec('UPDATE users SET name = ?, name_lc = ?, salt = ?, hash = ?, created = ?, last_seen = ?, guest = 0 WHERE id = ? AND guest = 1', name, name.toLowerCase(), salt, await sha256(salt + key), now, now, id);
+    // the tab's guest key stops working; the account gets a normal cookie session instead
+    this.sql.exec('DELETE FROM sessions WHERE user_id = ?', id);
+    return { id };
+  }
+  deleteGuest(id) {
+    if (!this.row('SELECT 1 AS x FROM users WHERE id = ? AND guest = 1', id)) return;
+    for (const q of ['DELETE FROM sessions WHERE user_id = ?', 'DELETE FROM save_keys WHERE user_id = ?', 'DELETE FROM stats WHERE user_id = ?', 'DELETE FROM race_players WHERE user_id = ?',
+      'DELETE FROM scores WHERE user_id = ?', 'DELETE FROM bounties WHERE poster = ?1 OR target = ?1', 'DELETE FROM reports WHERE reporter = ?1 OR target = ?1', 'DELETE FROM users WHERE id = ?']) this.sql.exec(q, id);
+  }
+  purgeGuests() {
+    const old = this.sql.exec('SELECT id FROM users WHERE guest = 1 AND last_seen < ? LIMIT 200', Date.now() - GUEST_IDLE_HOURS * 3600000).toArray();
+    for (const { id } of old) this.deleteGuest(id);
+  }
   async register(name, key) {
     if (this.nameTaken(name)) return { error: `${name} is taken. Spin again.` };
     const salt = randomHex(16), now = Date.now();
@@ -290,10 +343,10 @@ export class Accounts extends DurableObject {
   }
   endSession(tokenHash) { this.sql.exec('DELETE FROM sessions WHERE token = ?', tokenHash); }
   userBySession(tokenHash) {
-    const now = Date.now(), r = this.row(`SELECT u.id, u.name, u.nick, u.last_seen, ${IDENT} FROM sessions x JOIN users u ON u.id = x.user_id LEFT JOIN stats s ON s.user_id = u.id WHERE x.token = ? AND x.expires > ?`, tokenHash, now);
+    const now = Date.now(), r = this.row(`SELECT u.id, u.name, u.nick, u.last_seen, u.guest, ${IDENT} FROM sessions x JOIN users u ON u.id = x.user_id LEFT JOIN stats s ON s.user_id = u.id WHERE x.token = ? AND x.expires > ?`, tokenHash, now);
     if (!r) return null;
     if (now - r.last_seen > 60000) this.sql.exec('UPDATE users SET last_seen = ? WHERE id = ?', now, r.id);
-    return { id: r.id, name: r.name, nick: r.nick || null, flair: r.flair || null, cover: r.cover || null, league: r.league || null, title: r.title || null, motto: r.motto || null };
+    return { id: r.id, name: r.name, guest: !!r.guest, nick: r.nick || null, flair: r.flair || null, cover: r.cover || null, league: r.league || null, title: r.title || null, motto: r.motto || null };
   }
   setNick(userId, nick) { this.sql.exec('UPDATE users SET nick = ? WHERE id = ?', nick, userId); }
   // ---- bounties. The coins move in the players' saves; the server keeps who posted, who beat it and when.
@@ -378,7 +431,7 @@ export class Accounts extends DurableObject {
   crowns() {
     if (this.crownCache && Date.now() - this.crownCache.at < 30000) return this.crownCache.data;
     const best = {};
-    for (const r of this.sql.exec('SELECT u.id, u.name, u.nick, s.flair, s.known FROM users u JOIN stats s ON s.user_id = u.id WHERE s.known IS NOT NULL ORDER BY u.id')) {
+    for (const r of this.sql.exec('SELECT u.id, u.name, u.nick, s.flair, s.known FROM users u JOIN stats s ON s.user_id = u.id WHERE s.known IS NOT NULL AND u.guest = 0 ORDER BY u.id')) {
       let k; try { k = JSON.parse(r.known); } catch { continue; }
       for (const [cc, n] of Object.entries(k)) {
         if (n < 10) continue;
@@ -408,17 +461,18 @@ export class Accounts extends DurableObject {
     const score = BOARD_BY[by], cols = `u.name, u.nick, ${IDENT}, s.flags, s.rating, s.trips, s.places, s.countries, s.km, u.last_seen AS seen,
         (SELECT COUNT(*) FROM race_players p WHERE p.user_id = u.id) AS races, ${WINS} AS wins, ${score} AS score`;
     // a continent board lists only players who know somewhere on it
-    const floor = CONTINENTS.includes(by) || by === 'wins' ? `WHERE ${score} > 0` : '';
+    // guests play but aren't ranked: they'd crowd the board with names that vanish when their tab closes
+    const floor = CONTINENTS.includes(by) || by === 'wins' ? `WHERE u.guest = 0 AND ${score} > 0` : 'WHERE u.guest = 0';
     const rows = this.sql.exec(`SELECT ${cols} FROM users u JOIN stats s ON s.user_id = u.id ${floor} ORDER BY score DESC, s.flags DESC, s.rating DESC, u.id ASC LIMIT 200`).toArray();
-    const rankOf = n => this.row(`SELECT COUNT(*) + 1 AS r FROM users u JOIN stats s ON s.user_id = u.id WHERE ${score} > ?`, n).r;
+    const rankOf = n => this.row(`SELECT COUNT(*) + 1 AS r FROM users u JOIN stats s ON s.user_id = u.id WHERE u.guest = 0 AND ${score} > ?`, n).r;
     const me = this.row(`SELECT ${cols} FROM users u JOIN stats s ON s.user_id = u.id WHERE u.id = ?`, userId);
     const pinned = also.length ? this.sql.exec(`SELECT ${cols} FROM users u JOIN stats s ON s.user_id = u.id WHERE u.name_lc IN (${also.map(() => '?').join(',')})`, ...also.map(n => n.toLowerCase())).toArray() : [];
-    return { by, rows, me: me && { ...me, rank: rankOf(me.score) }, pinned: pinned.map(x => ({ ...x, rank: rankOf(x.score) })), players: this.row('SELECT COUNT(*) AS n FROM users').n };
+    return { by, rows, me: me && { ...me, rank: rankOf(me.score) }, pinned: pinned.map(x => ({ ...x, rank: rankOf(x.score) })), players: this.row('SELECT COUNT(*) AS n FROM users WHERE guest = 0').n };
   }
-  profile(name) {
-    const u = this.row(`SELECT u.id, u.name, u.nick, u.created, u.last_seen AS seen, s.flags, s.rating, s.league, s.trips, s.places, s.countries, s.km, s.flair, s.cover, s.title, s.motto FROM users u JOIN stats s ON s.user_id = u.id WHERE u.name_lc = ?`, name.toLowerCase());
+  profile(name, byId) {
+    const u = this.row(`SELECT u.id, u.name, u.nick, u.created, u.last_seen AS seen, s.flags, s.rating, s.league, s.trips, s.places, s.countries, s.km, s.flair, s.cover, s.title, s.motto FROM users u JOIN stats s ON s.user_id = u.id WHERE ${byId ? 'u.id = ?' : 'u.name_lc = ?'}`, byId || name.toLowerCase());
     if (!u) return null;
-    const rank = this.row('SELECT COUNT(*) + 1 AS rank FROM stats WHERE flags > ?', u.flags).rank;
+    const rank = this.row('SELECT COUNT(*) + 1 AS rank FROM stats s JOIN users u ON u.id = s.user_id WHERE u.guest = 0 AND s.flags > ?', u.flags).rank;
     const races = this.sql.exec(`SELECT r.mode, r.players, r.finished, p.place FROM race_players p JOIN races r ON r.id = p.race_id WHERE p.user_id = ? ORDER BY r.id DESC LIMIT 10`, u.id).toArray();
     const totals = this.row(`SELECT COUNT(*) AS races, SUM(CASE WHEN p.place = 1 AND r.players > 1 THEN 1 ELSE 0 END) AS wins FROM race_players p JOIN races r ON r.id = p.race_id WHERE p.user_id = ?`, u.id);
     const prof = this.row(`SELECT v FROM save_keys WHERE user_id = ? AND k = 'stopover-profile'`, u.id);
@@ -494,15 +548,15 @@ export class Lobby extends DurableObject {
   info() { const st = this.st; return st ? { exists: true, players: st.order.length, full: st.order.length >= MAX_PLAYERS, phase: st.phase } : { exists: false }; }
 
   async fetch(req) {
-    const uid = +req.headers.get('x-uid'), name = req.headers.get('x-name') || '?';
+    const uid = +req.headers.get('x-uid'), name = req.headers.get('x-name') || '?', guest = req.headers.get('x-guest') === '1';
     let nick = null; try { nick = decodeURIComponent(req.headers.get('x-nick') || '') || null; } catch {}
     let ident = {}; try { ident = JSON.parse(decodeURIComponent(req.headers.get('x-ident') || '{}')) || {}; } catch {}
     const look = cleanLook(ident);
     if (!this.st) return new Response('No lobby with that code', { status: 404 });
     const st = this.st;
     if (!st.players[uid] && st.order.length >= MAX_PLAYERS) return new Response('That lobby is full', { status: 403 });
-    if (!st.players[uid]) { st.players[uid] = { id: uid, name, nick, ...look, ready: false }; st.order.push(uid); }
-    else Object.assign(st.players[uid], { nick, ...look });
+    if (!st.players[uid]) { st.players[uid] = { id: uid, name, guest, nick, ...look, ready: false }; st.order.push(uid); }
+    else Object.assign(st.players[uid], { name, guest, nick, ...look });
     if (!st.players[st.host]) st.host = uid;
     const pair = new WebSocketPair();
     this.ctx.acceptWebSocket(pair[1]);

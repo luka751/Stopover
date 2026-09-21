@@ -72,6 +72,14 @@ const ordinal = n => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', '
 const medal = place => place === 1 ? '🥇' : place === 2 ? '🥈' : place === 3 ? '🥉' : place ? ordinal(place) : '–';
 const resultValue = (mode, r) => r.dnf ? (r.gaveUp ? 'Gave up' : 'Did not finish') : mode === 'time' ? clock(r.finishMs) : mode === 'points' ? `${fmt(r.total)} pts` : mode === 'distance' ? `${fmt(r.km)} km` : `${r.stops} ${r.stops === 1 ? 'stop' : 'stops'}`;
 const api = (path, opts) => CLOUD.api(path, opts);
+// Guests play everything, race in lobbies and see the boards; what other players see of them or what moves coins
+// between players (nicknames, board scores, bounties) waits for an account. Guests in a lobby aren't looked up by
+// name, since their fruit name isn't theirs to keep.
+const isGuest = () => !!(CLOUD && CLOUD.user && CLOUD.user.guest);
+const GUESTS = new Set();
+const guestNote = what => `<div class="guestnote"><p>${what} <b>Create an account to save your progress</b>: everything you've played as a guest comes with you.</p><button class="btn go small" type="button" data-signup="new">Create account</button><button class="btn small" type="button" data-signup="login">Log in</button></div>`;
+// the sign-up card isn't a dialog, so any open dialog steps aside for it
+document.addEventListener('click', e => { const b = e.target.closest('[data-signup]'); if (!b || b.closest('#guestbar')) return; document.querySelectorAll('dialog[open]').forEach(d => d.close()); CLOUD.openSignup(b.dataset.signup); });
 const inThisRace = () => { const st = ONLINE.state; return !!(S && S.race && st && st.race && S.race.code === st.code && S.race.n === st.race.n); };
 const amHost = () => ONLINE.state && ONLINE.state.host === ONLINE.state.me;
 
@@ -84,7 +92,7 @@ function connect(code) {
   if (ONLINE.ws) { ONLINE.ws.onclose = null; try { ONLINE.ws.close(); } catch {} }
   if (ONLINE.code !== code) ONLINE.state = null;
   ONLINE.code = code; store.set('stopover-lobby', { code });
-  const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/lobby/${code}/ws`);
+  const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/lobby/${code}/ws${CLOUD.wsQuery()}`);
   ONLINE.ws = ws;
   ws.onopen = () => { ONLINE.retry = 0; sendIdent(); };
   ws.onmessage = e => { if (e.data === 'pong') return; let m; try { m = JSON.parse(e.data); } catch { return; } onLobbyMessage(m); };
@@ -125,6 +133,7 @@ function onLobbyMessage(m) {
   if (m.t === 'kicked') { leaveLocal('The host removed you from the lobby.'); return; }
   if (m.t !== 'state') return;
   ONLINE.offset = m.now - Date.now(); ONLINE.state = m; noteNicks(m.players);
+  for (const p of m.players) if (p.guest) GUESTS.add(p.name); else GUESTS.delete(p.name);
   const r = m.race, mine = r && r.progress[m.me];
   // a player who finished and went back to their own trip stays there
   if (G && m.phase === 'racing' && mine) { if (inThisRace()) syncRace(m); else if (ONLINE.leftRace !== `${m.code}:${r.n}`) enterRace(m); }
@@ -389,7 +398,7 @@ function renderLobby(body) {
     <section class="lobbyhead"><div><div class="label">Lobby code</div><div class="lobbycode">${esc(st.code)}</div><p class="hint" style="margin:4px 0 0">Friends join with this code in Online → Race.${ONLINE.ws ? '' : ' <b>Reconnecting…</b>'}</p></div>
       <div class="tools"><button class="btn small" type="button" id="lob-copy">Copy code</button><button class="btn small" type="button" id="lob-leave">Leave lobby</button></div></section>
     <section><div class="label">Players · ${st.players.length}/8</div><ul class="lobbyplayers">${st.players.map(p => `<li>
-      ${coverMini(p.name)}<span class="lobbyname"><button type="button" class="linkish" data-profile="${esc(p.name)}">${unameHtml(p.name)}</button>${p.id === st.me ? ' <span class="hint">(you)</span>' : ''}${titleHtml(p.name)}${mottoHtml(p.name)}</span>
+      ${coverMini(p.name)}<span class="lobbyname">${p.guest && p.id !== st.me ? unameHtml(p.name) : `<button type="button" class="linkish" data-profile="${esc(p.name)}">${unameHtml(p.name)}</button>`}${p.id === st.me ? ' <span class="hint">(you)</span>' : ''}${p.guest ? ' <span class="chip guestchip">Guest</span>' : ''}${titleHtml(p.name)}${mottoHtml(p.name)}</span>
       <span class="lobbytags">${p.id === st.host ? '<span class="chip">👑 Host</span>' : ''}${!p.online ? '<span class="chip">Offline</span>' : p.id === st.host ? '' : p.ready && set.stake && !p.canPay ? '<span class="chip warn">💰 Can\'t pay the fee</span>' : p.ready ? '<span class="chip good">✓ Ready</span>' : '<span class="chip">Not ready</span>'}${host && p.id !== st.me && !racing ? `<button class="btn small" type="button" data-kick="${p.id}">Remove</button>` : ''}</span></li>`).join('')}</ul></section>
     ${racing ? `<section><div class="label">Race in progress</div><p class="hint" style="margin:6px 0 0">${st.race && st.race.progress[st.me] ? 'You are in this race.' : "You joined after the start, so you'll be in the next race."}</p></section>` : ''}
     ${st.phase === 'results' && st.results ? `<section><div class="label">Last race</div>${resultsHtml(st).replace(/^<section>|<\/section>$/g, '')}</section>` : ''}
@@ -470,6 +479,7 @@ async function loadChallenge(kind, force) {
 }
 async function postChallenge() {
   const kind = S.weekly ? 'weekly' : 'daily', period = S.weekly || S.daily, key = kind + ':' + period;
+  if (isGuest()) { CHAL.posted[key] = 'guest'; refreshChallengeLine(); return; }
   CHAL.posted[key] = 'posting'; refreshChallengeLine();
   const squares = shareText().split('\n')[2] || '';
   const r = await api('/api/score', { method: 'POST', body: JSON.stringify({ kind, period, total: S.total, km: Math.round(S.km), stops: S.stops.length, squares }) });
@@ -480,6 +490,7 @@ function challengeLine() {
   const kind = S.weekly ? 'weekly' : 'daily', key = kind + ':' + (S.weekly || S.daily), st = CHAL.posted[key], b = CHAL.boards[key];
   const label = kind === 'weekly' ? 'this week' : 'today';
   if (st === 'posting') return 'Posting your score to the board…';
+  if (st === 'guest') return `Guest scores don't go on the board. <button type="button" class="linkish" data-signup="new"><b>Create an account</b></button> to be ranked ${label}.`;
   if (st === 'done' && b && b.rank) return `${b.rank <= 3 ? medal(b.rank) : '📊'} #${b.rank} of ${b.players} ${label}${b.mine !== S.total ? ` · your first run (${fmt(b.mine)} pts) is the one that counts` : ''} · <button type="button" class="linkish" data-openboard="${kind}">see the board</button>`;
   if (st && st !== 'done') return `The board didn't take this one: ${esc(st)}`;
   return '';
@@ -504,7 +515,8 @@ function renderBoard(body) {
       : `<p class="hint">Nobody yet. Tap ☆ beside a player on the leaderboard, or Follow on their profile, and they'll be ranked here next to you in every category.</p>`;
   } else if (b) {
     table = b.rows.length ? `<table class="board">${head}<tbody>${b.rows.map((x, i) => row(x, i + 1)).join('')}</tbody></table>` : '<p class="hint">Nobody on this board yet.</p>';
-    if (b.me && !b.rows.some(x => x.name === me)) table += `<p class="hint" style="margin:8px 0 0">You're #${fmt(b.me.rank)} with ${fmt(b.me.score)}.</p>`;
+    if (b.me && isGuest()) table += `<p class="hint" style="margin:8px 0 0">Guests aren't ranked. With ${fmt(b.me.score)} you'd be #${fmt(b.me.rank)}. <button type="button" class="linkish" data-signup="new"><b>Create an account</b></button> to take your place.</p>`;
+    else if (b.me && !b.rows.some(x => x.name === me)) table += `<p class="hint" style="margin:8px 0 0">You're #${fmt(b.me.rank)} with ${fmt(b.me.score)}.</p>`;
   }
   body.innerHTML = `${boardSwitch()}<section>${catSel}<p class="hint" style="margin:8px 0 10px">${following ? `The players you follow, ranked by ${esc(cat.id.length === 2 ? `places known in ${cat.name}` : cat.name.replace(/^\S+\s/, '').toLowerCase())}. ` : esc(cat.blurb) + ' '}Tap a name for their profile, 📖 for their passport.</p>${table}</section>`;
   $('board-cat').onchange = e => { ONLINE.by = e.target.value; renderBoard(body); };
@@ -518,6 +530,7 @@ function renderChallengeBoard(body) {
   const played = weekly ? P.lastWeekly === period : P.lastDaily === period;
   body.innerHTML = `${boardSwitch()}<section>
     <p class="hint" style="margin:0 0 10px">${weekly ? `The weekly challenge, ${period}: an Epic car trip from memory under hard rules, the same for everyone until Monday.` : `Today's daily trip, ${period}: the same trip for everyone.`} Your first finished run is the one that counts.</p>
+    ${isGuest() ? `<div style="margin-bottom:10px">${guestNote("You can play it, but guest scores don't go on the board.")}</div>` : ''}
     ${played ? '' : `<div class="tools" style="margin-bottom:10px"><button class="btn go" type="button" id="board-play">${weekly ? "Play this week's challenge" : "Play today's trip"}</button></div>`}
     ${!b ? '<p class="hint">Loading…</p>' : !b.rows.length ? `<p class="hint">Nobody has finished it yet. The top spot is open.</p>` : `<table class="board"><thead><tr><th>#</th><th>Player</th><th>Points</th><th class="wide">Route</th></tr></thead><tbody>${b.rows.map((x, i) => `<tr class="${x.me ? 'me' : ''}"><td>${i < 3 ? medal(i + 1) : i + 1}</td><td><button type="button" class="linkish" data-profile="${esc(x.name)}">${unameHtml(x.name)}</button></td><td><b>${fmt(x.total)}</b><small class="hint"> · ${fmt(x.km)} km</small></td><td class="wide" style="letter-spacing:1px">${esc(x.squares || '')}</td></tr>`).join('')}</tbody></table>`}
     ${b && b.rank ? `<p class="hint" style="margin:8px 0 0">You're #${b.rank} of ${b.players}.</p>` : ''}</section>`;
@@ -547,6 +560,12 @@ async function loadCrowns(force) {
 }
 function renderAccount(body) {
   const u = CLOUD.user;
+  if (u.guest) {
+    body.innerHTML = `<section><div class="label">Playing as a guest</div><div style="margin:8px 0">${unameHtml(u.name, 'big')}</div>
+        <p class="hint" style="margin:0 0 10px">This guest lasts until you close this tab. Then it's deleted, with everything you've played.</p>
+        ${guestNote('Want to keep your flags, coins and trips, and play on any computer or phone?')}</section>`;
+    return;
+  }
   body.innerHTML = `<section><div class="label">Logged in as</div><div style="margin:8px 0">${unameHtml(u.name, 'big')}</div>
       <p class="hint" style="margin:0 0 10px">Your progress saves to this account by itself. Log in on any computer or phone to carry on.</p>
       <div class="tools"><button class="btn" type="button" data-profile="${esc(u.name)}">See my profile</button><button class="btn" type="button" id="acc-logout">Log out</button></div></section>
@@ -575,7 +594,9 @@ const passportOf = (pr, x = {}) => ({ visits: pr.visits || {}, study: pr.study |
   equip: pr.equip || {}, flagStreak: pr.flagStreak || null, flagSets: pr.flagSets || {}, holo: pr.holo || {},
   showcase: pr.showcase || [], feed: pr.feed || [], title: x.title || null, flair: x.flair || null, motto: x.motto || null });
 // straight to someone's passport, from a leaderboard row or a race
+const guestProfile = name => { if (name === CLOUD.user.name || !GUESTS.has(name)) return false; toast(`${nameInfo(name).name} is playing as a guest, so there's no profile to open.`); return true; };
 async function openPassportOf(name, tab) {
+  if (guestProfile(name)) return;
   if (name === CLOUD.user.name) { if ($('dlg-online').open) $('dlg-online').close(); openPassport(null); return; }
   const r = await api('/api/profile/' + encodeURIComponent(name));
   if (!r.ok) { toast(r.body.error || 'Could not open that passport.'); return; }
@@ -584,6 +605,7 @@ async function openPassportOf(name, tab) {
   openPassport({ name: r.body.name, label: displayName(r.body.name), data: passportOf(r.body.profile, r.body) }, tab);
 }
 function nickEditorHtml(id) {
+  if (isGuest()) return `<section class="nickedit"><div class="label">How other players see you</div>${guestNote('Guests play under their fruit name. A nickname, a flag and a title come with an account.')}</section>`;
   const u = CLOUD.user, p = nameInfo(u.name), been = new Set(Object.keys(P.stamps || {}).filter(k => !k.startsWith('area:')));
   const all = G.countries.map(c => c[0]).filter(cc => flagEntry('c:' + cc) || emojiFlag(cc)).sort((a, b) => ccName(a).localeCompare(ccName(b)));
   const titles = titlesEarned(), mine = myTitle();
@@ -623,6 +645,7 @@ async function setNick(nick) {
   return null;
 }
 function wireNickEditor(id, after) {
+  if (!$(id + '-nickform')) return;
   const say = (text, cls) => { const m = $(id + '-nickmsg'); if (m) { m.className = 'msg ' + cls; m.textContent = text; } };
   // the form redraws itself after a save, so the confirmation goes into the new one
   const done = async () => { if (after) await after(); say(CLOUD.user.nick ? `Players now see you as ${CLOUD.user.nick}.` : 'Players see your username again.', 'good'); };
@@ -632,6 +655,7 @@ function wireNickEditor(id, after) {
   if ($(id + '-nickclear')) $(id + '-nickclear').onclick = async () => { const err = await setNick(''); if (err) say(err, 'bad'); else done(); };
 }
 async function openProfile(name) {
+  if (guestProfile(name)) return;
   ensureOnlineDialogs();
   $('profile-title').innerHTML = unameHtml(name, 'big'); $('profile-sub').textContent = ''; $('profile-body').innerHTML = '<section><p class="hint">Loading…</p></section>';
   if (!$('dlg-profile').open) $('dlg-profile').showModal();
@@ -645,7 +669,8 @@ function ago(t) { const m = Math.round((Date.now() - t) / 60000); return m < 2 ?
 function renderProfile(x, showAll) {
   const pr = x.profile, league = LEAGUES.find(l => l.id === x.league) || LEAGUES[0], cat = flagCatalog();
   const mine = CLOUD.user && x.name === CLOUD.user.name;
-  $('profile-sub').textContent = `${x.nick ? `@${x.name} · ` : ''}${x.flair ? `representing ${ccName(x.flair)} · ` : ''}#${x.rank} on the leaderboard · joined ${new Date(x.created).toLocaleDateString()} · seen ${ago(x.seen)}`;
+  $('profile-sub').textContent = mine && isGuest() ? 'Guest · not on the leaderboard · deleted when you close this tab'
+    : `${x.nick ? `@${x.name} · ` : ''}${x.flair ? `representing ${ccName(x.flair)} · ` : ''}#${x.rank} on the leaderboard · joined ${new Date(x.created).toLocaleDateString()} · seen ${ago(x.seen)}`;
   const other = passportOf(pr, x), show = showcaseOf(mine ? P : other, x.name), title = titleName(mine ? myTitle() : x.title), following = rivals().includes(x.name);
   const keys = Object.keys(pr.flagsSeen), flags = cat ? keys.map(k => cat.byKey.get(k)).filter(Boolean) : [];
   const rarity = RARITY.map((r, i) => flags.filter(f => f.rarity === i).length), kinds = FLAG_KINDS.map(k => flags.filter(f => f.kind === k.id).length);
@@ -726,9 +751,9 @@ function bountyLine(b) {
 function renderBounties(body) {
   const d = BOUNTY.data;
   const openRow = b => `<li class="bounty"><div><div>${bountyLine(b)}</div><small>Beat ${unameHtml(b.poster.name)}'s <b>${fmt(b.beat)} pts</b>${b.target ? ` · <b>just for you</b>` : ''} · ${daysLeft(b.expires)}</small></div>
-      <span class="reward">💰 ${fmt(b.reward)}</span><button class="btn small go" type="button" data-attempt="${b.id}">Take it on</button></li>`;
+      <span class="reward">💰 ${fmt(b.reward)}</span>${isGuest() ? '' : `<button class="btn small go" type="button" data-attempt="${b.id}">Take it on</button>`}</li>`;
   const mineRow = b => `<li class="bounty mine"><div><div>${bountyLine(b)}</div><small>Your ${fmt(b.beat)} pts${b.target ? ` · for ${unameHtml(b.target.name)}` : ''} · ${b.claimer ? `beaten by ${unameHtml(b.claimer.name)} with ${fmt(b.claimTotal)}` : b.refunded ? 'ran out, coins returned' : daysLeft(b.expires)}</small></div><span class="reward">💰 ${fmt(b.reward)}</span></li>`;
-  body.innerHTML = `<section><p class="hint" style="margin:0 0 10px">Finish a trip and you can put coins on its route from the finish card. Whoever first beats your score on the same route, with the same vehicle and rules, takes them. Unclaimed bounties come back to you after 7 days.</p>
+  body.innerHTML = `${isGuest() ? `<section>${guestNote('Guests can look, but taking on and posting bounties needs an account.')}</section>` : ''}<section><p class="hint" style="margin:0 0 10px">Finish a trip and you can put coins on its route from the finish card. Whoever first beats your score on the same route, with the same vehicle and rules, takes them. Unclaimed bounties come back to you after 7 days.</p>
       ${!d ? '<p class="hint">Loading…</p>' : d.open.length ? `<ul class="bounties">${d.open.map(openRow).join('')}</ul>` : '<p class="hint">No open bounties right now. Post the first one from your next finished trip.</p>'}</section>
     ${d && d.mine.length ? `<section><div class="label">Your bounties</div><ul class="bounties">${d.mine.map(mineRow).join('')}</ul></section>` : ''}`;
   body.querySelectorAll('[data-attempt]').forEach(b => b.onclick = () => attemptBounty(d.open.find(x => x.id === +b.dataset.attempt)));
@@ -752,7 +777,7 @@ async function claimBounty() {
   BOUNTY.at = 0; save(); if (S.bounty === b) render();
 }
 // the finish card: a bounty's result, or the offer to put one on the route you just drove
-const canPostBounty = () => S && S.done && !S.gaveUp && !S.race && !S.daily && !S.weekly && !S.stakes && !S.bounty && !S.voyage && !S.classic && !S.posted;
+const canPostBounty = () => !isGuest() && S && S.done && !S.gaveUp && !S.race && !S.daily && !S.weekly && !S.stakes && !S.bounty && !S.voyage && !S.classic && !S.posted;
 HOOKS.finishExtra = () => {
   if (S.bounty) return `<p class="chalrank">🎯 ${esc(S.bounty.result || 'Checking the bounty…')}</p>`;
   if (S.posted) return `<p class="chalrank">🎯 Your ${fmt(S.posted)}-coin bounty is up. See it in Online → Bounties.</p>`;
