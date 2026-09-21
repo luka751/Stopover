@@ -148,14 +148,17 @@ const angleOn = (m, a, b) => { const [x1, y1] = m.px(a[1], a[0]), [x2, y2] = m.p
 function emitParts(g, fx, la, lo, ang, now) {
   if (!fx) return;
   const n = Math.min(4, Math.floor((now - g.lastEmit) / 28)); if (!n) return; g.lastEmit = now;
-  for (let i = 0; i < n; i++) GLIDE.parts.push({ kind: fx, la, lo, t0: now, life: fx === 'rainbow' ? 1100 : 900, back: -15, side: (Math.random() - .5) * 6, ang, drift: [(Math.random() - .5) * 10, -4 - Math.random() * 8], seed: Math.random(), hue: (now / 6) % 360 });
+  for (let i = 0; i < n; i++) GLIDE.parts.push({ kind: fx, la, lo, t0: now, life: fx === 'rainbow' ? 1650 : 1350, back: -15, side: (Math.random() - .5) * 6, ang, drift: [(Math.random() - .5) * 10, -4 - Math.random() * 8], seed: Math.random(), hue: (now / 6) % 360 });
 }
+const TRAIL_SCALE = 1.3;
 function drawParts(m, ctx) {
   const now = performance.now();
   GLIDE.parts = GLIDE.parts.filter(p => now - p.t0 < p.life);
   for (const p of GLIDE.parts) {
     const k = (now - p.t0) / p.life, [x, y] = m.px(p.lo, p.la), c = Math.cos(p.ang), s = Math.sin(p.ang);
-    drawParticle(ctx, p, x + c * p.back - s * p.side + p.drift[0] * k, y + s * p.back + c * p.side + p.drift[1] * k, k);
+    // drawn a touch bigger than the shop preview, so a trail reads on the map
+    ctx.save(); ctx.translate(x + c * p.back - s * p.side + p.drift[0] * k, y + s * p.back + c * p.side + p.drift[1] * k); ctx.scale(TRAIL_SCALE, TRAIL_SCALE);
+    drawParticle(ctx, p, 0, 0, k); ctx.restore();
   }
 }
 // the player's own vehicle on the trip map, in place of the old fixed marker
