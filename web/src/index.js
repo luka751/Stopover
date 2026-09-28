@@ -100,10 +100,44 @@ ${lines.map(l => `<p style="font-size:15px;line-height:1.5;margin:0 0 12px">${es
 <p style="font-size:12px;color:#6b7080;line-height:1.5;margin:16px 4px 0">${escHtml(foot)}</p></div></body></html>`;
   return { text, html };
 }
+// Mail goes out through whichever provider has a key set as a Worker secret: RESEND_API_KEY (Resend) or
+// AZURE_EMAIL (an Azure Communication Services connection string, from the Student Pack's Azure credit).
+// With neither, email features are off on the server too, whatever the browser shows.
+const mailReady = env => !!(env.MAIL_DEV || env.RESEND_API_KEY || env.AZURE_EMAIL);
+const mailFrom = env => env.MAIL_FROM || MAIL_FROM.email;
 async function sendMail(env, to, subject, body) {
   if (env.MAIL_DEV) { console.log(`[mail to ${to}] ${subject}\n${body.text}`); return true; }
-  try { await env.EMAIL.send({ to, from: MAIL_FROM, subject, text: body.text, html: body.html }); return true; }
-  catch (e) { console.error('email failed', e.code || '', e.message); return false; }
+  try {
+    const res = env.RESEND_API_KEY ? await fetch('https://api.resend.com/emails', {
+        method: 'POST', headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ from: `${MAIL_FROM.name} <${mailFrom(env)}>`, to: [to], subject, text: body.text, html: body.html }) })
+      : env.AZURE_EMAIL ? await azureMail(env.AZURE_EMAIL, mailFrom(env), to, subject, body) : null;
+    if (res && res.ok) return true;
+    console.error('email failed', res ? res.status : 'no provider', res ? (await res.text()).slice(0, 300) : '');
+  } catch (e) { console.error('email failed', e.message); }
+  return false;
+}
+// Azure Communication Services Email: requests are signed with the resource's access key (HMAC-SHA256)
+async function azureMail(connection, from, to, subject, body) {
+  const endpoint = new URL(/endpoint=([^;]+)/i.exec(connection)[1]), key = /accesskey=([^;]+)/i.exec(connection)[1];
+  const pathQuery = '/emails:send?api-version=2023-03-31', payload = JSON.stringify({ senderAddress: from, recipients: { to: [{ address: to }] },
+    content: { subject, plainText: body.text, html: body.html } });
+  const b64 = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
+  const hash = b64(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(payload))), date = new Date().toUTCString();
+  const hmac = await crypto.subtle.importKey('raw', Uint8Array.from(atob(key), c => c.charCodeAt(0)), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = b64(await crypto.subtle.sign('HMAC', hmac, new TextEncoder().encode(`POST\n${pathQuery}\n${date};${endpoint.host};${hash}`)));
+  return fetch(new URL(pathQuery, endpoint), { method: 'POST', body: payload, headers: { 'content-type': 'application/json', 'x-ms-date': date, 'x-ms-content-sha256': hash,
+    authorization: `HMAC-SHA256 SignedHeaders=x-ms-date;host;x-ms-content-sha256&Signature=${sig}` } });
+}
+// Limits are counted per network, not per address: an IPv6 visitor can pick any address in their /64
+const ipKey = ip => ip.includes(':') ? ip.split(':').slice(0, 4).join(':') : ip;
+// the inbox an address really delivers to, so name+1@gmail.com and n.a.m.e@gmail.com share one limit
+function inboxKey(email) {
+  let [user, domain] = email.split('@');
+  user = user.split('+')[0];
+  if (domain === 'googlemail.com') domain = 'gmail.com';
+  if (domain === 'gmail.com') user = user.replace(/\./g, '');
+  return `${user}@${domain}`;
 }
 
 async function readJson(req, limit) {
@@ -113,23 +147,37 @@ async function readJson(req, limit) {
 }
 class HttpError extends Error { constructor(status, message) { super(message); this.status = status; } }
 
-// Sentry (GitHub Student Pack) gets every server error, tagged by environment; no request bodies or cookies are sent
-export default Sentry.withSentry(env => ({ dsn: env.SENTRY_DSN, environment: env.MAIL_DEV ? 'development' : 'production', tracesSampleRate: 0, sendDefaultPii: false }), {
-  async fetch(req, env) {
+// Sentry (GitHub Student Pack) gets every server error, tagged by environment. Request bodies carry password keys
+// and reset tokens, so they are never captured, and tokens are cut out of addresses and headers before sending.
+const scrubUrl = u => typeof u === 'string' ? u.replace(/([?&](?:gt|reset|verify|token)=)[^&#]*/gi, '$1[removed]') : u;
+function scrubEvent(event) {
+  const r = event.request;
+  if (r) {
+    delete r.data; delete r.cookies;
+    r.url = scrubUrl(r.url);
+    if (typeof r.query_string === 'string') r.query_string = scrubUrl('?' + r.query_string).slice(1);
+    if (r.headers) for (const h of Object.keys(r.headers)) if (/^(x-guest|cookie|authorization)$/i.test(h)) delete r.headers[h];
+  }
+  return event;
+}
+export default Sentry.withSentry(env => ({ dsn: env.SENTRY_DSN, environment: env.MAIL_DEV ? 'development' : 'production', tracesSampleRate: 0, sendDefaultPii: false,
+  integrations: [Sentry.httpServerIntegration({ maxRequestBodySize: 'none' })], beforeSend: scrubEvent }), {
+  async fetch(req, env, ctx) {
     const url = new URL(req.url);
     // one address for the game: www goes to the bare domain, so a log-in made on one isn't missing on the other
     if (url.hostname.startsWith('www.')) { url.hostname = url.hostname.slice(4); return Response.redirect(url.toString(), 301); }
     if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(req);
-    try { return await api(req, env, url); }
+    try { return await api(req, env, url, ctx); }
     catch (e) { if (e instanceof HttpError) return fail(e.status, e.message); console.error(e); Sentry.captureException(e); return fail(500, 'Something went wrong on the server'); }
   },
 });
 
-async function api(req, env, url) {
+async function api(req, env, url, ctx) {
   const path = url.pathname, method = req.method, acct = accounts(env);
-  // requests that change something must come from this site
+  // requests that change something must come from this site ('null' and other unparseable origins included)
   const origin = req.headers.get('origin');
-  if (origin && new URL(origin).host !== url.host) return fail(403, 'Wrong origin');
+  if (origin) { let o = null; try { o = new URL(origin); } catch {} if (!o || o.host !== url.host || o.protocol !== url.protocol) return fail(403, 'Wrong origin'); }
+  const ip = ipKey(req.headers.get('cf-connecting-ip') || 'local');
   const token = guestToken(req, url) || cookieToken(req), th = token ? await sha256(token) : null;
   const who = async () => { const u = th && await acct.userBySession(th); if (!u) throw new HttpError(401, 'Log in first'); return u; };
   // the things other players see or that move coins between players need a real account
@@ -142,7 +190,9 @@ async function api(req, env, url) {
     return json({ valid: true, name: p.name, available: !(await acct.nameTaken(p.name)) });
   }
   // a new guest: a random fruit name and a key for this browser tab only
+  // one network may make many guests (a classroom behind one address) but not endless ones
   if (method === 'POST' && path === '/api/guest') {
+    if (!(await acct.allowed([['guest-ip:' + ip, 300, 60]]))) return fail(429, 'Too many new games from your network. Try again in a while.');
     const t = randomToken(), res = await acct.createGuest(await sha256(t), GUEST_SESSION_DAYS);
     return json({ token: t, name: res.name });
   }
@@ -150,6 +200,7 @@ async function api(req, env, url) {
     const body = await readJson(req, 2000), p = parseName(body.name);
     if (!p) return fail(400, 'Usernames are a colour and a fruit. Spin for one.');
     if (!validKey(body.key)) return fail(400, 'Bad password data');
+    if (!(await acct.allowed([['register-ip:' + ip, 30, 60]]))) return fail(429, 'Too many new accounts from your network. Try again in an hour.');
     // a guest who signs up keeps everything they played so far: their guest row becomes the account
     const cur = th && await acct.userBySession(th);
     const res = cur && cur.guest ? await acct.claimGuest(cur.id, p.name, body.key) : await acct.register(p.name, body.key);
@@ -176,7 +227,7 @@ async function api(req, env, url) {
     const u = await who(), data = await acct.load(u.id), mail = u.guest ? {} : await acct.emailOf(u.id);
     // saved values are JSON text already: splice them in rather than parsing megabytes on the server
     const save = Object.entries(data.save).map(([k, v]) => JSON.stringify(k) + ':' + v).join(',');
-    return new Response(`{"user":${JSON.stringify({ ...u, ...mail })},"rev":${data.rev},"save":{${save}}}`, { headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
+    return new Response(`{"user":${JSON.stringify({ ...u, ...mail })},"mail":${mailReady(env)},"rev":${data.rev},"save":{${save}}}`, { headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
   }
   if (method === 'PUT' && path === '/api/save') {
     const u = await who(), body = await readJson(req, 4_000_000);
@@ -206,11 +257,18 @@ async function api(req, env, url) {
     return res.error ? fail(401, res.error) : json({ ok: true });
   }
   // ---- email and password resets
-  const site = env.MAIL_DEV ? req.headers.get('origin') || url.origin : SITE, ip = req.headers.get('cf-connecting-ip') || 'local';
+  const site = env.MAIL_DEV ? req.headers.get('origin') || url.origin : SITE;
+  // a global cap keeps a flood from burning the provider's quota (Resend's free plan sends 100 a day)
+  const mailCap = [['mail-all', +env.MAIL_DAILY_CAP || 90, 1440], ['mail-all-hour', 40, 60]];
+  const needMail = () => { if (!mailReady(env)) throw new HttpError(503, 'Email isn\'t switched on yet.'); };
+  // Adding, changing or removing the email takes the password, so someone who finds a logged-in computer
+  // can't point the account's password resets at their own inbox.
   if (method === 'POST' && path === '/api/email') {
+    needMail();
     const u = await member('add an email'), body = await readJson(req, 1000), email = cleanEmail(body.email);
     if (!email) return fail(400, 'That doesn\'t look like an email address.');
-    const res = await acct.startVerify(u.id, email, ip);
+    if (!validKey(body.key)) return fail(400, 'Type your password to change the email.');
+    const res = await acct.startVerify(u.id, email, body.key, [['verify-user:' + u.id, 5, 1440], ['verify-to:' + inboxKey(email), 3, 60], ['verify-ip:' + ip, 20, 60], ...mailCap]);
     if (res.error) return fail(res.status || 400, res.error);
     const link = `${site}/?verify=${res.token}`;
     const ok = await sendMail(env, email, 'Confirm your email for Stopover', mailBody('Confirm your email',
@@ -224,29 +282,42 @@ async function api(req, env, url) {
     const body = await readJson(req, 500);
     if (!TOKEN_RE.test(body.token || '')) return fail(400, 'That link is broken.');
     const res = await acct.finishVerify(await sha256(body.token));
-    return res.error ? fail(400, res.error) : json(res);
+    if (res.error) return fail(400, res.error);
+    // the old address hears about the change, so a takeover doesn't go unnoticed
+    if (res.oldEmail && mailReady(env)) ctx.waitUntil(sendMail(env, res.oldEmail, 'Your Stopover email was changed', mailBody('Your email was changed',
+      [`The Stopover account ${res.name} now uses a different email address, so password resets no longer come here.`, 'If you did this, there is nothing to do.'],
+      'Open Stopover', SITE, 'If you didn\'t change it, log in and change your password straight away, then set your email again from Account.')));
+    return json({ ok: true, name: res.name, email: res.email });
   }
-  if (method === 'POST' && path === '/api/email/remove') { const u = await member('remove an email'); await acct.removeEmail(u.id); return json({ ok: true }); }
-  // "forgot password": by username or email. The answer is the same whether or not anything was found,
-  // so this can't be used to find out who has an account or which email it uses.
+  if (method === 'POST' && path === '/api/email/remove') {
+    const u = await member('remove an email'), body = await readJson(req, 1000);
+    if (!validKey(body.key)) return fail(400, 'Type your password to remove the email.');
+    const res = await acct.removeEmail(u.id, body.key);
+    return res.error ? fail(res.status || 401, res.error) : json({ ok: true });
+  }
+  // "forgot password": by username or email. The answer is the same, and comes just as fast, whether or not
+  // anything was found (the email goes out after the reply), so it can't tell anyone who has an account.
   if (method === 'POST' && path === '/api/forgot') {
+    needMail();
     const body = await readJson(req, 1000), raw = String(body.who || '').trim();
     const email = raw.includes('@') ? cleanEmail(raw) : null, p = email ? null : parseName(raw.replace(/\s+/g, ''));
     if (!email && !p) return fail(400, 'Type your username (like PinkApple) or the email on your account.');
-    const res = await acct.startReset(email ? { email } : { name: p.name }, ip);
+    const res = await acct.startReset(email ? { email } : { name: p.name }, [['forgot-ip:' + ip, 10, 60], ['forgot-who:' + (email ? inboxKey(email) : p.name.toLowerCase()), 5, 60]], mailCap);
     if (res.error) return fail(res.status || 400, res.error);
     if (res.send) {
       const links = res.send.accounts.map(a => ({ ...a, link: `${site}/?reset=${a.token}` }));
       const one = links.length === 1;
-      await sendMail(env, res.send.email, 'Reset your Stopover password', mailBody(one ? `Reset the password for ${links[0].name}` : 'Reset a Stopover password',
+      ctx.waitUntil(sendMail(env, res.send.email, 'Reset your Stopover password', mailBody(one ? `Reset the password for ${links[0].name}` : 'Reset a Stopover password',
         one ? ['Someone (hopefully you) asked to reset the password for this Stopover account.', 'Pick a new one with the button below.']
           : [`This email is on ${links.length} Stopover accounts: ${links.map(a => a.name).join(', ')}.`, `The button resets ${links[0].name}. The other links are below.`, ...links.slice(1).map(a => `${a.name}: ${a.link}`)],
-        'Pick a new password', links[0].link, `The link works for ${RESET_MINUTES} minutes and only once. If you didn't ask for this, ignore this email: your password stays the same.`));
+        'Pick a new password', links[0].link, `The link works for ${RESET_MINUTES} minutes and only once. If you didn't ask for this, ignore this email: your password stays the same.`)));
     }
     return json({ ok: true });
   }
-  if (method === 'GET' && (m = /^\/api\/reset\/([A-Za-z0-9_-]{30,60})$/.exec(path))) {
-    const r = await acct.resetInfo(await sha256(m[1]));
+  // the reset token travels in the body, never in an address, so it doesn't end up in logs
+  if (method === 'POST' && path === '/api/reset/info') {
+    const body = await readJson(req, 500);
+    const r = TOKEN_RE.test(body.token || '') && await acct.resetInfo(await sha256(body.token));
     return r ? json(r) : fail(404, 'This link has expired or was already used. Ask for a new one.');
   }
   if (method === 'POST' && path === '/api/reset') {
@@ -263,7 +334,7 @@ async function api(req, env, url) {
     const u = await member('delete an account'), body = await readJson(req, 1000);
     if (!validKey(body.key)) return fail(400, 'Bad password data');
     const res = await acct.deleteAccount(u.id, body.key);
-    return res.error ? fail(401, res.error) : json({ ok: true }, 200, { 'set-cookie': sidCookie('', 0) });
+    return res.error ? fail(res.status || 401, res.error) : json({ ok: true }, 200, { 'set-cookie': sidCookie('', 0) });
   }
   if (method === 'POST' && path === '/api/nick') {
     const u = await member('pick a nickname'), body = await readJson(req, 1000), c = cleanNick(body.nick, u.name);
@@ -373,7 +444,7 @@ export class Accounts extends DurableObject {
     this.crownCache = null;
   }
   // true (and counted) if none of the limits is reached: each is [key, how many, per how many minutes]
-  mailAllowed(limits) {
+  allowed(limits) {
     const now = Date.now();
     this.sql.exec('DELETE FROM mail_log WHERE at < ?', now - 864e5);
     if (limits.some(([k, max, mins]) => this.row('SELECT COUNT(*) AS n FROM mail_log WHERE k = ? AND at > ?', k, now - mins * 60000).n >= max)) return false;
@@ -386,10 +457,21 @@ export class Accounts extends DurableObject {
     this.sql.exec('INSERT INTO mail_tokens (token, user_id, kind, email, expires) VALUES (?, ?, ?, ?, ?)', h, userId, kind, email, now + minutes * 60000);
     return t;
   }
+  // the password check for changes to the email, with the same lock after 8 wrong tries as logging in
+  async passwordOk(userId, key) {
+    const u = this.row('SELECT salt, hash, fails, locked_until FROM users WHERE id = ? AND guest = 0', userId), now = Date.now();
+    if (!u) return { status: 404, error: 'No such account' };
+    if (u.locked_until > now) return { status: 429, error: `Too many wrong passwords. Try again in ${Math.ceil((u.locked_until - now) / 60000)} min.` };
+    if (await sha256(u.salt + key) === u.hash) { if (u.fails) this.sql.exec('UPDATE users SET fails = 0 WHERE id = ?', userId); return { ok: true }; }
+    const fails = u.fails + 1;
+    this.sql.exec('UPDATE users SET fails = ?, locked_until = ? WHERE id = ?', fails >= 8 ? 0 : fails, fails >= 8 ? now + 5 * 60000 : 0, userId);
+    return { status: 401, error: 'That password is wrong.' };
+  }
   emailOf(userId) { const r = this.row('SELECT email, email_pending FROM users WHERE id = ?', userId) || {}; return { email: r.email || null, emailPending: r.email_pending || null }; }
-  async startVerify(userId, email, ip) {
+  async startVerify(userId, email, key, limits) {
+    const pw = await this.passwordOk(userId, key); if (pw.error) return pw;
     if (this.row('SELECT email FROM users WHERE id = ?', userId)?.email === email) return { error: 'That email is already confirmed on your account.' };
-    if (!this.mailAllowed([['verify-user:' + userId, 5, 1440], ['to:' + email, 3, 60], ['ip:' + ip, 20, 60]])) return { status: 429, error: 'Too many emails sent. Try again in an hour.' };
+    if (!this.allowed(limits)) return { status: 429, error: 'Too many emails sent. Try again in an hour.' };
     this.sql.exec('DELETE FROM mail_tokens WHERE user_id = ? AND kind = \'verify\'', userId);
     this.sql.exec('UPDATE users SET email_pending = ? WHERE id = ?', email, userId);
     return { token: await this.newMailToken(userId, 'verify', email, VERIFY_HOURS * 60) };
@@ -397,41 +479,52 @@ export class Accounts extends DurableObject {
   finishVerify(tokenHash) {
     const t = this.row('SELECT * FROM mail_tokens WHERE token = ? AND kind = \'verify\' AND expires > ?', tokenHash, Date.now());
     if (!t) return { error: 'This link has expired or was already used. Add your email again from Account.' };
+    const u = this.row('SELECT name, email FROM users WHERE id = ? AND guest = 0', t.user_id);
+    if (!u) return { error: 'That account no longer exists.' };
     this.sql.exec('DELETE FROM mail_tokens WHERE token = ?', tokenHash);
-    this.sql.exec('UPDATE users SET email = ?, email_pending = NULL WHERE id = ? AND guest = 0', t.email, t.user_id);
-    const u = this.row('SELECT name FROM users WHERE id = ?', t.user_id);
-    return u ? { ok: true, name: u.name, email: t.email } : { error: 'That account no longer exists.' };
+    // reset links already sent to the old address stop working once the email changes
+    this.sql.exec('DELETE FROM mail_tokens WHERE user_id = ? AND kind = \'reset\'', t.user_id);
+    this.sql.exec('UPDATE users SET email = ?, email_pending = NULL WHERE id = ?', t.email, t.user_id);
+    return { ok: true, name: u.name, email: t.email, oldEmail: u.email && u.email !== t.email ? u.email : null };
   }
   cancelVerify(userId, email) {
     this.sql.exec('UPDATE users SET email_pending = NULL WHERE id = ? AND email_pending = ?', userId, email);
     this.sql.exec('DELETE FROM mail_tokens WHERE user_id = ? AND kind = \'verify\'', userId);
   }
-  removeEmail(userId) {
+  async removeEmail(userId, key) {
+    const pw = await this.passwordOk(userId, key); if (pw.error) return pw;
     this.sql.exec('UPDATE users SET email = NULL, email_pending = NULL WHERE id = ?', userId);
     this.sql.exec('DELETE FROM mail_tokens WHERE user_id = ?', userId);
+    return { ok: true };
   }
   // A reset goes only to a confirmed email. Found or not, the caller answers the same; what differs is whether
   // there is anything to send.
-  async startReset(by, ip) {
-    if (!this.mailAllowed([['forgot-ip:' + ip, 10, 60]])) return { status: 429, error: 'Too many tries. Try again in an hour.' };
+  // The per-network limit is the only one that answers differently; the per-name and per-inbox ones, which
+  // depend on what was typed, fail silently so they can't be used to probe for accounts.
+  async startReset(by, limits, capLimits) {
+    const [perIp, ...perWho] = limits;
+    if (!this.allowed([perIp])) return { status: 429, error: 'Too many tries. Try again in an hour.' };
+    if (!this.allowed(perWho)) return {};
     const users = by.email ? this.sql.exec('SELECT id, name, email FROM users WHERE email = ? AND guest = 0 ORDER BY id LIMIT 5', by.email).toArray()
       : this.sql.exec('SELECT id, name, email FROM users WHERE name_lc = ? AND guest = 0 AND email IS NOT NULL', by.name.toLowerCase()).toArray();
     if (!users.length) return {};
     const email = users[0].email;
-    if (!this.mailAllowed([['to:' + email, 3, 60]])) return {};
+    if (!this.allowed([['reset-to:' + inboxKey(email), 3, 60], ...capLimits])) return {};
     const accounts = [];
     for (const u of users) { this.sql.exec('DELETE FROM mail_tokens WHERE user_id = ? AND kind = \'reset\'', u.id); accounts.push({ name: u.name, token: await this.newMailToken(u.id, 'reset', email, RESET_MINUTES) }); }
     return { send: { email, accounts } };
   }
   resetInfo(tokenHash) {
-    const r = this.row('SELECT u.name FROM mail_tokens t JOIN users u ON u.id = t.user_id WHERE t.token = ? AND t.kind = \'reset\' AND t.expires > ?', tokenHash, Date.now());
+    const r = this.row('SELECT u.name FROM mail_tokens t JOIN users u ON u.id = t.user_id WHERE t.token = ? AND t.kind = \'reset\' AND t.expires > ? AND u.email = t.email', tokenHash, Date.now());
     return r ? { name: r.name } : null;
   }
   async finishReset(tokenHash, key) {
     const t = this.row('SELECT * FROM mail_tokens WHERE token = ? AND kind = \'reset\' AND expires > ?', tokenHash, Date.now());
     if (!t) return { error: 'This link has expired or was already used. Ask for a new one.' };
-    const u = this.row('SELECT id, name FROM users WHERE id = ? AND guest = 0', t.user_id);
+    const u = this.row('SELECT id, name, email FROM users WHERE id = ? AND guest = 0', t.user_id);
     if (!u) return { error: 'That account no longer exists.' };
+    // a link sent to an address the account no longer uses is dead
+    if (u.email !== t.email) return { error: 'This link has expired or was already used. Ask for a new one.' };
     const salt = randomHex(16);
     // a new password signs out every device, and clears any lock from wrong guesses
     this.sql.exec('UPDATE users SET salt = ?, hash = ?, fails = 0, locked_until = 0 WHERE id = ?', salt, await sha256(salt + key), u.id);
@@ -440,9 +533,7 @@ export class Accounts extends DurableObject {
     return { id: u.id, name: u.name };
   }
   async deleteAccount(userId, key) {
-    const u = this.row('SELECT salt, hash FROM users WHERE id = ? AND guest = 0', userId);
-    if (!u || await sha256(u.salt + key) !== u.hash) return { error: 'That password is wrong.' };
-    this.sql.exec('DELETE FROM mail_tokens WHERE user_id = ?', userId);
+    const pw = await this.passwordOk(userId, key); if (pw.error) return pw;
     this.removeUser(userId); this.crownCache = null;
     return { ok: true };
   }
@@ -474,8 +565,10 @@ export class Accounts extends DurableObject {
     if (this.row('SELECT 1 AS x FROM users WHERE id = ? AND guest = 1', id)) this.removeUser(id);
   }
   removeUser(id) {
+    // bounties other players put on this player end now, so their posters can take the coins back
+    this.sql.exec('UPDATE bounties SET expires = MIN(expires, ?) WHERE target = ? AND claimed_by IS NULL AND refunded = 0', Date.now(), id);
     for (const q of ['DELETE FROM sessions WHERE user_id = ?', 'DELETE FROM save_keys WHERE user_id = ?', 'DELETE FROM stats WHERE user_id = ?', 'DELETE FROM race_players WHERE user_id = ?',
-      'DELETE FROM scores WHERE user_id = ?', 'DELETE FROM bounties WHERE poster = ?1 OR target = ?1', 'DELETE FROM reports WHERE reporter = ?1 OR target = ?1', 'DELETE FROM users WHERE id = ?']) this.sql.exec(q, id);
+      'DELETE FROM scores WHERE user_id = ?', 'DELETE FROM bounties WHERE poster = ?', 'DELETE FROM reports WHERE reporter = ?1 OR target = ?1', 'DELETE FROM mail_tokens WHERE user_id = ?', 'DELETE FROM users WHERE id = ?']) this.sql.exec(q, id);
   }
   purgeGuests() {
     const old = this.sql.exec('SELECT id FROM users WHERE guest = 1 AND last_seen < ? LIMIT 200', Date.now() - GUEST_IDLE_HOURS * 3600000).toArray();
@@ -506,8 +599,9 @@ export class Accounts extends DurableObject {
     if (!u || await sha256(u.salt + oldKey) !== u.hash) return { error: 'Your current password is wrong' };
     const salt = randomHex(16);
     this.sql.exec('UPDATE users SET salt = ?, hash = ? WHERE id = ?', salt, await sha256(salt + newKey), userId);
-    // sign out every other device
+    // sign out every other device, and kill any reset link that is still out there
     this.sql.exec('DELETE FROM sessions WHERE user_id = ? AND token != ?', userId, keepToken);
+    this.sql.exec('DELETE FROM mail_tokens WHERE user_id = ? AND kind = \'reset\'', userId);
     return { ok: true };
   }
   createSession(tokenHash, userId, days) {

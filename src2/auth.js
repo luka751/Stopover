@@ -31,10 +31,9 @@ async function apiA(path, opts = {}) {
 // The config file is read straight from ConfigCat's CDN rather than through its 127 kB SDK; only each switch's
 // default value is used (no per-user targeting). Until it arrives, or if it can't be reached, the code's defaults apply.
 const FLAGS_URL = 'https://cdn-global.configcat.com/configuration-files/configcat-sdk-1/Xx3fCDSPwk-M2RkucGzbDQ/WMtrnhXonkCv-Va1Uwxa3w/config_v6.json';
-// Email features are off until playstopover.me is set up in Cloudflare Email Sending; then set this to true and
-// redeploy, or turn the 'emailAccounts' switch on in ConfigCat. The switch, when it exists, always wins.
-const EMAIL_DEFAULT = false;
-const emailOn = () => !!flags.get('emailAccounts', EMAIL_DEFAULT);
+// Email features show once the server has a mail provider (it says so in /api/me). The 'emailAccounts' switch in
+// ConfigCat can still turn them off, if sending ever breaks.
+const emailOn = () => !!(cloud.mail && flags.get('emailAccounts', true));
 const flags = {
   values: {},
   ready: (async () => {
@@ -50,7 +49,7 @@ const flags = {
 
 // ---- the cloud store
 const cloud = {
-  user: null, rev: 0, data: {}, sent: {}, dirty: new Set(), timer: 0, busy: false, blocked: false, summary: null, names: { parse: parseName, nickProblem }, passwordKey, api: apiA,
+  user: null, mail: false, rev: 0, data: {}, sent: {}, dirty: new Set(), timer: 0, busy: false, blocked: false, summary: null, names: { parse: parseName, nickProblem }, passwordKey, api: apiA,
   // the lobby socket can't send headers, so a guest's key rides in its address
   wsQuery: () => guestToken ? '?gt=' + encodeURIComponent(guestToken) : '',
   openSignup: tab => openSignup(tab),
@@ -194,15 +193,21 @@ function openSignup(tab = 'new') {
     busy(form, true, 'Creating…');
     const r = await apiA('/api/register', { method: 'POST', body: JSON.stringify({ name, key: await passwordKey(name, pass) }) });
     if (r.ok) {
+      // the tab's guest key died with the sign-up; drop it now, so the email call goes out on the new account
+      guestToken = null; guestStore.set(null);
       // the account exists now; a failed confirmation email isn't a reason to stop, it can be sent again from Account
-      if (email) { busy(form, true, 'Sending confirmation…'); await apiA('/api/email', { method: 'POST', body: JSON.stringify({ email }) }); }
+      if (email) {
+        busy(form, true, 'Sending confirmation…');
+        const e2 = await apiA('/api/email', { method: 'POST', body: JSON.stringify({ email, key: await passwordKey(name, pass) }) });
+        if (!e2.ok) { $a('auth-msg').className = 'msg bad'; $a('auth-msg').textContent = `Your account is ready, but the email wasn't added: ${e2.body.error || 'something went wrong'} You can add it later in Account.`; setTimeout(intoAccount, 4000); return; }
+      }
       intoAccount(); return;
     }
     cloud.blocked = false; if (cloud.dirty.size) cloud.soon();
     busy(form, false, label); msg(r.body.error || 'Could not create the account.'); if (r.status === 409) offerName(randomName());
   };
   wireForgot(el, msg, busy);
-  // email sign-up and resets show only while the 'emailAccounts' switch is on (see EMAIL_DEFAULT)
+  // email sign-up and resets show only when the server can send mail (see emailOn)
   if (!emailOn()) { $a('an-email').closest('label').hidden = true; $a('al-forgot').hidden = true; $a('an-emailhint').textContent = 'Write your username and password down: a forgotten password can\'t be reset yet.'; }
   showTab(tab === 'new');
 }
@@ -224,7 +229,7 @@ function wireForgot(el, msg, busy) {
 
 // a password-reset link from an email opens this: pick a new password for the account named in the link
 async function resetScreen(token) {
-  const info = await apiA('/api/reset/' + encodeURIComponent(token));
+  const info = await apiA('/api/reset/info', { method: 'POST', body: JSON.stringify({ token }) });
   const el = document.createElement('div'); el.id = 'auth'; el.className = 'auth';
   el.innerHTML = `<div class="authcard" role="dialog" aria-modal="true" aria-labelledby="auth-title">
     <div class="authbrand"><span class="shield" aria-hidden="true">E2</span><span class="wordmark" id="auth-title">New password</span></div>
@@ -293,7 +298,7 @@ function guestBanner() {
     }
   } else if (me.ok) guestStore.set(null);
   if (!me.ok) { const el = authScreen('The server could not be reached. Check your connection and reload.'); el.querySelectorAll('form, .authtabs').forEach(x => x.hidden = true); return; }
-  cloud.user = me.body.user; cloud.rev = me.body.rev; cloud.data = me.body.save || {};
+  cloud.user = me.body.user; cloud.mail = !!me.body.mail; cloud.rev = me.body.rev; cloud.data = me.body.save || {};
   for (const [k, v] of Object.entries(cloud.data)) cloud.sent[k] = JSON.stringify(v);
   if (cloud.user.guest) guestBanner();
   // errors in Sentry carry the fruit username (not an email or anything personal), so a player's report can be matched to them

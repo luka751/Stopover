@@ -49,7 +49,9 @@ try {
   ok(r.status === 200 && cookie, 'create account', r.body);
 
   let t = Date.now();
-  r = await api('/api/email', { email });
+  r = await api('/api/email', { email, key: await passwordKey(name, 'wrong-password') });
+  ok(r.status === 401, 'adding an email needs the right password', r.body);
+  r = await api('/api/email', { email, key: await passwordKey(name, pass) });
   ok(r.status === 200 && r.body.pending === email, 'add email', r.body);
   const verify = await mailLink(tag, t, 'verify');
   ok(/confirm/i.test(verify.subject), `confirmation email arrived ("${verify.subject}")`);
@@ -67,13 +69,13 @@ try {
   ok(r.status === 200 && r.body.ok, 'ask for a reset by username', r.body);
   const reset = await mailLink(tag, t, 'reset');
   ok(/reset/i.test(reset.subject), `reset email arrived ("${reset.subject}")`);
-  r = await api('/api/reset/' + reset.token);
+  r = await api('/api/reset/info', { token: reset.token });
   ok(r.status === 200 && r.body.name === name, 'reset link names the account', r.body);
 
   const oldPass = pass; pass = 'second-' + Math.random().toString(36).slice(2);
   r = await api('/api/reset', { token: reset.token, key: await passwordKey(name, pass) });
   ok(r.status === 200 && cookie, 'new password saved and logged in', r.body);
-  r = await api('/api/reset/' + reset.token);
+  r = await api('/api/reset/info', { token: reset.token });
   ok(r.status === 404, 'reset link works only once', r.body);
   cookie = '';
   r = await api('/api/login', { name, key: await passwordKey(name, oldPass) });

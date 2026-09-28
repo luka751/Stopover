@@ -610,18 +610,22 @@ function renderEmail() {
   box.innerHTML = `${u.email ? `<p style="margin:8px 0 4px">✓ <b>${esc(u.email)}</b> is confirmed.</p>` : ''}
     ${u.emailPending ? `<p class="hint" style="margin:8px 0 4px">We sent a link to <b>${esc(u.emailPending)}</b>. Click it to confirm${u.email ? ' the change' : ''}. Check spam if it isn't there.</p>` : ''}
     ${!u.email && !u.emailPending ? '<p class="hint" style="margin:8px 0 4px">No email yet. Add one so you can reset your password if you forget it. Nobody else sees it.</p>' : ''}
-    <form class="nickrow" id="acc-emailform" style="margin-top:8px"><input class="field" id="acc-emailin" type="email" autocomplete="email" autocapitalize="off" spellcheck="false" placeholder="you@example.com" value="${esc(u.emailPending || '')}" aria-label="Email address">
-      <button class="btn go" type="submit">${u.emailPending ? 'Send again' : u.email ? 'Change' : 'Add email'}</button>${u.email || u.emailPending ? '<button class="btn" type="button" id="acc-emailrm">Remove</button>' : ''}</form>
+    <form class="authform" id="acc-emailform" style="margin-top:8px"><input type="text" autocomplete="username" value="${esc(u.name)}" hidden>
+      <label><span class="label">Email address</span><input class="field" id="acc-emailin" type="email" autocomplete="email" autocapitalize="off" spellcheck="false" placeholder="you@example.com" value="${esc(u.emailPending || '')}" required></label>
+      <label><span class="label">Your password</span><input class="field" id="acc-emailpw" type="password" autocomplete="current-password" required></label>
+      <div class="tools"><button class="btn go" type="submit">${u.emailPending ? 'Send again' : u.email ? 'Change email' : 'Add email'}</button>${u.email || u.emailPending ? '<button class="btn" type="button" id="acc-emailrm">Remove email</button>' : ''}</div></form>
+    <p class="hint" style="margin:6px 0 0">Changing or removing the email takes your password, so nobody who finds you logged in can take the account.</p>
     <div class="msg" id="acc-emailmsg"></div>`;
-  const m = $('acc-emailmsg');
+  const m = $('acc-emailmsg'), key = async () => CLOUD.passwordKey(u.name, $('acc-emailpw').value);
   $('acc-emailform').onsubmit = async e => {
     e.preventDefault(); m.className = 'msg'; m.textContent = 'Sending…';
-    const r = await api('/api/email', { method: 'POST', body: JSON.stringify({ email: $('acc-emailin').value }) });
+    const r = await api('/api/email', { method: 'POST', body: JSON.stringify({ email: $('acc-emailin').value, key: await key() }) });
     if (!r.ok) { m.className = 'msg bad'; m.textContent = r.body.error || 'Could not send it.'; return; }
     u.emailPending = r.body.pending; renderEmail();
   };
   if ($('acc-emailrm')) $('acc-emailrm').onclick = async () => {
-    const r = await api('/api/email/remove', { method: 'POST', body: '{}' });
+    if (!$('acc-emailpw').value) { m.className = 'msg bad'; m.textContent = 'Type your password to remove the email.'; $('acc-emailpw').focus(); return; }
+    const r = await api('/api/email/remove', { method: 'POST', body: JSON.stringify({ key: await key() }) });
     if (!r.ok) { m.className = 'msg bad'; m.textContent = r.body.error || 'Could not remove it.'; return; }
     u.email = u.emailPending = null; renderEmail();
   };
