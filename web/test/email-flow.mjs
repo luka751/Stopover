@@ -41,7 +41,9 @@ async function mailLink(tag, since, param) {
 let step = 0;
 const ok = (cond, what, detail) => { step++; if (!cond) { console.error(`✗ ${step}. ${what}`, detail ?? ''); throw new Error(what); } console.log(`✓ ${step}. ${what}`); };
 
-const name = randomName(), tag = 'e2e' + Date.now().toString(36), email = `${NS}.${tag}@inbox.testmail.app`;
+// a name no real player has, so the test never collides with one
+let name = randomName(); for (let i = 0; i < 20; i++) { const r = await (await fetch(`${BASE}/api/name/${name}`)).json(); if (r.available) break; name = randomName(); }
+const tag = 'e2e' + Date.now().toString(36), email = `${NS}.${tag}@inbox.testmail.app`;
 let pass = 'first-' + Math.random().toString(36).slice(2), deleted = false;
 console.log(`${BASE} · account ${name} · ${email}`);
 try {

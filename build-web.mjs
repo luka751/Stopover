@@ -29,7 +29,21 @@ if (location.hostname.startsWith('www.')) location.replace('https://' + location
 <link rel="canonical" href="https://playstopover.me/">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="description" content="Name places, cross the map, collect flags and race your friends.">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏁</text></svg>">
+<!-- installable on a phone's home screen, and a proper card when a link is pasted into a chat (icons: build-icons.mjs) -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0B6B3A">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Stopover">
+<meta property="og:title" content="Stopover: name places, cross the map, race your friends">
+<meta property="og:description" content="A free geography game in your browser. Plan a route across the world one town at a time, collect flags and race your friends.">
+<meta property="og:url" content="https://playstopover.me/">
+<meta property="og:image" content="https://playstopover.me/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Stopover: a green road sign reading Name places. Cross the map. Race your friends.">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="preload" href="geo.txt" as="fetch" crossorigin="anonymous">
 <!-- Sentry (GitHub Student Pack): errors from players' browsers -->
 <script>
@@ -96,4 +110,5 @@ fs.writeFileSync(out + '/_headers', `/*
 fs.copyFileSync('data.b64', out + '/geo.txt');
 for (const f of ['rail.json', 'covers.json']) fs.copyFileSync('dist/' + f, `${out}/${f}`);
 for (const dir of ['flags', 'maps']) fs.cpSync('dist/' + dir, `${out}/${dir}`, { recursive: true });
+fs.cpSync('web/static', out, { recursive: true });
 console.log(`${out}/index.html ${(html.length / 1e3).toFixed(0)} kB, plus geo.txt, rail.json, covers.json, flags/, maps/`);
