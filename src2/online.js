@@ -577,7 +577,7 @@ function renderAccount(body) {
         <label><span class="label">New password again</span><input class="field" type="password" id="acc-new2" autocomplete="new-password" minlength="6" required></label>
         <div><button class="btn go" type="submit">Change password</button></div>
       </form><div class="msg" id="acc-msg"></div></section>
-    <section><div class="label">Email</div><div id="acc-email"></div></section>
+    ${CLOUD.emailOn() || u.email ? '<section><div class="label">Email</div><div id="acc-email"></div></section>' : ''}
     <section><details class="fold"><summary><span class="label">Delete account</span></summary><div class="foldbody">
       <p class="hint" style="margin:0 0 8px">This deletes <b>${esc(u.name)}</b> and everything saved on it: flags, coins, stamps, trips, scores and races. It can't be undone.</p>
       <form class="authform" id="acc-del"><input type="text" autocomplete="username" value="${esc(u.name)}" hidden>

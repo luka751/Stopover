@@ -216,7 +216,8 @@ async function api(req, env, url) {
     const ok = await sendMail(env, email, 'Confirm your email for Stopover', mailBody('Confirm your email',
       [`Someone (hopefully you) added this address to the Stopover account ${u.name}.`, 'Confirm it so you can reset your password if you ever forget it.'],
       'Confirm email', link, `The link works for ${VERIFY_HOURS} hours. If you didn't ask for this, ignore this email and nothing changes.`));
-    if (!ok) return fail(502, 'The email could not be sent. Try again in a few minutes.');
+    // nothing was sent, so the account shouldn't say a link is waiting
+    if (!ok) { await acct.cancelVerify(u.id, email); return fail(502, 'The email could not be sent. Try again in a few minutes.'); }
     return json({ ok: true, pending: email });
   }
   if (method === 'POST' && path === '/api/email/verify') {
@@ -400,6 +401,10 @@ export class Accounts extends DurableObject {
     this.sql.exec('UPDATE users SET email = ?, email_pending = NULL WHERE id = ? AND guest = 0', t.email, t.user_id);
     const u = this.row('SELECT name FROM users WHERE id = ?', t.user_id);
     return u ? { ok: true, name: u.name, email: t.email } : { error: 'That account no longer exists.' };
+  }
+  cancelVerify(userId, email) {
+    this.sql.exec('UPDATE users SET email_pending = NULL WHERE id = ? AND email_pending = ?', userId, email);
+    this.sql.exec('DELETE FROM mail_tokens WHERE user_id = ? AND kind = \'verify\'', userId);
   }
   removeEmail(userId) {
     this.sql.exec('UPDATE users SET email = NULL, email_pending = NULL WHERE id = ?', userId);

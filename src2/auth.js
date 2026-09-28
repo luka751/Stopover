@@ -31,6 +31,10 @@ async function apiA(path, opts = {}) {
 // The config file is read straight from ConfigCat's CDN rather than through its 127 kB SDK; only each switch's
 // default value is used (no per-user targeting). Until it arrives, or if it can't be reached, the code's defaults apply.
 const FLAGS_URL = 'https://cdn-global.configcat.com/configuration-files/configcat-sdk-1/Xx3fCDSPwk-M2RkucGzbDQ/WMtrnhXonkCv-Va1Uwxa3w/config_v6.json';
+// Email features are off until playstopover.me is set up in Cloudflare Email Sending; then set this to true and
+// redeploy, or turn the 'emailAccounts' switch on in ConfigCat. The switch, when it exists, always wins.
+const EMAIL_DEFAULT = false;
+const emailOn = () => !!flags.get('emailAccounts', EMAIL_DEFAULT);
 const flags = {
   values: {},
   ready: (async () => {
@@ -50,7 +54,7 @@ const cloud = {
   // the lobby socket can't send headers, so a guest's key rides in its address
   wsQuery: () => guestToken ? '?gt=' + encodeURIComponent(guestToken) : '',
   openSignup: tab => openSignup(tab),
-  flags,
+  flags, emailOn,
   get(k) { return Object.prototype.hasOwnProperty.call(this.data, k) ? this.data[k] : null; },
   set(k, v) { this.data[k] = v === undefined ? null : v; this.dirty.add(k); this.soon(); },
   soon(ms = 4000) { if (!this.timer && !this.blocked) this.timer = setTimeout(() => { this.timer = 0; this.flush(); }, ms); },
@@ -121,7 +125,7 @@ function authScreen(note, guest) {
       <label><span class="label">Password</span><input class="field" id="an-pass" type="password" autocomplete="new-password" minlength="6" required></label>
       <label><span class="label">Password again</span><input class="field" id="an-pass2" type="password" autocomplete="new-password" minlength="6" required></label>
       <label><span class="label">Email <span class="opt">optional</span></span><input class="field" id="an-email" type="email" autocomplete="email" autocapitalize="off" spellcheck="false" placeholder="you@example.com"></label>
-      <p class="hint" style="margin:0">Only used to reset your password if you forget it. Without one, write your username and password down.</p>
+      <p class="hint" style="margin:0" id="an-emailhint">Only used to reset your password if you forget it. Without one, write your username and password down.</p>
       ${guest ? '<p class="hint" style="margin:0"><b>Everything you played as a guest comes with you</b>: flags, coins, stamps and trips.</p>' : ''}
       <button class="btn go big" type="submit">${guest ? 'Create account and keep my progress' : 'Create account'}</button>
     </form>
@@ -198,8 +202,8 @@ function openSignup(tab = 'new') {
     busy(form, false, label); msg(r.body.error || 'Could not create the account.'); if (r.status === 409) offerName(randomName());
   };
   wireForgot(el, msg, busy);
-  // switch 'emailAccounts' off in ConfigCat to hide email sign-up and resets, if sending mail ever breaks
-  if (!flags.get('emailAccounts', true)) { $a('an-email').closest('label').hidden = true; $a('al-forgot').hidden = true; }
+  // email sign-up and resets show only while the 'emailAccounts' switch is on (see EMAIL_DEFAULT)
+  if (!emailOn()) { $a('an-email').closest('label').hidden = true; $a('al-forgot').hidden = true; $a('an-emailhint').textContent = 'Write your username and password down: a forgotten password can\'t be reset yet.'; }
   showTab(tab === 'new');
 }
 // "Forgot your password?" swaps the log-in form for a one-field form that asks for a reset email

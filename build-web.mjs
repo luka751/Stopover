@@ -21,6 +21,11 @@ const html = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<script>
+// one address for the game: static pages are served before the Worker runs, so www is sent to the bare domain here
+if (location.hostname.startsWith('www.')) location.replace('https://' + location.hostname.slice(4) + location.pathname + location.search + location.hash);
+</script>
+<link rel="canonical" href="https://playstopover.me/">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="description" content="Name places, cross the map, collect flags and race your friends.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏁</text></svg>">
