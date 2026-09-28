@@ -3,6 +3,13 @@
   "name": "stopover",
   "main": "src/index.js",
   "compatibility_date": "2025-09-01",
+  // The game's own address. Both are served by this Worker; www is redirected to the bare domain in src/index.js,
+  // so there is one origin and one set of log-ins. The workers.dev address keeps working alongside them.
+  "workers_dev": true,
+  "routes": [
+    { "pattern": "playstopover.me", "custom_domain": true },
+    { "pattern": "www.playstopover.me", "custom_domain": true }
+  ],
   "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": ["/api/*"] },
   "durable_objects": {
     "bindings": [

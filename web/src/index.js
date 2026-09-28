@@ -90,6 +90,8 @@ class HttpError extends Error { constructor(status, message) { super(message); t
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
+    // one address for the game: www goes to the bare domain, so a log-in made on one isn't missing on the other
+    if (url.hostname.startsWith('www.')) { url.hostname = url.hostname.slice(4); return Response.redirect(url.toString(), 301); }
     if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(req);
     try { return await api(req, env, url); }
     catch (e) { if (e instanceof HttpError) return fail(e.status, e.message); console.error(e); return fail(500, 'Something went wrong on the server'); }
