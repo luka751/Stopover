@@ -27,12 +27,30 @@ async function apiA(path, opts = {}) {
   return { ok: res.ok, status: res.status, body: body || {} };
 }
 
+// ---- feature switches (ConfigCat, GitHub Student Pack), flipped in its dashboard without a new deploy.
+// The config file is read straight from ConfigCat's CDN rather than through its 127 kB SDK; only each switch's
+// default value is used (no per-user targeting). Until it arrives, or if it can't be reached, the code's defaults apply.
+const FLAGS_URL = 'https://cdn-global.configcat.com/configuration-files/configcat-sdk-1/Xx3fCDSPwk-M2RkucGzbDQ/WMtrnhXonkCv-Va1Uwxa3w/config_v6.json';
+const flags = {
+  values: {},
+  ready: (async () => {
+    try {
+      let j = await (await fetch(FLAGS_URL, { cache: 'no-cache' })).json();
+      // ConfigCat can point clients in some regions at another CDN
+      if (j.p && j.p.r && j.p.u) j = await (await fetch(FLAGS_URL.replace('https://cdn-global.configcat.com', j.p.u), { cache: 'no-cache' })).json();
+      for (const [k, x] of Object.entries(j.f || {})) { const v = x.v || {}; flags.values[k] = v.b ?? v.s ?? v.i ?? v.d; }
+    } catch {}
+  })(),
+  get(k, def) { return k in this.values ? this.values[k] : def; },
+};
+
 // ---- the cloud store
 const cloud = {
   user: null, rev: 0, data: {}, sent: {}, dirty: new Set(), timer: 0, busy: false, blocked: false, summary: null, names: { parse: parseName, nickProblem }, passwordKey, api: apiA,
   // the lobby socket can't send headers, so a guest's key rides in its address
   wsQuery: () => guestToken ? '?gt=' + encodeURIComponent(guestToken) : '',
   openSignup: tab => openSignup(tab),
+  flags,
   get(k) { return Object.prototype.hasOwnProperty.call(this.data, k) ? this.data[k] : null; },
   set(k, v) { this.data[k] = v === undefined ? null : v; this.dirty.add(k); this.soon(); },
   soon(ms = 4000) { if (!this.timer && !this.blocked) this.timer = setTimeout(() => { this.timer = 0; this.flush(); }, ms); },
@@ -86,6 +104,13 @@ function authScreen(note, guest) {
       <label><span class="label">Username</span><input class="field" id="al-name" name="username" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="e.g. PinkApple" required></label>
       <label><span class="label">Password</span><input class="field" id="al-pass" name="password" type="password" autocomplete="current-password" required></label>
       <button class="btn go big" type="submit">Log in</button>
+      <button class="linkbtn" type="button" id="al-forgot">Forgot your password?</button>
+    </form>
+    <form id="auth-forgot" class="authform" hidden>
+      <p class="hint" style="margin:0">Type your username or the email on your account. If the account has a confirmed email, we'll send a link to pick a new password.</p>
+      <label><span class="label">Username or email</span><input class="field" id="af-who" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="PinkApple or you@example.com" required></label>
+      <button class="btn go big" type="submit">Send reset link</button>
+      <button class="linkbtn" type="button" id="af-back">Back to log in</button>
     </form>
     <form id="auth-new" class="authform" hidden autocomplete="on">
       <div><span class="label">Your username</span>
@@ -95,8 +120,9 @@ function authScreen(note, guest) {
       </div>
       <label><span class="label">Password</span><input class="field" id="an-pass" type="password" autocomplete="new-password" minlength="6" required></label>
       <label><span class="label">Password again</span><input class="field" id="an-pass2" type="password" autocomplete="new-password" minlength="6" required></label>
+      <label><span class="label">Email <span class="opt">optional</span></span><input class="field" id="an-email" type="email" autocomplete="email" autocapitalize="off" spellcheck="false" placeholder="you@example.com"></label>
+      <p class="hint" style="margin:0">Only used to reset your password if you forget it. Without one, write your username and password down.</p>
       ${guest ? '<p class="hint" style="margin:0"><b>Everything you played as a guest comes with you</b>: flags, coins, stamps and trips.</p>' : ''}
-      <p class="hint" style="margin:0">There's no email, so write your username and password down. A forgotten password can't be reset.</p>
       <button class="btn go big" type="submit">${guest ? 'Create account and keep my progress' : 'Create account'}</button>
     </form>
     <div class="msg" id="auth-msg" aria-live="polite">${note ? escA(note) : ''}</div>
@@ -118,7 +144,7 @@ function openSignup(tab = 'new') {
   el.addEventListener('pointerdown', e => { if (e.target === el && !el.dataset.busy) close(); });
   const showTab = newAcc => {
     el.querySelectorAll('[data-atab]').forEach(x => { const on = (x.dataset.atab === 'new') === newAcc; x.setAttribute('aria-selected', String(on)); x.setAttribute('aria-pressed', String(on)); });
-    $a('auth-login').hidden = newAcc; $a('auth-new').hidden = !newAcc; $a('auth-msg').textContent = '';
+    $a('auth-login').hidden = newAcc; $a('auth-new').hidden = !newAcc; $a('auth-forgot').hidden = true; $a('auth-msg').textContent = '';
     if (newAcc && !$a('an-name').value) offerName(guestName);
     (newAcc ? $a('an-pass') : $a('al-name')).focus();
   };
@@ -154,6 +180,8 @@ function openSignup(tab = 'new') {
     if (pass.length < 6) { msg('Use at least 6 characters.'); return; }
     if (pass !== $a('an-pass2').value) { msg('The two passwords are different.'); return; }
     if ($a('an-avail').dataset.taken) { msg('That username is taken. Spin again.'); return; }
+    const email = $a('an-email').value.trim();
+    if (email && !/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(email)) { msg('That email doesn\'t look right. Fix it, or leave it empty.'); return; }
     const label = form.querySelector('[type=submit]').textContent;
     busy(form, true, 'Saving your progress…');
     // everything played so far goes up first, then saving pauses so nothing is sent under the old guest key
@@ -161,11 +189,74 @@ function openSignup(tab = 'new') {
     await cloud.flush(); cloud.blocked = true;
     busy(form, true, 'Creating…');
     const r = await apiA('/api/register', { method: 'POST', body: JSON.stringify({ name, key: await passwordKey(name, pass) }) });
-    if (r.ok) { intoAccount(); return; }
+    if (r.ok) {
+      // the account exists now; a failed confirmation email isn't a reason to stop, it can be sent again from Account
+      if (email) { busy(form, true, 'Sending confirmation…'); await apiA('/api/email', { method: 'POST', body: JSON.stringify({ email }) }); }
+      intoAccount(); return;
+    }
     cloud.blocked = false; if (cloud.dirty.size) cloud.soon();
     busy(form, false, label); msg(r.body.error || 'Could not create the account.'); if (r.status === 409) offerName(randomName());
   };
+  wireForgot(el, msg, busy);
+  // switch 'emailAccounts' off in ConfigCat to hide email sign-up and resets, if sending mail ever breaks
+  if (!flags.get('emailAccounts', true)) { $a('an-email').closest('label').hidden = true; $a('al-forgot').hidden = true; }
   showTab(tab === 'new');
+}
+// "Forgot your password?" swaps the log-in form for a one-field form that asks for a reset email
+function wireForgot(el, msg, busy) {
+  const show = on => { $a('auth-login').hidden = on; $a('auth-forgot').hidden = !on; $a('auth-msg').textContent = ''; $a(on ? 'af-who' : 'al-name').focus(); };
+  $a('al-forgot').onclick = () => { $a('af-who').value = $a('al-name').value; show(true); };
+  $a('af-back').onclick = () => show(false);
+  $a('auth-forgot').onsubmit = async e => {
+    e.preventDefault(); const form = e.currentTarget;
+    busy(form, true, 'Sending…');
+    const r = await apiA('/api/forgot', { method: 'POST', body: JSON.stringify({ who: $a('af-who').value }) });
+    busy(form, false, 'Send reset link');
+    if (!r.ok) { msg(r.body.error || 'Could not send it. Try again.'); return; }
+    $a('auth-msg').className = 'msg good';
+    $a('auth-msg').textContent = 'If that account has a confirmed email, a link is on its way. It works for 30 minutes. Check your spam folder too.';
+  };
+}
+
+// a password-reset link from an email opens this: pick a new password for the account named in the link
+async function resetScreen(token) {
+  const info = await apiA('/api/reset/' + encodeURIComponent(token));
+  const el = document.createElement('div'); el.id = 'auth'; el.className = 'auth';
+  el.innerHTML = `<div class="authcard" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+    <div class="authbrand"><span class="shield" aria-hidden="true">E2</span><span class="wordmark" id="auth-title">New password</span></div>
+    ${info.ok ? `<p class="authlead">Pick a new password for ${nameHtml(info.body.name)}. Every device logged in to it will be logged out.</p>
+    <form id="rs-form" class="authform"><input type="text" autocomplete="username" value="${escA(info.body.name)}" hidden>
+      <label><span class="label">New password</span><input class="field" id="rs-pass" type="password" autocomplete="new-password" minlength="6" required></label>
+      <label><span class="label">New password again</span><input class="field" id="rs-pass2" type="password" autocomplete="new-password" minlength="6" required></label>
+      <button class="btn go big" type="submit">Save and log in</button></form>`
+    : `<p class="authlead">${escA(info.body.error || 'This link has expired or was already used.')}</p><a class="btn go big" href="/">Back to the game</a>`}
+    <div class="msg" id="auth-msg" aria-live="polite"></div></div>`;
+  document.body.appendChild(el);
+  if (!info.ok) return;
+  $a('rs-pass').focus();
+  $a('rs-form').onsubmit = async e => {
+    e.preventDefault(); const pass = $a('rs-pass').value, m = $a('auth-msg'), b = e.currentTarget.querySelector('[type=submit]');
+    m.className = 'msg bad';
+    if (pass.length < 6) { m.textContent = 'Use at least 6 characters.'; return; }
+    if (pass !== $a('rs-pass2').value) { m.textContent = 'The two passwords are different.'; return; }
+    b.disabled = true; b.textContent = 'Saving…';
+    const r = await apiA('/api/reset', { method: 'POST', body: JSON.stringify({ token, key: await passwordKey(info.body.name, pass) }) });
+    if (r.ok) { guestToken = null; guestStore.set(null); location.replace('/'); return; }
+    b.disabled = false; b.textContent = 'Save and log in'; m.textContent = r.body.error || 'Could not save it.';
+  };
+}
+function announce(text) {
+  const key = 'stopover-announce-seen', seen = (() => { try { return localStorage.getItem(key); } catch { return null; } })();
+  if (seen === text) return;
+  const el = document.createElement('div'); el.className = 'announce'; el.setAttribute('role', 'status');
+  el.innerHTML = `<span>📣 ${escA(text)}</span><button class="x" type="button" aria-label="Dismiss">×</button>`;
+  el.querySelector('button').onclick = () => { el.remove(); try { localStorage.setItem(key, text); } catch {} };
+  document.body.appendChild(el);
+}
+// a short note at the top of the page that goes away by itself
+function flashNote(text, good) {
+  const el = document.createElement('div'); el.className = 'flashnote' + (good ? ' good' : ''); el.setAttribute('role', 'status'); el.textContent = text;
+  document.body.appendChild(el); setTimeout(() => el.classList.add('out'), 6000); setTimeout(() => el.remove(), 6600);
 }
 
 // the strip across the top of the game while playing as a guest
@@ -178,6 +269,14 @@ function guestBanner() {
 }
 
 (async () => {
+  // links from emails: ?reset= opens the new-password screen instead of the game, ?verify= confirms an email and goes on
+  const qs = new URLSearchParams(location.search), resetT = qs.get('reset'), verifyT = qs.get('verify');
+  if (resetT || verifyT) history.replaceState(null, '', location.pathname + location.hash);
+  if (resetT) { resetScreen(resetT); return; }
+  if (verifyT) {
+    const v = await apiA('/api/email/verify', { method: 'POST', body: JSON.stringify({ token: verifyT }) });
+    flashNote(v.ok ? `✓ Email confirmed for ${v.body.name}. You can now reset your password if you forget it.` : v.body.error || 'That link didn\'t work.', v.ok);
+  }
   // an account on this browser comes first; otherwise this tab's guest, or a new guest
   let me = await apiA('/api/me');
   if (me.status === 401) {
@@ -193,6 +292,10 @@ function guestBanner() {
   cloud.user = me.body.user; cloud.rev = me.body.rev; cloud.data = me.body.save || {};
   for (const [k, v] of Object.entries(cloud.data)) cloud.sent[k] = JSON.stringify(v);
   if (cloud.user.guest) guestBanner();
+  // errors in Sentry carry the fruit username (not an email or anything personal), so a player's report can be matched to them
+  if (window.Sentry && Sentry.onLoad) Sentry.onLoad(() => Sentry.setUser({ username: cloud.user.name, guest: cloud.user.guest }));
   window.__stopoverCloud = cloud;
   const start = window.__stopoverStart; delete window.__stopoverStart; start();
+  // text in the 'announcement' switch shows across the top for everyone: maintenance, a new event, a weekend race
+  flags.ready.then(() => { const a = flags.get('announcement', ''); if (typeof a === 'string' && a.trim()) announce(a.trim()); });
 })();

@@ -504,6 +504,8 @@ function travel(id, mode = 'ground') {
 }
 function finishTrip(gaveUp) {
   S.done = true; S.gaveUp = gaveUp;
+  // counted on the website by SimpleAnalytics (no cookies, nothing personal); absent in the single-file build
+  if (window.sa_event) sa_event((gaveUp ? 'trip_gave_up_' : 'trip_finished_') + (S.race ? 'race' : S.daily ? 'daily' : S.weekly ? 'weekly' : S.stakes ? 'stakes' : 'solo'));
   if (!gaveUp) {
     // the arrival bonus shrinks with the share of the trip you flew
     const groundShare = S.km > 0 ? Math.max(0, (S.km - (S.airKm || 0) - 0.5 * (S.railKm || 0)) / S.km) : 1;

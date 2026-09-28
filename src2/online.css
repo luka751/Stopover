@@ -145,3 +145,13 @@
 .titlelist { margin-top: 10px; }
 .titlelist .list li { gap: 10px; }
 @media (max-width: 520px) { .idgrid { grid-template-columns: 1fr; } }
+/* log-in extras: "forgot password" links, the optional-field tag, a note that fades by itself, the delete button */
+.linkbtn { background: none; border: 0; padding: 4px 0; font: inherit; font-size: 14px; color: var(--focus); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; justify-self: start; align-self: flex-start; }
+.linkbtn:hover { color: var(--ink); }
+.label .opt { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted); margin-left: 4px; }
+.flashnote { position: fixed; left: 50%; top: 12px; transform: translateX(-50%); z-index: 70; max-width: calc(100vw - 32px); background: var(--ink); color: var(--page); border-radius: 10px; padding: 10px 14px; box-shadow: 0 12px 30px -10px rgba(0,0,0,.5); transition: opacity .5s; }
+.flashnote.good { background: var(--good); color: #fff; }
+.flashnote.out { opacity: 0; }
+.btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+.announce { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 65; display: flex; gap: 10px; align-items: center; width: max-content; max-width: calc(100vw - 32px); background: var(--sign); color: var(--sign-ink); border-radius: 12px; padding: 10px 10px 10px 14px; box-shadow: 0 12px 30px -10px rgba(0,0,0,.5); font-weight: 600; }
+.announce .x { color: inherit; background: transparent; border: 0; font-size: 20px; line-height: 1; cursor: pointer; padding: 2px 6px; }

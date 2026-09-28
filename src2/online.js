@@ -116,6 +116,7 @@ async function joinLobby(raw) {
   if (!info.ok) return info.body.error || 'Could not reach the server.';
   if (!info.body.exists) return `There's no lobby called ${code}. Check the code with the host.`;
   if (info.body.full) return 'That lobby is full.';
+  if (window.sa_event) sa_event('lobby_joined');
   connect(code); return '';
 }
 function leaveLocal(note) {
@@ -575,7 +576,22 @@ function renderAccount(body) {
         <label><span class="label">New password</span><input class="field" type="password" id="acc-new" autocomplete="new-password" minlength="6" required></label>
         <label><span class="label">New password again</span><input class="field" type="password" id="acc-new2" autocomplete="new-password" minlength="6" required></label>
         <div><button class="btn go" type="submit">Change password</button></div>
-      </form><div class="msg" id="acc-msg"></div></section>`;
+      </form><div class="msg" id="acc-msg"></div></section>
+    <section><div class="label">Email</div><div id="acc-email"></div></section>
+    <section><details class="fold"><summary><span class="label">Delete account</span></summary><div class="foldbody">
+      <p class="hint" style="margin:0 0 8px">This deletes <b>${esc(u.name)}</b> and everything saved on it: flags, coins, stamps, trips, scores and races. It can't be undone.</p>
+      <form class="authform" id="acc-del"><input type="text" autocomplete="username" value="${esc(u.name)}" hidden>
+        <label><span class="label">Your password</span><input class="field" type="password" id="acc-delpass" autocomplete="current-password" required></label>
+        <div><button class="btn danger" type="submit">Delete my account forever</button></div></form><div class="msg" id="acc-delmsg"></div></div></details></section>`;
+  renderEmail();
+  $('acc-del').onsubmit = async e => {
+    e.preventDefault(); const m = $('acc-delmsg');
+    if (!confirm(`Delete ${u.name} and all its progress for good?`)) return;
+    m.className = 'msg'; m.textContent = 'Deleting…';
+    const r = await api('/api/account/delete', { method: 'POST', body: JSON.stringify({ key: await CLOUD.passwordKey(u.name, $('acc-delpass').value) }) });
+    if (r.ok) { if (ONLINE.code) leaveLobby(); CLOUD.blocked = true; location.replace('/'); return; }
+    m.className = 'msg bad'; m.textContent = r.body.error || 'Could not delete it.';
+  };
   $('acc-logout').onclick = () => { if (ONLINE.code) leaveLobby(); CLOUD.logout(); };
   $('acc-pass').onsubmit = async e => {
     e.preventDefault(); const m = $('acc-msg'), nw = $('acc-new').value;
@@ -584,6 +600,30 @@ function renderAccount(body) {
     const r = await api('/api/password', { method: 'POST', body: JSON.stringify({ old: await CLOUD.passwordKey(u.name, $('acc-old').value), key: await CLOUD.passwordKey(u.name, nw) }) });
     m.className = 'msg ' + (r.ok ? 'good' : 'bad'); m.textContent = r.ok ? 'Password changed. Other devices were logged out.' : r.body.error || 'Could not change it.';
     if (r.ok) e.target.reset();
+  };
+}
+
+// the email on the account: confirmed, waiting for its link, or none. It's only for password resets, and never shown to anyone else.
+function renderEmail() {
+  const box = $('acc-email'); if (!box) return;
+  const u = CLOUD.user;
+  box.innerHTML = `${u.email ? `<p style="margin:8px 0 4px">✓ <b>${esc(u.email)}</b> is confirmed.</p>` : ''}
+    ${u.emailPending ? `<p class="hint" style="margin:8px 0 4px">We sent a link to <b>${esc(u.emailPending)}</b>. Click it to confirm${u.email ? ' the change' : ''}. Check spam if it isn't there.</p>` : ''}
+    ${!u.email && !u.emailPending ? '<p class="hint" style="margin:8px 0 4px">No email yet. Add one so you can reset your password if you forget it. Nobody else sees it.</p>' : ''}
+    <form class="nickrow" id="acc-emailform" style="margin-top:8px"><input class="field" id="acc-emailin" type="email" autocomplete="email" autocapitalize="off" spellcheck="false" placeholder="you@example.com" value="${esc(u.emailPending || '')}" aria-label="Email address">
+      <button class="btn go" type="submit">${u.emailPending ? 'Send again' : u.email ? 'Change' : 'Add email'}</button>${u.email || u.emailPending ? '<button class="btn" type="button" id="acc-emailrm">Remove</button>' : ''}</form>
+    <div class="msg" id="acc-emailmsg"></div>`;
+  const m = $('acc-emailmsg');
+  $('acc-emailform').onsubmit = async e => {
+    e.preventDefault(); m.className = 'msg'; m.textContent = 'Sending…';
+    const r = await api('/api/email', { method: 'POST', body: JSON.stringify({ email: $('acc-emailin').value }) });
+    if (!r.ok) { m.className = 'msg bad'; m.textContent = r.body.error || 'Could not send it.'; return; }
+    u.emailPending = r.body.pending; renderEmail();
+  };
+  if ($('acc-emailrm')) $('acc-emailrm').onclick = async () => {
+    const r = await api('/api/email/remove', { method: 'POST', body: '{}' });
+    if (!r.ok) { m.className = 'msg bad'; m.textContent = r.body.error || 'Could not remove it.'; return; }
+    u.email = u.emailPending = null; renderEmail();
   };
 }
 

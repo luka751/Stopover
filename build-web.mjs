@@ -1,6 +1,7 @@
 // Builds the website into web/public: the game page with log-in and online play, plus the data files it loads.
 // The single-file artifact (build-page.mjs) is unchanged by this.
 import fs from 'node:fs';
+import { execSync } from 'node:child_process';
 const part = f => fs.readFileSync('src2/' + f, 'utf8');
 const out = 'web/public';
 fs.rmSync(out, { recursive: true, force: true });
@@ -13,6 +14,9 @@ if (!js.includes(inlineGeo)) throw new Error('loadData changed: update build-web
 const game = js.replace(inlineGeo, "const b64 = (await (await fetch('geo.txt')).text()).trim(), bin = atob(b64)");
 const names = fs.readFileSync('web/src/names.js', 'utf8').replace(/^export /gm, '');
 
+// the commit a build came from, so an error in Sentry says which version of the game it happened in
+let release = 'dev'; try { release = execSync('git rev-parse --short HEAD').toString().trim() + (execSync('git status --porcelain src2 web/src').toString().trim() ? '-dirty' : ''); } catch {}
+
 const html = `<!doctype html>
 <html lang="en">
 <head>
@@ -21,6 +25,13 @@ const html = `<!doctype html>
 <meta name="description" content="Name places, cross the map, collect flags and race your friends.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏁</text></svg>">
 <link rel="preload" href="geo.txt" as="fetch" crossorigin="anonymous">
+<!-- Sentry (GitHub Student Pack): the loader is tiny and pulls in the full SDK only when an error happens -->
+<script>window.sentryOnLoad = () => Sentry.init({ release: 'stopover@${release}', environment: location.hostname === 'playstopover.me' ? 'production' : 'development', sendDefaultPii: false,
+  // noise from browser extensions and old cached pages, not from the game
+  denyUrls: ['chrome-extension://', 'moz-extension://', 'safari-web-extension://', 'extensions/'] });</script>
+<script src="https://js-de.sentry-cdn.com/b9ace36eee047a9fad47f77414a7f8bc.min.js" crossorigin="anonymous"></script>
+<!-- SimpleAnalytics (GitHub Student Pack): page views and a few game events, no cookies; counts once playstopover.me is added in its dashboard -->
+<script async src="https://scripts.simpleanalyticscdn.com/latest.js"></script>
 ${part('head.html').replace('</style>', part('online.css') + '\n</style>')}
 </head>
 <body>

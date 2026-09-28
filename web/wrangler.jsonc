@@ -3,6 +3,10 @@
   "name": "stopover",
   "main": "src/index.js",
   "compatibility_date": "2025-09-01",
+  // Sentry's SDK needs Node.js compatibility
+  "compatibility_flags": ["nodejs_compat"],
+  // public settings; secrets go in with `wrangler secret put`, and locally in .dev.vars
+  "vars": { "SENTRY_DSN": "https://b9ace36eee047a9fad47f77414a7f8bc@o4512164040146944.ingest.de.sentry.io/4512164047814736" },
   // The game's own address. Both are served by this Worker; www is redirected to the bare domain in src/index.js,
   // so there is one origin and one set of log-ins. The workers.dev address keeps working alongside them.
   "workers_dev": true,
@@ -17,6 +21,8 @@
       { "name": "LOBBY", "class_name": "Lobby" }
     ]
   },
+  // confirmation and password-reset emails, sent from noreply@playstopover.me (Cloudflare Email Sending)
+  "send_email": [{ "name": "EMAIL" }],
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Accounts", "Lobby"] }],
   "observability": { "enabled": true }
 }

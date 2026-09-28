@@ -1,0 +1,17 @@
+# On every push and pull request: the game's scripts parse, and the Worker bundles with its bindings.
+# Nothing is deployed from here.
+name: Check
+on: [push, pull_request]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: web/package-lock.json }
+      - run: node check.mjs
+      - run: npm ci
+        working-directory: web
+      # the built site isn't in git, so bundle the Worker against an empty assets folder
+      - run: mkdir -p public && npx wrangler deploy --dry-run --outdir dist
+        working-directory: web
