@@ -109,9 +109,9 @@ async function sendMail(env, to, subject, body) {
   if (env.MAIL_DEV) { console.log(`[mail to ${to}] ${subject}\n${body.text}`); return true; }
   try {
     const res = env.RESEND_API_KEY ? await fetch('https://api.resend.com/emails', {
-        method: 'POST', headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' },
+        method: 'POST', headers: { authorization: `Bearer ${env.RESEND_API_KEY.trim()}`, 'content-type': 'application/json' },
         body: JSON.stringify({ from: `${MAIL_FROM.name} <${mailFrom(env)}>`, to: [to], subject, text: body.text, html: body.html }) })
-      : env.AZURE_EMAIL ? await azureMail(env.AZURE_EMAIL, mailFrom(env), to, subject, body) : null;
+      : env.AZURE_EMAIL ? await azureMail(env.AZURE_EMAIL.trim(), mailFrom(env), to, subject, body) : null;
     if (res && res.ok) return true;
     console.error('email failed', res ? res.status : 'no provider', res ? (await res.text()).slice(0, 300) : '');
   } catch (e) { console.error('email failed', e.message); }
