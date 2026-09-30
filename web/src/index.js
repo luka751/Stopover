@@ -130,7 +130,13 @@ async function azureMail(connection, from, to, subject, body) {
     authorization: `HMAC-SHA256 SignedHeaders=x-ms-date;host;x-ms-content-sha256&Signature=${sig}` } });
 }
 // Limits are counted per network, not per address: an IPv6 visitor can pick any address in their /64
-const ipKey = ip => ip.includes(':') ? ip.split(':').slice(0, 4).join(':') : ip;
+function ipKey(ip) {
+  if (!ip.includes(':')) return ip;
+  // expand "2001:db8::1" to eight groups first, so every address in one /64 gives the same key
+  const [head, tail = ''] = ip.split('::'), h = head ? head.split(':') : [], t = tail ? tail.split(':') : [];
+  const groups = ip.includes('::') ? [...h, ...Array(Math.max(0, 8 - h.length - t.length)).fill('0'), ...t] : ip.split(':');
+  return groups.slice(0, 4).map(g => (parseInt(g, 16) || 0).toString(16)).join(':');
+}
 // the inbox an address really delivers to, so name+1@gmail.com and n.a.m.e@gmail.com share one limit
 function inboxKey(email) {
   let [user, domain] = email.split('@');
@@ -441,6 +447,7 @@ export class Accounts extends DurableObject {
     // what emails were asked for recently, by whom and to where, so nobody can use the game to flood an inbox
     this.sql.exec('CREATE TABLE IF NOT EXISTS mail_log (k TEXT NOT NULL, at INTEGER NOT NULL)');
     this.sql.exec('CREATE INDEX IF NOT EXISTS mail_log_k ON mail_log (k, at)');
+    this.sql.exec('CREATE INDEX IF NOT EXISTS mail_log_at ON mail_log (at)');
     this.crownCache = null;
   }
   // true (and counted) if none of the limits is reached: each is [key, how many, per how many minutes]
@@ -529,7 +536,8 @@ export class Accounts extends DurableObject {
     // a new password signs out every device, and clears any lock from wrong guesses
     this.sql.exec('UPDATE users SET salt = ?, hash = ?, fails = 0, locked_until = 0 WHERE id = ?', salt, await sha256(salt + key), u.id);
     this.sql.exec('DELETE FROM sessions WHERE user_id = ?', u.id);
-    this.sql.exec('DELETE FROM mail_tokens WHERE user_id = ? AND kind = \'reset\'', u.id);
+    this.sql.exec('DELETE FROM mail_tokens WHERE user_id = ?', u.id);
+    this.sql.exec('UPDATE users SET email_pending = NULL WHERE id = ?', u.id);
     return { id: u.id, name: u.name };
   }
   async deleteAccount(userId, key) {
@@ -601,7 +609,8 @@ export class Accounts extends DurableObject {
     this.sql.exec('UPDATE users SET salt = ?, hash = ? WHERE id = ?', salt, await sha256(salt + newKey), userId);
     // sign out every other device, and kill any reset link that is still out there
     this.sql.exec('DELETE FROM sessions WHERE user_id = ? AND token != ?', userId, keepToken);
-    this.sql.exec('DELETE FROM mail_tokens WHERE user_id = ? AND kind = \'reset\'', userId);
+    this.sql.exec('DELETE FROM mail_tokens WHERE user_id = ?', userId);
+    this.sql.exec('UPDATE users SET email_pending = NULL WHERE id = ?', userId);
     return { ok: true };
   }
   createSession(tokenHash, userId, days) {
