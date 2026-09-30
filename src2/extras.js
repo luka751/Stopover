@@ -76,10 +76,11 @@ function ensureEquipDefaults() {
   // Winter was retired (it looked like Satellite): anyone who owned it gets Satellite
   if (P.owned.includes('style:winter')) { P.owned = P.owned.filter(x => x !== 'style:winter'); if (!P.owned.includes('style:satellite')) P.owned.push('style:satellite'); }
   if (P.equip.style === 'winter') P.equip.style = 'satellite';
-  const e = P.equip; e.models ||= {}; e.sign ||= 'eroad'; e.trail ||= 'solid'; e.effect ||= 'puff'; if (e.effect === 'none' && !P.effectChosen) e.effect = 'puff'; e.ink ||= 'classic'; e.sound ||= 'bells'; e.theme ||= 'field';
+  const e = P.equip; e.models ||= {}; e.sign ||= 'eroad'; e.trail ||= 'solid'; e.effect ||= 'puff'; if (e.effect === 'none' && !P.effectChosen) e.effect = 'puff'; e.ink ||= 'classic'; e.sound ||= 'bells'; e.theme ||= 'field'; e.emoji ||= 'native';
   if (!THEMES[e.theme]) e.theme = 'field';
   document.documentElement.classList.toggle('holo', !!e.holo);
   applyInterfaceTheme();
+  if ((emojiSetOffered(e.emoji) ? e.emoji : 'native') !== (document.documentElement.dataset.emoji || 'native')) applyEmojiSet();
 }
 
 // ---- route trails
@@ -181,3 +182,73 @@ function applyInterfaceTheme() {
   const id = P.equip.theme;
   if (id && id !== 'field' && THEMES[id]) document.documentElement.dataset.skin = id; else delete document.documentElement.dataset.skin;
 }
+
+// ================= emoji themes =================
+// An emoji theme draws the game's emoji in one icon style (Icons8 art). The web build packs each set into a sprite
+// sheet and describes it in window.EMOJI_ART: the emoji in cell order and, per set, the sheet and its empty cells.
+// Emoji in the page's text are swapped for a span showing their cell as they appear; the emoji itself stays inside,
+// invisible, so copying text and screen readers still get it. Emoji a set has no drawing for, and emoji in dropdowns,
+// on the map canvas and in tooltips, stay standard. The single-file build has no sheets, so only Standard is offered.
+const EMOJI_SETS = TUNE.shop.emojiSets || { native: { name: 'Standard', price: 0, blurb: '' } };
+const EMOJI_ART = window.EMOJI_ART || { list: [], cols: 1, rows: 1, sets: {} };
+const emojiCell = new Map(EMOJI_ART.list.map((e, i) => [e, i]));
+document.documentElement.style.setProperty('--emo-size', `${EMOJI_ART.cols * 100}% ${EMOJI_ART.rows * 100}%`);
+const emojiRe = EMOJI_ART.list.length ? new RegExp(`(${EMOJI_ART.list.slice().sort((a, b) => b.length - a.length).map(e => e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\uFE0F?`, 'gu') : null;
+const emojiSetOffered = id => id === 'native' || (!!EMOJI_SETS[id] && !!EMOJI_ART.sets[id]);
+const EMOJI_SKIP = 'script,style,textarea,select,option,title,svg,canvas,.emo,[data-no-emo]';
+// a span showing one cell of a set's sheet; `file` names another set's sheet (the shop's previews)
+function emojiSpan(e, i, file) {
+  const x = EMOJI_ART.cols > 1 ? (i % EMOJI_ART.cols) / (EMOJI_ART.cols - 1) * 100 : 0, y = EMOJI_ART.rows > 1 ? Math.floor(i / EMOJI_ART.cols) / (EMOJI_ART.rows - 1) * 100 : 0;
+  const s = document.createElement('span'); s.className = 'emo';
+  s.style.backgroundPosition = `${x}% ${y}%`; if (file) s.style.backgroundImage = `url(${file})`;
+  const inner = document.createElement('span'); inner.textContent = e; s.appendChild(inner);
+  return s;
+}
+let emojiObserver = null, emojiMissing = new Set();
+function paintEmoji(root) {
+  if (!emojiRe || !root) return;
+  const texts = [], w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  if (root.nodeType === 3) texts.push(root);
+  else for (let n = w.nextNode(); n; n = w.nextNode()) texts.push(n);
+  for (const t of texts) {
+    const p = t.parentElement; emojiRe.lastIndex = 0;
+    if (!p || !emojiRe.test(t.data) || p.closest(EMOJI_SKIP)) continue;
+    emojiRe.lastIndex = 0;
+    const frag = document.createDocumentFragment(); let last = 0, hit = false;
+    for (const m of t.data.matchAll(emojiRe)) {
+      const i = emojiCell.get(m[1]); if (emojiMissing.has(i)) continue;
+      if (m.index > last) frag.appendChild(document.createTextNode(t.data.slice(last, m.index)));
+      frag.appendChild(emojiSpan(m[0], i)); last = m.index + m[0].length; hit = true;
+    }
+    if (!hit) continue;
+    if (last < t.data.length) frag.appendChild(document.createTextNode(t.data.slice(last)));
+    t.replaceWith(frag);
+  }
+}
+function applyEmojiSet() {
+  const id = emojiSetOffered(P.equip.emoji) ? P.equip.emoji : 'native', set = EMOJI_ART.sets[id], root = document.documentElement;
+  // back to plain text first, so a set change never leaves the last set's cells behind
+  document.querySelectorAll('.emo').forEach(s => { if (!s.style.backgroundImage) s.replaceWith(s.textContent); });
+  if (emojiObserver) { emojiObserver.disconnect(); emojiObserver = null; }
+  if (!set) { delete root.dataset.emoji; root.style.removeProperty('--emo-sheet'); return; }
+  root.dataset.emoji = id;
+  root.style.setProperty('--emo-sheet', `url(${set.file})`);
+  emojiMissing = new Set(set.missing);
+  paintEmoji(document.body);
+  emojiObserver = new MutationObserver(list => {
+    for (const m of list) {
+      if (m.type === 'characterData') paintEmoji(m.target);
+      else m.addedNodes.forEach(n => { if (n.nodeType === 3 || (n.nodeType === 1 && !n.classList.contains('emo'))) paintEmoji(n); });
+    }
+  });
+  emojiObserver.observe(document.body, { childList: true, subtree: true, characterData: true });
+}
+// four cells of a set for its shop card, drawn from that set's own sheet
+const emojiPreview = id => {
+  const set = EMOJI_ART.sets[id];
+  const picks = ['✈', '🌍', '🏆', '🔥'].filter(e => emojiCell.has(e));
+  if (!set) return picks.map(e => e).join(' ');
+  const box = document.createElement('span'); box.className = 'emoprev';
+  picks.forEach(e => box.appendChild(set.missing.includes(emojiCell.get(e)) ? document.createTextNode(e) : emojiSpan(e, emojiCell.get(e), set.file)));
+  return box.outerHTML;
+};

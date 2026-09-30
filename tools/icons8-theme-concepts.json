@@ -1,0 +1,594 @@
+{
+ "_note": "Every emoji the game shows as an icon, mapped to Icons8 search wordings (first that finds something in a pack wins). A shop theme is one Icons8 pack drawn across all of these. Arrows, ticks and coloured squares stay as text.",
+ "☀": [
+  "sun"
+ ],
+ "⭐": [
+  "star",
+  "filled star"
+ ],
+ "★": [
+  "filled star",
+  "star"
+ ],
+ "☘": [
+  "clover",
+  "shamrock"
+ ],
+ "☰": [
+  "menu"
+ ],
+ "⚑": [
+  "flag",
+  "filled flag"
+ ],
+ "⚓": [
+  "anchor"
+ ],
+ "⚖": [
+  "scales",
+  "balance"
+ ],
+ "⚙": [
+  "settings",
+  "gear"
+ ],
+ "⛰": [
+  "mountain"
+ ],
+ "⛴": [
+  "ferry",
+  "cruise ship"
+ ],
+ "⛵": [
+  "sailboat",
+  "sailing ship"
+ ],
+ "⛽": [
+  "gas station",
+  "fuel pump",
+  "petrol pump",
+  "fuel"
+ ],
+ "✈": [
+  "airplane",
+  "plane"
+ ],
+ "✦": [
+  "sparkle",
+  "sparkles",
+  "star"
+ ],
+ "✨": [
+  "sparkles",
+  "sparkle",
+  "magic"
+ ],
+ "❄": [
+  "snowflake",
+  "snow"
+ ],
+ "❌": [
+  "cancel",
+  "close",
+  "delete"
+ ],
+ "❓": [
+  "question mark",
+  "help",
+  "question"
+ ],
+ "🌆": [
+  "city",
+  "cityscape",
+  "skyline"
+ ],
+ "🌊": [
+  "waves",
+  "wave",
+  "sea"
+ ],
+ "🌋": [
+  "volcano"
+ ],
+ "🌍": [
+  "globe",
+  "earth",
+  "world"
+ ],
+ "🌐": [
+  "globe",
+  "world",
+  "internet"
+ ],
+ "🌗": [
+  "half moon",
+  "moon"
+ ],
+ "🌙": [
+  "crescent moon",
+  "moon",
+  "night"
+ ],
+ "🌲": [
+  "christmas tree",
+  "fir tree",
+  "pine",
+  "tree"
+ ],
+ "🌴": [
+  "palm tree",
+  "coconut tree",
+  "palm trees"
+ ],
+ "🎆": [
+  "fireworks",
+  "firework"
+ ],
+ "🎉": [
+  "party popper",
+  "confetti",
+  "party"
+ ],
+ "🎌": [
+  "flags",
+  "flag"
+ ],
+ "🎓": [
+  "graduation cap",
+  "graduation",
+  "mortarboard"
+ ],
+ "🎩": [
+  "top hat",
+  "magician hat",
+  "hat"
+ ],
+ "🎫": [
+  "ticket",
+  "tickets"
+ ],
+ "🎯": [
+  "target",
+  "bullseye",
+  "darts"
+ ],
+ "🎲": [
+  "dice",
+  "die"
+ ],
+ "🎼": [
+  "musical notes",
+  "music",
+  "harp"
+ ],
+ "🏁": [
+  "finish flag",
+  "checkered flag",
+  "racing flag"
+ ],
+ "🏆": [
+  "trophy",
+  "cup",
+  "prize"
+ ],
+ "🏍": [
+  "motorcycle",
+  "motorbike"
+ ],
+ "🏎": [
+  "racing car",
+  "formula 1",
+  "race car",
+  "sport car"
+ ],
+ "🏔": [
+  "snow mountain",
+  "mountain",
+  "alps"
+ ],
+ "🏛": [
+  "museum",
+  "parthenon",
+  "bank"
+ ],
+ "🏝": [
+  "island",
+  "tropical island",
+  "beach"
+ ],
+ "🏡": [
+  "cottage",
+  "home",
+  "house"
+ ],
+ "🏰": [
+  "castle",
+  "fortress"
+ ],
+ "🏳": [
+  "white flag",
+  "flag"
+ ],
+ "🐎": [
+  "horse",
+  "stallion"
+ ],
+ "🐚": [
+  "shell",
+  "seashell",
+  "clam"
+ ],
+ "🐧": [
+  "penguin"
+ ],
+ "🐪": [
+  "camel",
+  "dromedary"
+ ],
+ "🐫": [
+  "camel",
+  "dromedary"
+ ],
+ "👀": [
+  "eyes",
+  "visible",
+  "eye"
+ ],
+ "👋": [
+  "waving hand",
+  "wave hand",
+  "hand"
+ ],
+ "👑": [
+  "crown",
+  "king"
+ ],
+ "👤": [
+  "user",
+  "person",
+  "account",
+  "customer"
+ ],
+ "👾": [
+  "space invader",
+  "alien",
+  "ufo"
+ ],
+ "💪": [
+  "strength",
+  "bicep",
+  "muscle"
+ ],
+ "💬": [
+  "chat",
+  "speech bubble",
+  "comments"
+ ],
+ "💰": [
+  "money bag",
+  "coins",
+  "money"
+ ],
+ "💳": [
+  "credit card",
+  "bank card",
+  "card payment"
+ ],
+ "💺": [
+  "seat",
+  "airplane seat",
+  "chair"
+ ],
+ "📅": [
+  "calendar",
+  "schedule"
+ ],
+ "📈": [
+  "line chart",
+  "growth",
+  "increase"
+ ],
+ "📊": [
+  "bar chart",
+  "chart",
+  "statistics"
+ ],
+ "📍": [
+  "location",
+  "place marker",
+  "map pin",
+  "marker"
+ ],
+ "📖": [
+  "open book",
+  "book",
+  "reading"
+ ],
+ "📘": [
+  "book",
+  "blue book",
+  "notebook"
+ ],
+ "📚": [
+  "books",
+  "library",
+  "book stack"
+ ],
+ "📣": [
+  "megaphone",
+  "loudspeaker",
+  "announcement"
+ ],
+ "🔒": [
+  "lock",
+  "padlock"
+ ],
+ "🔔": [
+  "bell",
+  "notification"
+ ],
+ "🔥": [
+  "fire",
+  "flame"
+ ],
+ "🔧": [
+  "wrench",
+  "spanner"
+ ],
+ "🔭": [
+  "telescope",
+  "binoculars"
+ ],
+ "🕌": [
+  "mosque"
+ ],
+ "🕛": [
+  "clock",
+  "time"
+ ],
+ "🗺": [
+  "world map",
+  "folded map",
+  "map"
+ ],
+ "🙂": [
+  "smiling face",
+  "smiling",
+  "smile"
+ ],
+ "🚀": [
+  "rocket",
+  "launch"
+ ],
+ "🚂": [
+  "steam engine",
+  "locomotive",
+  "train"
+ ],
+ "🚅": [
+  "high speed train",
+  "bullet train",
+  "train"
+ ],
+ "🚆": [
+  "train",
+  "railway"
+ ],
+ "🚋": [
+  "tram",
+  "streetcar"
+ ],
+ "🚌": [
+  "bus"
+ ],
+ "🚐": [
+  "camper van",
+  "minibus",
+  "van"
+ ],
+ "🚗": [
+  "car",
+  "sedan"
+ ],
+ "🚙": [
+  "suv",
+  "jeep",
+  "car"
+ ],
+ "🚢": [
+  "cruise ship",
+  "ship",
+  "boat"
+ ],
+ "🚤": [
+  "speedboat",
+  "motorboat",
+  "boat"
+ ],
+ "🚧": [
+  "under construction",
+  "road works",
+  "barrier"
+ ],
+ "🚩": [
+  "red flag",
+  "flag",
+  "filled flag"
+ ],
+ "🚲": [
+  "bicycle",
+  "bike"
+ ],
+ "🛂": [
+  "passport",
+  "passport control"
+ ],
+ "🛃": [
+  "customs",
+  "passport control",
+  "border control"
+ ],
+ "🛒": [
+  "shopping cart",
+  "cart",
+  "basket"
+ ],
+ "🛖": [
+  "hut",
+  "cabin",
+  "cottage"
+ ],
+ "🛟": [
+  "lifebuoy",
+  "life ring",
+  "lifebelt"
+ ],
+ "🛢": [
+  "oil barrel",
+  "oil drum",
+  "oil tank"
+ ],
+ "🛣": [
+  "highway",
+  "freeway",
+  "motorway",
+  "road"
+ ],
+ "🛵": [
+  "scooter",
+  "moped",
+  "vespa"
+ ],
+ "🛺": [
+  "auto rickshaw",
+  "rickshaw",
+  "tuk tuk"
+ ],
+ "🛻": [
+  "pickup truck",
+  "pickup",
+  "truck"
+ ],
+ "🥂": [
+  "champagne",
+  "clinking glasses",
+  "toast"
+ ],
+ "🥇": [
+  "gold medal",
+  "first place",
+  "medal"
+ ],
+ "🥈": [
+  "silver medal",
+  "second place",
+  "medal"
+ ],
+ "🥉": [
+  "bronze medal",
+  "third place",
+  "medal"
+ ],
+ "🥘": [
+  "paella",
+  "pan",
+  "cooking pot"
+ ],
+ "🦘": [
+  "kangaroo"
+ ],
+ "🦙": [
+  "llama",
+  "alpaca"
+ ],
+ "🧇": [
+  "waffle",
+  "belgian waffle"
+ ],
+ "🧊": [
+  "ice cube",
+  "iceberg",
+  "ice"
+ ],
+ "🧗": [
+  "climbing",
+  "rock climbing",
+  "climber"
+ ],
+ "🧠": [
+  "brain",
+  "idea"
+ ],
+ "🧩": [
+  "puzzle",
+  "jigsaw"
+ ],
+ "🧭": [
+  "compass",
+  "navigation"
+ ],
+ "🧳": [
+  "luggage",
+  "suitcase",
+  "baggage"
+ ],
+ "🧹": [
+  "broom",
+  "sweep",
+  "cleaning"
+ ],
+ "🪘": [
+  "drum",
+  "bongo",
+  "percussion"
+ ],
+ "🫎": [
+  "moose",
+  "elk",
+  "deer"
+ ],
+ "💎": [
+  "diamond",
+  "gem"
+ ],
+ "🎁": [
+  "gift",
+  "present"
+ ],
+ "❤": [
+  "heart",
+  "like"
+ ],
+ "⚡": [
+  "lightning",
+  "flash",
+  "energy"
+ ],
+ "🔊": [
+  "speaker",
+  "volume",
+  "sound"
+ ],
+ "🔇": [
+  "mute",
+  "no sound"
+ ],
+ "🏠": [
+  "home",
+  "house"
+ ],
+ "👥": [
+  "users",
+  "group",
+  "people"
+ ],
+ "🏅": [
+  "medal",
+  "sports medal"
+ ],
+ "⏱": [
+  "stopwatch",
+  "timer"
+ ]
+}

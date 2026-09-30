@@ -1,0 +1,66 @@
+{
+  "_note": "Per-theme fixes found by eye on the review sheets. {emoji: {id, name}} pins an Icons8 icon; [queries] searches differently; null leaves a gap.",
+  "color": {
+    "🎯": {"id": "63765", "name": "goal"}
+  },
+  "emoji": {
+    "🏝": {"id": "E4pTVVhzWVVh", "name": "desert-island"},
+    "👤": {"id": "BD3laP7MFEAB", "name": "bust-in-silhouette"},
+    "🚗": {"id": "XBKHgE8-TQnc", "name": "automobile"},
+    "🚙": {"id": "rtsQcWLB311a", "name": "sport-utility-vehicle"},
+    "💎": {"id": "5vGNMY3d8lxd", "name": "gem-stone"},
+    "🔊": {"id": "z0WYVuoL1Byn", "name": "speaker-high-volume"},
+    "🏁": {"id": "0eL67ErVxWV1", "name": "chequered-flag"},
+    "🚧": {"id": "XNJzvoMWObVH", "name": "construction-emoji"}
+  },
+  "fluent": {
+    "👀": {"id": "CWkCzh9aKpqb", "name": "visible"}
+  },
+  "clr-gls": {
+    "💳": {"id": "ZwAEsFdxHkbZ", "name": "bank-card-front-side"},
+    "🛻": null
+  },
+  "doodle": {
+    "🌍": {"id": "80349", "name": "globe"}, "🌐": {"id": "80349", "name": "globe"},
+    "🌊": {"id": "81684", "name": "water-element"}, "🐎": null, "👋": null,
+    "🛣": {"id": "81721", "name": "wavy-road"}, "🧭": {"id": "80406", "name": "compass"}
+  },
+  "arcade": {
+    "🌍": {"id": "ioHlD3IGoAgv", "name": "earth-planet"}, "🌐": {"id": "Wofzjtaxo7MJ", "name": "rotating-globe"},
+    "📍": {"id": "h1ACssMxjHCf", "name": "marker"}, "💳": {"id": "dJ4GpuTCTwk9", "name": "bank-card-front-side"}
+  },
+  "stickers": {
+    "🌐": {"id": "gShLyPQH6Q4z", "name": "globe"}, "💳": {"id": "8PXlJQWs3XY9", "name": "bank-card-front-side"}
+  },
+  "plasticine": {
+    "✨": null, "✦": null, "📣": null
+  },
+  "color-pixels": {
+    "✈": {"id": "RxM1RscUFC0i", "name": "airport"}, "🌆": {"id": "GxlafSkfut8Z", "name": "building"}, "🏛": null,
+    "🐎": {"id": "hbffEJmo2TmM", "name": "rocking-horse"}, "🗺": null, "🎩": null,
+    "🌊": {"id": "8jwofm653lR0", "name": "water-element"}, "🥂": null
+  },
+  "keek": {
+    "👥": null
+  },
+  "papercut": {
+    "🌊": null
+  },
+  "ink": {
+    "☀": null, "⭐": null, "★": null, "✦": null, "☰": null, "❄": null, "🌊": null, "🛒": null,
+    "👤": {"id": "yV78UciKeGfe", "name": "user-male-circle"}, "❌": {"id": "KITh9jlOlOeQ", "name": "multiply"},
+    "🌐": {"id": "itWMCH89DqaC", "name": "earth-planet"}, "🔥": {"id": "ayN4GRx4Xxxy", "name": "campfire"},
+    "💬": {"id": "96nJTFCKq2oY", "name": "speech-bubble-with-dots"}, "🔊": {"id": "ADzNtYgr9buZ", "name": "loudspeaker"},
+    "👀": {"id": "v9o9KcAYkvp5", "name": "look"}
+  },
+  "scribby": {
+    "🌍": {"id": "JtcgrhIZyxDc", "name": "globe-earth"}
+  },
+  "glyph-neue": {
+    "🐧": ["emperor penguin", "penguin bird"]
+  },
+  "comic": {
+    "❌": {"id": "FTQy2XMp4PmL", "name": "multiply"}, "🌍": {"id": "T9296TLPEbJH", "name": "geography"},
+    "🌐": {"id": "T9296TLPEbJH", "name": "geography"}, "🔥": {"id": "jG7RrUsCqxVJ", "name": "campfire"}, "🗺": null
+  }
+}

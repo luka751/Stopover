@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "icons": {
+    "pack": "fluent",
+    "sizes": [256, 512],
+    "color": "native",
+    "companions": { "outline": "fluent-systems-regular", "filled": "fluent-systems-filled", "fallback": "color" },
+    "library": "assets/icons8/manifest.json"
+  },
+  "illustrations": {
+    "style": "3d-fluency",
+    "library": "assets/icons8/illustrations/3d-fluency",
+    "queue": "assets/icons8/illustrations/queue.tsv"
+  }
+}

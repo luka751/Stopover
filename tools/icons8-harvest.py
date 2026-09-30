@@ -5,8 +5,9 @@ three candidates (the pick plus two alternates) and download them as PNG. SVGs f
 through the Icons8 MCP separately (the public CDN refuses SVG); they land in assets/icons8/<pack>/svg.
 Safe to re-run: files already on disk are skipped. python3 tools/icons8-harvest.py
 """
-import json, os, re, sys, time, urllib.parse, urllib.request
+import json, os, sys, time
 from concurrent.futures import ThreadPoolExecutor
+from icons8_lib import best, get
 
 ROOT = os.path.join(os.path.dirname(__file__), '..', 'assets', 'icons8')
 CONCEPTS = json.load(open(os.path.join(os.path.dirname(__file__), 'icons8-concepts.json')))
@@ -20,41 +21,9 @@ PACKS = {
 KEEP = 3
 
 
-def get(url, tries=4):
-    for i in range(tries):
-        try:
-            with urllib.request.urlopen(urllib.request.Request(url, headers={'User-Agent': 'stopover-icons'}), timeout=30) as r:
-                return r.read()
-        except Exception as e:
-            if i == tries - 1: raise
-            time.sleep(1.5 * (i + 1))
-
-
-def score(icon, query, rank, group):
-    cn, cats = icon['commonName'].lower(), set(icon.get('category', '').split(','))
-    slug = re.sub(r'[^a-z0-9]+', '-', query.lower()).strip('-')
-    words = slug.split('-')
-    if icon.get('isExplicit') or icon.get('isAnimated'): return None
-    if cats == {'Logos'} or 'logo' in cn: return None
-    base = re.sub(r'--v\d+$', '', cn)
-    if not any(w[:4] in base for w in words): return None  # search matched a tag, not the idea
-    s = 50 - rank * 2
-    if base == slug: s += 100
-    elif base.endswith('-' + slug) or base.startswith(slug + '-'): s += 40
-    elif all(w in base for w in words): s += 25
-    if re.search(r'--v\d+$', cn): s -= 15
-    if cats & {'Popular', 'User Interface'}: s += 10
-    if group == 'ui' and cats & {'Industry', 'Household'} and not cats & {'User Interface'}: s -= 20
-    s -= len(base) * 0.3
-    return s
-
-
 def harvest(job):
-    group, key, query, pack = job
-    q = urllib.parse.urlencode({'term': query, 'amount': 20, 'platform': pack})
-    icons = json.loads(get('https://search.icons8.com/api/iconsets/v5/search?' + q)).get('icons', [])
-    scored = [(score(ic, query, i, group), ic) for i, ic in enumerate(icons) if ic['platform'] == pack]
-    scored = sorted([x for x in scored if x[0] is not None], key=lambda x: -x[0])[:KEEP]
+    group, key, queries, pack = job
+    query, scored = best(pack, queries, group, KEEP)
     out = []
     for n, (s, ic) in enumerate(scored):
         role = 'pick' if n == 0 else f'alt{n}'

@@ -5,3 +5,6 @@ dist/
 data.b64
 .wrangler/
 .dev.vars
+# Icons8 library (licensed to the owner, not for redistribution; copy what the game uses into web/static)
+assets/icons8/
+__pycache__/

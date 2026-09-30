@@ -3,11 +3,14 @@
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import { execSync } from 'node:child_process';
-import { tunePrelude } from './tools/tune-file.mjs';
+import { tunePrelude, readTune } from './tools/tune-file.mjs';
+import { buildEmojiArt } from './tools/emoji-art.mjs';
 const part = f => fs.readFileSync('src2/' + f, 'utf8');
 const out = 'web/public';
 fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(out, { recursive: true });
+// emoji themes: one sprite sheet per set the shop sells (Icons8 art that lives only on the owner's Mac, see tools/emoji-art.mjs)
+const emojiArt = await buildEmojiArt(out, readTune().shop.emojiSets || {});
 
 // Two games on one engine: the daily game at / (index.html: today's trip, the weekly trip and free play, no account)
 // and the full game at /world (world.html: accounts, passport, shop, races). They share every game script; the full
@@ -86,6 +89,7 @@ ${part('head.html').replace('<title>Stopover</title>', mini ? '<title>Stopover Â
 ${mini ? part('body.html') + part('mini.html') : part('body.html').replace('<button class="btn cta" id="btn-new"', '<a class="btn dailylink" href="/" title="Today\'s trip in the daily game: no account, one trip a day">ðŸ“… Daily</a>\n      <button class="btn cta" id="btn-new"')}
 <script>
 window.__STOPOVER_MODE = '${mini ? 'mini' : 'world'}';
+window.EMOJI_ART = ${JSON.stringify(emojiArt)};
 window.__stopoverStart = () => {
 'use strict';
 ${mini ? miniGame : game}
@@ -138,6 +142,9 @@ fs.writeFileSync(out + '/_headers', `/*
   Cache-Control: public, max-age=86400, stale-while-revalidate=604800
 /maps/*
   Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+# emoji theme sheets are named after their contents
+/emoji/*
+  Cache-Control: public, max-age=31536000, immutable
 /covers.json
   Cache-Control: public, max-age=86400, stale-while-revalidate=604800
 /rail.json
@@ -147,4 +154,4 @@ fs.writeFileSync(`${out}/${geoFile}`, geoBytes);
 for (const f of ['rail.json', 'covers.json']) fs.copyFileSync('dist/' + f, `${out}/${f}`);
 for (const dir of ['flags', 'maps']) fs.cpSync('dist/' + dir, `${out}/${dir}`, { recursive: true });
 fs.cpSync('web/static', out, { recursive: true });
-console.log(`${out}/index.html ${(miniHtml.length / 1e3).toFixed(0)} kB (daily game) and world.html ${(html.length / 1e3).toFixed(0)} kB, plus ${geoFile} (${(geoBytes.length / 1e6).toFixed(1)} MB), rail.json, covers.json, flags/, maps/`);
+console.log(`${out}/index.html ${(miniHtml.length / 1e3).toFixed(0)} kB (daily game) and world.html ${(html.length / 1e3).toFixed(0)} kB, plus ${geoFile} (${(geoBytes.length / 1e6).toFixed(1)} MB), rail.json, covers.json, flags/, maps/, ${Object.keys(emojiArt.sets).length} emoji themes`);

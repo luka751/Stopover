@@ -42,6 +42,7 @@
     { "path": "shop.holo", "group": "Shop", "title": "Holo shine", "help": "The shimmer upgrade for legendary flags." },
     { "path": "shop.themes", "group": "Shop", "title": "Interface themes", "help": "Colour themes for the whole interface, each with a day and a night palette. Open a theme's day or night to change its colours.", "add": true,
       "fields": { "page": "Page background", "panel": "Panels", "panel2": "Inner panels", "ink": "Text", "muted": "Quiet text", "line": "Lines and borders", "accent": "Buttons and highlights", "fuel": "Fuel gauge (optional)" } },
+    { "path": "shop.emojiSets", "group": "Shop", "title": "Emoji styles", "help": "Emoji themes: the game's emoji drawn in one Icons8 icon style. The key is the Icons8 style; its art comes from assets/icons8/themes on the owner's Mac (tools/icons8-themes.py), so a new style needs art there first. Standard is the device's own emoji and stays free." },
     { "path": "shop.decks", "group": "Shop", "title": "Study decks", "help": "Flashcard decks in the Study tab. Which places are in each deck is set in code." },
     { "path": "shop.models", "group": "Shop", "title": "Garage models", "help": "Drawn vehicle models in the garage. The drawings are in code." },
     { "path": "shop.exhausts", "group": "Shop", "title": "Exhaust trails", "help": "Particles left behind a moving vehicle. The effects are in code." },
