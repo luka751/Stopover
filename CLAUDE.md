@@ -36,6 +36,13 @@ that allow it, undo, a change list against the last commit, the offline game run
 with test-save buttons for coins and a fresh player), and Publish (check → commit tune.json → build-web → deploy →
 optional push). Its help text lives in `studio/guide.json`.
 
+**Layout tweaks** (Studio → Move & resize, `studio/layout.js`): the owner clicks an element in the preview, drags it
+(→ `translate`), pulls its corner (→ `width`/`height`) or sets scale, order, text size and weight, colours, rounding,
+spacing, opacity or hides it, for one element or all like it, on every screen / phones (≤760 px) / wider screens.
+Saved as CSS rules in `tune.json → layout.{all,phone,desktop}` (`{ selector: { property: value } }`); `core.js`
+(`layoutCss`) injects them as `<style id="tune-layout">` with `!important`, so they win over the game's CSS and inline
+styles. When renaming an id or class in body.html or the game's HTML, check `layout` for selectors that use it.
+
 ## Where things are in src2/
 
 - `core.js`: utilities, rules (vehicles, stop tiers, familiarity), difficulty options, geometry, gazetteer loading,

@@ -39,6 +39,7 @@ header { display: flex; align-items: center; gap: 10px; padding: 8px 14px; backg
 
 main { display: grid; grid-template-columns: 250px minmax(0, 1fr) var(--preview-w, 440px); min-height: 0; }
 main.nopreview { grid-template-columns: 250px minmax(0, 1fr) 0; }
+main.wide { grid-template-columns: 250px 440px minmax(0, 1fr); }
 main.nopreview #preview { display: none; }
 nav { border-right: 1px solid var(--line); overflow: auto; padding: 10px 8px 30px; background: var(--panel); }
 nav input[type=search] { width: 100%; margin-bottom: 10px; }
@@ -48,7 +49,8 @@ nav a:hover { background: var(--panel2); }
 nav a.on { background: var(--accent); color: var(--accent-ink); }
 nav a .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--changed); align-self: center; flex: none; }
 
-#editor { overflow: auto; padding: 18px 22px 80px; }
+#editor { overflow: auto; padding: 18px 22px 80px; container-type: inline-size; }
+@container (max-width: 560px) { #editor .fields { grid-template-columns: minmax(0, 1fr); gap: 4px; } #editor .fields > .lab { margin-top: 8px; } }
 #editor h1 { font-size: 20px; margin: 0 0 4px; }
 #editor .help { color: var(--muted); margin: 0 0 16px; max-width: 75ch; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 14px; overflow-x: auto; }
@@ -84,6 +86,10 @@ input.changed, textarea.changed, select.changed { border-color: var(--changed); 
 .chip .lbl { font-size: 11px; color: var(--muted); margin-right: 2px; }
 .swatches { display: inline-flex; gap: 2px; vertical-align: middle; margin-left: 6px; }
 .swatches i { width: 12px; height: 12px; border-radius: 3px; border: 1px solid rgba(0,0,0,.2); }
+.fields > .lab.changed { box-shadow: inset 3px 0 0 var(--changed); padding-left: 8px; }
+.ctl { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.tweak { display: flex; justify-content: space-between; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.tweak:last-child { border-bottom: 0; }
 .rowfilter { font-size: 12px; color: var(--muted); margin: -6px 0 8px; }
 
 #preview { border-left: 1px solid var(--line); display: grid; grid-template-rows: auto auto 1fr; min-height: 0; background: var(--panel); }
@@ -92,6 +98,8 @@ input.changed, textarea.changed, select.changed { border-color: var(--changed); 
 #gameerr { background: var(--bad); color: #fff; padding: 6px 10px; font-size: 12px; font-family: var(--mono); white-space: pre-wrap; }
 #frame-wrap { position: relative; min-height: 0; overflow: auto; background: var(--page); }
 #frame-wrap iframe { border: 0; width: 100%; height: 100%; display: block; background: #fff; }
+#frame-wrap.wide { overflow: hidden; }
+#frame-wrap.wide iframe { width: 1280px; height: calc(100% / var(--s, 1)); transform: scale(var(--s, 1)); transform-origin: 0 0; }
 #frame-wrap.phone { display: grid; place-items: start center; padding: 10px 0; }
 #frame-wrap.phone iframe { width: 390px; height: 780px; border-radius: 18px; box-shadow: 0 0 0 8px #222, 0 8px 30px rgba(0,0,0,.3); }
 
@@ -143,8 +151,10 @@ textarea.msg { width: 100%; min-height: 60px; }
   <aside id="preview">
     <div class="bar">
       <b>Game preview</b>
+      <button class="btn small" id="pick" title="Click things in the game to move, resize or restyle them">🎯 Select</button>
       <button class="btn small" id="reload" title="Reload the game">⟳ Reload</button>
       <button class="btn small" id="phone" title="Phone-sized preview">📱 Phone</button>
+      <button class="btn small" id="wide" title="The game as it looks on a 1280 px wide screen, shrunk to fit">🖥 Desktop</button>
       <button class="btn small" id="newtab" title="Open the game in its own tab">↗ Tab</button>
     </div>
     <div class="bar" style="padding-top:0; border-bottom:0">
@@ -257,7 +267,7 @@ function pushUndo(before) {
 }
 function undo() { const s = undoStack.pop(); if (!s) return toast('Nothing to undo'); redoStack.push(s); TUNE = JSON.parse(s.before); afterJump(); }
 function redo() { const s = redoStack.pop(); if (!s) return toast('Nothing to redo'); undoStack.push({ ...s, at: 0 }); TUNE = JSON.parse(s.after); afterJump(); }
-function afterJump() { SECTIONS = buildSections(); current = SECTIONS.find(s => s.path === current.path) || SECTIONS[0]; renderNav(); renderEditor(); refreshStatus(); }
+function afterJump() { SECTIONS = buildSections(); current = SECTIONS.find(s => s.path === current.path) || SECTIONS[0]; renderNav(); renderEditor(); refreshStatus(); applyLayout(); }
 
 function syncText(path, oldN, newN) {
   // the object holding the number (or holding the list the number is in)
@@ -431,6 +441,7 @@ function editor(path, sec = {}) {
 function renderEditor() {
   const ed = $('editor'), focused = document.activeElement && document.activeElement.dataset.path, scroll = ed.scrollTop; ed.innerHTML = '';
   if (!current) return;
+  if (current.custom === 'layout') { renderLayout(); ed.scrollTop = scroll; return; }
   const v = getAt(TUNE, current.key);
   ed.append(el('h1', {}, current.title), el('p', { class: 'help' }, current.help || ''));
   const body = isScalar(v) ? el('div', { class: 'fields' }, el('div', { class: 'lab' }, current.title), scalarInput(current.key)) : editor(current.key, current);
@@ -452,6 +463,7 @@ function diff(a, b, path = [], out = []) {
 const changes = () => diff(COMMITTED, TUNE);
 function where(path) {
   const s = sectionOf(path); if (!s) return path.join(' › ');
+  if (s.custom === 'layout') return ['Layout', { all: 'every screen', phone: 'phones', desktop: 'wider screens' }[path[1]], ...path.slice(2)].filter(Boolean).join(' › ');
   const rest = path.slice(s.key.length), base = getAt(TUNE, s.key) ?? getAt(COMMITTED, s.key);
   const parts = [s.title];
   // name rows by their name rather than their position
@@ -503,8 +515,14 @@ document.querySelectorAll('[data-coins]').forEach(b => b.onclick = () => reloadG
 $('reset-save').onclick = () => { if (!confirm('Start the preview as a brand-new player? This only clears the Studio\'s test player, not anyone\'s real save.')) return;
   reloadGame(() => { for (const k of Object.keys(localStorage)) if (k.startsWith('stopover')) localStorage.removeItem(k); toast('Fresh player'); }); };
 $('reload').onclick = () => reloadGame();
-$('phone').onclick = () => { const w = $('frame-wrap'); w.classList.toggle('phone'); $('phone').classList.toggle('primary', w.classList.contains('phone')); };
+$('phone').onclick = () => { const w = $('frame-wrap'); w.classList.remove('wide'); $('wide').classList.remove('primary'); $('main').classList.remove('wide'); fitWide(); w.classList.toggle('phone'); $('phone').classList.toggle('primary', w.classList.contains('phone')); setTimeout(renderEditor, 50); };
 $('newtab').onclick = () => open('/play', '_blank');
+// desktop view: the game laid out at a real 1280 px and shrunk to fit the panel
+$('wide').onclick = () => { const m = $('main'), w = $('frame-wrap'), on = !w.classList.contains('wide');
+  m.classList.toggle('wide', on); m.classList.remove('nopreview'); w.classList.toggle('wide', on); $('wide').classList.toggle('primary', on);
+  w.classList.remove('phone'); $('phone').classList.remove('primary'); fitWide(); setTimeout(renderEditor, 50); };
+const fitWide = () => { const w = $('frame-wrap'); w.style.setProperty('--s', w.classList.contains('wide') ? w.clientWidth / 1280 : 1); };
+new ResizeObserver(fitWide).observe($('frame-wrap'));
 $('toggle-preview').onclick = () => { const m = $('main'); m.classList.toggle('nopreview'); $('toggle-preview').textContent = m.classList.contains('nopreview') ? 'Show game' : 'Hide game'; };
 
 // ================= publishing =================
@@ -549,5 +567,6 @@ addEventListener('keydown', e => {
 addEventListener('beforeunload', e => { if (TUNE && JSON.stringify(TUNE) !== SAVED) { e.preventDefault(); e.returnValue = ''; } });
 load().catch(e => { $('editor').innerHTML = `<div class="empty">Couldn't load: ${esc(e.message)}. Is the Studio server running?</div>`; });
 </script>
+<script src="/layout.js"></script>
 </body>
 </html>

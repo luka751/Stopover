@@ -452,5 +452,6 @@
     "seconds": 10,
     "rules": { "planes": "capitals", "planeKm": 0, "trains": "capitals", "trainKm": 0, "ferryKm": 800, "tank": "standard", "hints": "off" }
   },
-  "online": { "raceLimits": [0, 5, 10, 15, 20, 30], "raceStakes": [0, 50, 100, 250, 500], "bountyRewards": [100, 250, 500, 1000, 2000] }
+  "online": { "raceLimits": [0, 5, 10, 15, 20, 30], "raceStakes": [0, 50, 100, 250, 500], "bountyRewards": [100, 250, 500, 1000, 2000] },
+  "layout": { "all": {}, "phone": {}, "desktop": {} }
 }

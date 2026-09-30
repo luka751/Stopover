@@ -18,6 +18,13 @@ function showToast() {
   const t = $('toast'); t.textContent = toastQueue[0]; t.hidden = false; clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { toastQueue.shift(); if (toastQueue.length) showToast(); else t.hidden = true; }, toastQueue.length > 1 ? 2400 : 3400);
 }
+// Layout tweaks from Stopover Studio (tune.json → layout): CSS laid over the game's own styles, for every screen, for
+// phones, or for wider screens. Each is { selector: { property: value } }.
+const layoutCss = L => {
+  const rules = o => Object.entries(o || {}).map(([sel, props]) => `${sel} { ${Object.entries(props).map(([k, v]) => `${k}: ${v} !important`).join('; ')} }`).join('\n');
+  return `${rules(L.all)}\n@media (max-width: 760px) {\n${rules(L.phone)}\n}\n@media (min-width: 761px) {\n${rules(L.desktop)}\n}`;
+};
+document.head.appendChild(Object.assign(document.createElement('style'), { id: 'tune-layout', textContent: layoutCss(TUNE.layout || {}) }));
 
 // ================= rules =================
 const VEHICLES = TUNE.vehicles;

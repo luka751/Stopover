@@ -43,6 +43,7 @@ http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x'), p = url.pathname;
     if (p === '/' || p === '/index.html') return send(res, 200, fs.readFileSync(here('index.html')), TYPES['.html']);
     if (p === '/guide.json') return send(res, 200, fs.readFileSync(here('guide.json')));
+    if (p === '/layout.js') return send(res, 200, fs.readFileSync(here('layout.js')), TYPES['.js']);
 
     // ---- the game preview: built from the current files on every load
     if (p === '/play') {

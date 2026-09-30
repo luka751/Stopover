@@ -1,6 +1,8 @@
 {
-  "groups": ["Gameplay", "Shop", "Progress", "Online"],
+  "groups": ["Layout", "Gameplay", "Shop", "Progress", "Online"],
   "sections": [
+    { "path": "layout", "group": "Layout", "title": "Move & resize", "custom": "layout", "help": "Positions, sizes and looks of anything in the game." },
+
     { "path": "scoring.tiers", "group": "Gameplay", "title": "Stop sizes", "help": "What a stop pays and how much it refills your tank, by the size of the place. Smaller places pay more because they're harder to name.",
       "fields": { "label": "Name shown in the game", "pts": "Points for a stop (before bonuses)", "refill": "Share of the tank refilled: 1 = full, 0.5 = half", "minPop": "Population needed to count as this size (capitals are picked by status, not size)", "note": "Size shown in the rules table", "rank": "Order from biggest (0) to smallest; also sets the pitch of the stop chime" } },
     { "path": "scoring.visitMult", "group": "Gameplay", "title": "Repeat visits", "help": "Points multiplier for going back to a place you've stopped at before. The first number is a first visit, the second is a 2nd visit, and so on. The last number applies to every visit after that.",
