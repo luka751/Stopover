@@ -404,6 +404,16 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   .deck { flex: none; }
   .deckbody { overflow-y: visible; }
 }
+/* phones: the place box comes straight after the road sign, so the game can be played without scrolling past the
+   gauges; the map gives up a little height; keyboard hints mean nothing on a touch screen */
+@media (max-width: 760px) {
+  .mapwrap { height: 38svh; }
+  .console > #sign { order: 0; }
+  .console > #play { order: 1; }
+  .console > #dash { order: 2; }
+  .console > #deck { order: 3; }
+}
+@media (pointer: coarse) { kbd { display: none; } }
 @media (max-width: 480px) {
   .wordmark { font-size: 24px; }
   .sign .dest { font-size: 28px; }

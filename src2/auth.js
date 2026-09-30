@@ -272,7 +272,7 @@ function flashNote(text, good) {
 function guestBanner() {
   const bar = document.querySelector('header.bar'); if (!bar || $a('guestbar')) return;
   bar.insertAdjacentHTML('afterbegin', `<div class="guestbar" id="guestbar" role="status">
-    <span class="guesttext">Playing as guest ${nameHtml(cloud.user.name)}. Your progress is deleted when you close this tab. <b>Want to save your data? Create an account or log in today.</b></span>
+    <span class="guesttext">Playing as guest ${nameHtml(cloud.user.name)}. <span class="guestlong">Your progress is deleted when you close this tab. <b>Want to save your data? Create an account or log in today.</b></span><span class="guestshort">Progress ends when this tab closes.</span></span>
     <span class="guestbtns"><button class="btn small go" type="button" data-signup="new">Create account</button><button class="btn small" type="button" data-signup="login">Log in</button></span></div>`);
   $a('guestbar').querySelectorAll('[data-signup]').forEach(b => b.onclick = () => openSignup(b.dataset.signup));
 }
