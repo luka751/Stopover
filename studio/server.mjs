@@ -94,5 +94,9 @@ http.createServer(async (req, res) => {
     }
     send(res, 404, 'not found', 'text/plain');
   } catch (e) { send(res, 500, { error: String(e && e.stack || e) }); }
+}).on('error', e => {
+  if (e.code !== 'EADDRINUSE') throw e;
+  console.log(`Stopover Studio is already running → http://localhost:${PORT}\n(or start another copy with PORT=4181 node studio/server.mjs)`);
+  process.exit(0);
 }).listen(PORT, '127.0.0.1', () => console.log(`Stopover Studio → http://localhost:${PORT}`));
 
