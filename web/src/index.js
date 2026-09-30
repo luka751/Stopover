@@ -276,7 +276,7 @@ async function api(req, env, url, ctx) {
     if (!validKey(body.key)) return fail(400, 'Type your password to change the email.');
     const res = await acct.startVerify(u.id, email, body.key, [['verify-user:' + u.id, 5, 1440], ['verify-to:' + inboxKey(email), 3, 60], ['verify-ip:' + ip, 20, 60], ...mailCap]);
     if (res.error) return fail(res.status || 400, res.error);
-    const link = `${site}/?verify=${res.token}`;
+    const link = `${site}/world?verify=${res.token}`;
     const ok = await sendMail(env, email, 'Confirm your email for Stopover', mailBody('Confirm your email',
       [`Someone (hopefully you) added this address to the Stopover account ${u.name}.`, 'Confirm it so you can reset your password if you ever forget it.'],
       'Confirm email', link, `The link works for ${VERIFY_HOURS} hours. If you didn't ask for this, ignore this email and nothing changes.`));
@@ -311,7 +311,7 @@ async function api(req, env, url, ctx) {
     const res = await acct.startReset(email ? { email } : { name: p.name }, [['forgot-ip:' + ip, 10, 60], ['forgot-who:' + (email ? inboxKey(email) : p.name.toLowerCase()), 5, 60]], mailCap);
     if (res.error) return fail(res.status || 400, res.error);
     if (res.send) {
-      const links = res.send.accounts.map(a => ({ ...a, link: `${site}/?reset=${a.token}` }));
+      const links = res.send.accounts.map(a => ({ ...a, link: `${site}/world?reset=${a.token}` }));
       const one = links.length === 1;
       ctx.waitUntil(sendMail(env, res.send.email, 'Reset your Stopover password', mailBody(one ? `Reset the password for ${links[0].name}` : 'Reset a Stopover password',
         one ? ['Someone (hopefully you) asked to reset the password for this Stopover account.', 'Pick a new one with the button below.']

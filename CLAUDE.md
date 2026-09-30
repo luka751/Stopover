@@ -5,9 +5,17 @@ Repo: https://github.com/luka751/Stopover (branch `main`; the local branch is `m
 
 ## How it's built
 
-- `src2/*.js`, `src2/head.html`, `src2/body.html`, `src2/online.css`: the game. `build-web.mjs` joins them into one
-  page, `web/public/index.html`. The game scripts share one closure; `src2/auth.js` (log-in, guests, cloud save,
-  ConfigCat switches) and `src2/i18n.js` (languages) run in their own.
+- Two games on one engine. `build-web.mjs` makes two pages from `src2/`:
+  - `web/public/index.html` at `/`: the **daily game**, the main product (a Wordle/GeoGuessr-style quick game).
+    Daily trip, weekly trip, free play (length + continents), hard mode, stats, streaks and a share line. No account,
+    server, coins, flags or boards; everything is saved in localStorage under `stopover-mini:`. Adds `src2/mini.js`,
+    `mini.html`, `mini.css`; no `auth.js` or `online.js`.
+  - `web/public/world.html` at `/world`: **Stopover World**, the full game (accounts, passport, shop, races, boards).
+    Adds `online.js`, `online.css` and `auth.js`.
+  - The game scripts share one closure. `MINI` (core.js) is true on the daily page; features the daily game lacks
+    return early on it, and daily-game trips carry `S.mini` ('daily' | 'weekly' | 'free') and score without
+    familiarity, perks or discovery, so everyone's daily is comparable. `src2/i18n.js` (languages) runs apart.
+  - The daily game's daily trip is the same route as the full game's daily trip (same seed and route rules).
 - `web/src/index.js`: the Cloudflare Worker. Durable Objects `Accounts` (SQLite: users, sessions, saves, boards,
   bounties, email tokens, rate limits) and `Lobby` (race lobbies over WebSocket). Config in `web/wrangler.jsonc`.
 - `build-page.mjs` makes the older single-file build (`dist/stopover.html`); keep it working.
@@ -28,7 +36,8 @@ Secrets live in `web/.dev.vars` (gitignored) and as Worker secrets (`wrangler se
 ## Services (GitHub Student Pack)
 
 - Sentry: browser loader + `@sentry/cloudflare`; request bodies are never sent and tokens are scrubbed.
-- SimpleAnalytics events: `trip_finished_*`, `trip_gave_up_*`, `lobby_joined`, `shared_*`, `opened_shared_*`.
+- SimpleAnalytics events: `trip_finished_*`, `trip_gave_up_*` (daily game: `*_mini_daily|weekly|free`), `lobby_joined`,
+  `shared_*`, `opened_shared_*`.
 - ConfigCat switches (read from the CDN JSON, no SDK): `announcement` (text banner), `emailAccounts` (off switch).
 - Email through Resend (`RESEND_API_KEY` Worker secret) or Azure (`AZURE_EMAIL`). With neither set, email features
   are off in the server and hidden in the game.
@@ -45,3 +54,5 @@ untranslated lines. `src2/i18n/catalog.json` lists lines still to translate.
 - Scout ahead's Go button reaches a place without scoring: no points, flags, stamps, visits or crowns. Typing a
   scouted name still scores normally; don't mention that in the game.
 - Ask before changing DNS, billing or anything paid. Deploying after changes is fine.
+- The daily game is the main drive of Stopover and should stay simple: one screen, no account, no shop. The full game
+  lives at /world and should not be neglected. Email links (reset, verify) go to /world.

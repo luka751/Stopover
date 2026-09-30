@@ -58,6 +58,7 @@ function nextTick() {
 // ---- hello: once per visit, fading out of the bar. Three days away earns a boosted first trip back.
 const BOOST_DAYS = 3;
 function greetOnBoot() {
+  if (MINI) return;
   const now = Date.now(), last = P.lastPlayed || 0, days = last ? (now - last) / 864e5 : 0;
   P.lastPlayed = now;
   if (last && days >= BOOST_DAYS && !P.boost) P.boost = { at: now };
@@ -111,7 +112,7 @@ function stampSlam(cc) {
 
 // ---- almost there: the nearest goals, told when you can still act on them
 function nudges(focusCcs = [], limit = 3) {
-  if (S && S.classic) return [];
+  if ((S && S.classic) || MINI) return [];
   const k = countryKnowledge(), out = [], cat = flagCatalog();
   // country covers: a handful of places short of the 25 that earn one
   G.countries.forEach((c, i) => { const n = k[i], cc = c[0]; if (n >= COVER_UNLOCK - 6 && n < COVER_UNLOCK && COVERS_HAS(cc)) out.push({ icon: '🛂', text: `${COVER_UNLOCK - n} more ${COVER_UNLOCK - n === 1 ? 'place' : 'places'} in ${ccName(cc)} ${COVER_UNLOCK - n === 1 ? 'earns' : 'earn'} its passport cover`, near: (COVER_UNLOCK - n) / 6, cc }); });
@@ -147,7 +148,7 @@ const isHolo = (key, p = P) => !!(p.holo && p.holo[key]);
 const holoWrap = (imgHtml, on) => on ? `<span class="foilflag">${imgHtml}<span class="holotag">HOLO</span></span>` : imgHtml;
 const holoCount = (p = P) => Object.keys(p.holo || {}).filter(k => p.flagsSeen && p.flagsSeen[k]).length;
 function rollHolo(id, fresh) {
-  if (!S || S.classic || !FLAGS.ready) return [];
+  if (!S || S.classic || MINI || !FLAGS.ready) return [];
   P.holo = P.holo || {}; const got = [];
   for (const key of flagKeysFor(id)) {
     if (!P.flagsSeen[key] || P.holo[key]) continue;
@@ -179,8 +180,9 @@ function streakMilestone(n) {
 function shareText() {
   const sq = s => s.id === S.dest ? '🏁' : s.kind === 'ferry' ? '⛴️' : s.kind === 'flight' ? '✈️' : s.kind === 'train' ? '🚆' : s.fresh ? '🟩' : '🟨';
   const head = S.weekly ? `Stopover weekly challenge ${S.weekly}` : S.daily ? `Stopover daily ${S.daily}` : `Stopover · ${lengthOf(S.opts.length).name} ${VEHICLES[S.opts.vehicle].name.toLowerCase()} trip`;
-  // the link opens the same daily or weekly puzzle for whoever taps it
-  const url = /^https?:/.test(location.protocol) && !/localhost|127\.0\.0\.1/.test(location.host) ? '\n' + location.origin + (S.daily ? '/?play=daily' : S.weekly ? '/?play=weekly' : '') : '';
+  // the link opens the same puzzle for whoever taps it: the daily trip is the daily game's too, so a friend can play
+  // it there without an account; the weekly challenge lives in the full game
+  const url = /^https?:/.test(location.protocol) && !/localhost|127\.0\.0\.1/.test(location.host) ? '\n' + location.origin + (S.daily ? '/?play=daily' : S.weekly ? '/world?play=weekly' : '/world') : '';
   return `${head}\n${markerFor(S.opts.vehicle)} ${G.name[S.start]} → ${G.name[S.dest]}\n${S.stops.map(sq).join('')}\n${fmt(S.total)} pts · ${fmt(S.km)} km · ${S.stops.length} stops${url}`;
 }
 async function shareTrip() {

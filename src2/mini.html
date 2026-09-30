@@ -1,0 +1,54 @@
+
+<!-- the daily game (playstopover.me/): its tabs and buttons move into the bar at start (mini.js) -->
+<div class="minitabs" id="mini-tabs" role="tablist" aria-label="Which trip"></div>
+<div class="mininav" id="mini-nav">
+  <button class="btn icon" id="mini-help" type="button" title="How to play" aria-label="How to play">?</button>
+  <button class="btn icon" id="mini-stats" type="button" title="Statistics" aria-label="Statistics">📊</button>
+  <button class="btn icon" id="mini-settings" type="button" title="Settings" aria-label="Settings">⚙</button>
+  <a class="btn worldlink" id="mini-world" href="/world" title="The full game: accounts, a passport of flags, the shop, races and leaderboards"><span aria-hidden="true">🌍</span><span class="wl-text">Stopover World</span></a>
+</div>
+
+<dialog id="dlg-mini-help">
+  <div class="dlg howto minihowto">
+    <header><div><h2>How to play</h2><p>Drive from the start to the destination by naming real places on the way.</p></div><button class="x" type="button" data-close aria-label="Close">×</button></header>
+    <section>
+      <ol class="ministeps">
+        <li><span aria-hidden="true">🧭</span><div><b>Name a city, town or village within range.</b> The dashed circle on the map is how far your tank reaches. For a place that shares its name, add the country: <b>Tripoli, Libya</b>.</div></li>
+        <li><span aria-hidden="true">⛽</span><div><b>Every stop refuels you.</b> Big cities fill the tank. Villages only top it up, but they score the most. Hops shorter than a fifth of your tank score less.<div class="minilegend" id="mini-legend"></div></div></li>
+        <li><span aria-hidden="true">⛴️</span><div><b>Roads go round the water.</b> Straits up to 50 km are bridged. Wider seas need a ferry ticket and a port at both ends.</div></li>
+        <li><span aria-hidden="true">🏁</span><div><b>Arrive for a bonus.</b> Stuck? Scout ahead (−20) or call roadside help (−75) from Tools, or give up to see a route that works.</div></li>
+        <li><span aria-hidden="true">📅</span><div><b>A new daily trip every day</b>, the same for everyone. A longer weekly trip every Monday, and free play whenever you like.</div></li>
+      </ol>
+    </section>
+    <section class="miniworld"><div><b>Want the long game?</b><span>Stopover World has accounts, a passport of flags, planes and trains, a shop, races against friends and leaderboards.</span></div><a class="btn" href="/world">Open Stopover World</a></section>
+    <footer><button class="btn go" type="button" id="mh-play">Play</button></footer>
+  </div>
+</dialog>
+
+<dialog id="dlg-mini-stats">
+  <div class="dlg ministats">
+    <header><div><h2>Statistics</h2><p>Kept in this browser. No account needed.</p></div><button class="x" type="button" data-close aria-label="Close">×</button></header>
+    <div id="ms-body"></div>
+  </div>
+</dialog>
+
+<dialog id="dlg-mini-new">
+  <div class="dlg">
+    <header><div><h2>Free play</h2><p>As many trips as you like. Pick how far and where.</p></div><button class="x" type="button" data-close aria-label="Close">×</button></header>
+    <section><div class="label">Trip length</div><div class="choices" id="mn-length"></div></section>
+    <section><div class="label">Continents <span class="hint" style="text-transform:none;letter-spacing:0;font-family:var(--body);font-weight:400">· pick one or more</span></div><div class="choices minireg" id="mn-regions"></div></section>
+    <footer><button class="btn go" type="button" id="mn-go">Start trip</button></footer>
+  </div>
+</dialog>
+
+<dialog id="dlg-mini-settings">
+  <div class="dlg">
+    <header><div><h2>Settings</h2></div><button class="x" type="button" data-close aria-label="Close">×</button></header>
+    <section>
+      <div class="switchrow"><div><b>Hard mode</b><small>No suggestions as you type and no hints. Your shared result shows 🔥. Switch it before your first stop, or it starts with your next trip.</small></div><label class="toggle"><input type="checkbox" id="mset-hard" aria-label="Hard mode"><span></span></label></div>
+      <div class="switchrow"><div><b>Dark theme</b></div><label class="toggle"><input type="checkbox" id="mset-dark" aria-label="Dark theme"><span></span></label></div>
+      <div class="switchrow"><div><b>Sound effects</b></div><label class="toggle"><input type="checkbox" id="mset-sound" aria-label="Sound effects"><span></span></label></div>
+      <div class="switchrow"><div><b>Celebrations</b><small>Points rising from each stop and confetti on arrival.</small></div><label class="toggle"><input type="checkbox" id="mset-fx" aria-label="Celebrations"><span></span></label></div>
+    </section>
+  </div>
+</dialog>

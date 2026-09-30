@@ -70,9 +70,9 @@
     const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
     for (let n = w.nextNode(); n; n = w.nextNode()) { if (n.nodeType === 3) textNode(n); else if (!SKIP.has(n.nodeName)) attrs(n); }
   }
-  // the language picker goes into the log-in card and the Settings dialog, wherever they appear
+  // the language picker goes into the log-in card and the Settings dialogs (both games), wherever they appear
   function picker(root) {
-    const spots = [...(root.matches && root.matches('.authcard, #dlg-settings header') ? [root] : []), ...root.querySelectorAll('.authcard, #dlg-settings header')];
+    const spots = [...(root.matches && root.matches('.authcard, #dlg-settings header, #dlg-mini-settings header') ? [root] : []), ...root.querySelectorAll('.authcard, #dlg-settings header, #dlg-mini-settings header')];
     for (const spot of spots) {
       if (spot.querySelector('.langpick')) continue;
       const s = document.createElement('select'); s.className = 'field langpick'; s.setAttribute('aria-label', 'Language'); s.dataset.noI18n = '';

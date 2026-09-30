@@ -120,7 +120,7 @@ const untilMidnight = () => { const t = new Date(), m = new Date(t.getFullYear()
 
 // ---- collecting
 function collectFlags(id, when = Date.now()) {
-  const fresh = [];
+  const fresh = []; if (MINI) return fresh; // the daily game has no flag collection
   for (const key of flagKeysFor(id)) if (!P.flagsSeen[key]) { P.flagsSeen[key] = when; fresh.push(key); }
   return fresh;
 }
@@ -264,7 +264,7 @@ function wantedHtml(compact) {
 }
 function renderWanted() {
   const el = $('wanted'); if (!el) return;
-  if (!S || S.classic || !flagCatalog()) { el.innerHTML = ''; el.hidden = true; return; }
+  if (!S || S.classic || MINI || !flagCatalog()) { el.innerHTML = ''; el.hidden = true; return; }
   const w = wantedToday(); el.hidden = !w || !w.list.length || w.swept; el.innerHTML = el.hidden ? '' : wantedHtml(true);
 }
 const FL = { kind: 'country', cc: '', seenBefore: 0 };
@@ -317,7 +317,7 @@ let flagRedraw = 0;
 function flagsArrived() { clearTimeout(flagRedraw); flagRedraw = setTimeout(() => { if ($('dlg-passport').open && (ppTab === 'flags' || ppTab === 'stats')) renderPassport(); if (S && !S.classic) { renderWanted(); renderDeck(); } }, 250); }
 // wanted flags on the trip map: a pennant on each place still to find
 function drawWantedPins(m, ctx, pal) {
-  if (!S || S.classic || !flagCat || !P.wanted || P.wanted.day !== localDay()) return;
+  if (!S || S.classic || MINI || !flagCat || !P.wanted || P.wanted.day !== localDay()) return;
   for (const b of P.wanted.list) {
     if (b.done) continue; const f = flagCat.byKey.get(b.key); if (!f || f.at == null) continue;
     const [x, y] = m.px(G.lon[f.at], G.lat[f.at]); if (x < -20 || y < -30 || x > m.W + 20 || y > m.H + 20) continue;

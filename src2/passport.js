@@ -29,6 +29,7 @@ const leagueOf = rating => { let l = LEAGUES[0]; for (const x of LEAGUES) if (ra
 const VISA_AREAS = { 'MD.51': 'Gagauzia' };
 const visaArea = id => areaName(id) || VISA_AREAS[admOf(id)[2]];
 function recordStamp(id, via) {
+  if (MINI) return;
   P.stamps = P.stamps || {};
   const cc = ccOf(id), area = visaArea(id), now = Date.now();
   const add = (key, kind) => { if (!P.stamps[key]) { P.stamps[key] = { g: G.gid[id], t: now, via, kind }; if (kind === 'entry') feedAdd({ k: 'stamp', cc: key }); } };
@@ -166,7 +167,7 @@ function renderLeaderboard() {
 }
 
 function renderLeagueChip() {
-  if (!G) return; const l = leagueOf(explorerRating().total), chip = $('league-chip');
+  if (!G || MINI) return; const l = leagueOf(explorerRating().total), chip = $('league-chip');
   chip.querySelector('i').style.background = l.color; chip.querySelector('span').textContent = l.name; chip.title = `Your league · rating ${explorerRating().total} · opens your passport`;
 }
 $('league-chip').onclick = () => { if (!P.flagsNew) ppTab = 'book'; $('btn-passport').click(); };

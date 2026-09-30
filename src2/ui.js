@@ -6,7 +6,7 @@ function renderSign(v) {
   const goal = S.done ? S.dest : nextTarget(), toVia = goal !== S.dest, arrived = S.done && !S.gaveUp;
   const dLeft = dist(G.lat[S.cur], G.lon[S.cur], G.lat[goal], G.lon[goal]), brg = bearing(G.lat[S.cur], G.lon[S.cur], G.lat[goal], G.lon[goal]);
   $('sign').innerHTML = `
-    <div class="from"><span>From ${flagHtml(ccOf(S.start))}${esc(G.name[S.start])}</span><span>${S.weekly ? '🏔️ Weekly challenge · ' + S.weekly : S.daily ? 'Daily · ' + S.daily : esc(markerFor(S.opts.vehicle) + ' ' + v.name + ' · ' + (S.voyage ? 'Far-Flung Isles' : LENGTHS.find(l => l.id === S.opts.length).name))}${S.classic ? ' · Classic' : ''}</span></div>
+    <div class="from"><span>From ${flagHtml(ccOf(S.start))}${esc(G.name[S.start])}</span><span>${S.mini ? miniTripHtml() : S.weekly ? '🏔️ Weekly challenge · ' + S.weekly : S.daily ? 'Daily · ' + S.daily : esc(markerFor(S.opts.vehicle) + ' ' + v.name + ' · ' + (S.voyage ? 'Far-Flung Isles' : LENGTHS.find(l => l.id === S.opts.length).name))}${S.classic ? ' · Classic' : ''}</span></div>
     <div class="to">
       <div class="arrow" style="transform: rotate(${Math.round(brg)}deg)" aria-hidden="true"><svg width="30" height="30" viewBox="0 0 30 30"><path d="M15 2 L25 16 H18 V28 H12 V16 H5 Z" fill="currentColor"/></svg></div>
       <div class="dest">${toVia ? '<span class="via-tag">Via</span>' : ''}${flagHtml(ccOf(goal))}${esc(G.name[goal])}<small>${esc(placeLine(goal))}</small></div>
@@ -22,10 +22,10 @@ function renderDash(v) {
     <div class="gaugescale"><span>E</span><span>½</span><span>F</span></div></div>
     <div class="stats">
       <div class="stat"><span class="label">Points</span><b>${fmt(S.done && !S.gaveUp ? S.total : S.pts - S.penalties)}</b></div>
-      <div class="stat"><span class="label">Stops · score</span><b>${S.stops.length} <small class="mult" style="font-size:13px;vertical-align:3px">×${(S.mult || 1).toFixed(2)}</small></b></div>
+      <div class="stat"><span class="label">${S.mini ? 'Stops' : 'Stops · score'}</span><b>${S.stops.length}${S.mini ? '' : ` <small class="mult" style="font-size:13px;vertical-align:3px">×${(S.mult || 1).toFixed(2)}</small>`}</b></div>
       <div class="stat"><span class="label">${v.ferry ? 'Ferry tickets' : 'Travelled'}</span>${v.ferry ? `<div class="tickets">${Array.from({ length: S.ticketsTotal }, (_, i) => `<span class="ticket ${i >= S.tickets ? 'used' : ''}"></span>`).join('') || '<span class="hint">none</span>'}</div>` : `<b>${fmt(S.km)}</b>`}</div>
     </div>
-    ${S.classic ? '' : (() => { const d = tripDiscovery(), pct = Math.round(discoveryBonusFactor(d.share) * 100); return `<div class="discovery" title="The arrival bonus grows with the share of stops that are places you have never been"><span class="label">Discovery</span><div class="levelbar"><div style="width:${d.stops ? d.share * 100 : 100}%;background:${d.share >= 0.6 ? 'var(--good)' : d.share >= 0.3 ? 'var(--fuel)' : 'var(--danger)'}"></div></div><span class="gaugeval">${d.stops ? `${d.fresh}/${d.stops} new` : 'no stops yet'} · bonus ${pct}%</span></div>`; })()}`;
+    ${S.classic || S.mini ? '' : (() => { const d = tripDiscovery(), pct = Math.round(discoveryBonusFactor(d.share) * 100); return `<div class="discovery" title="The arrival bonus grows with the share of stops that are places you have never been"><span class="label">Discovery</span><div class="levelbar"><div style="width:${d.stops ? d.share * 100 : 100}%;background:${d.share >= 0.6 ? 'var(--good)' : d.share >= 0.3 ? 'var(--fuel)' : 'var(--danger)'}"></div></div><span class="gaugeval">${d.stops ? `${d.fresh}/${d.stops} new` : 'no stops yet'} · bonus ${pct}%</span></div>`; })()}`;
 }
 // Driving is the heart of the game: Fly and Train only appear when this trip's rules allow them
 function availableModes() {
@@ -62,15 +62,16 @@ function renderPlaying(v) {
       <div class="entryfoot">
         <div class="msg ${lastMsg.cls}" id="msg" aria-live="polite">${esc(lastMsg.text)}${msgActHtml()}</div>
         <div class="toolbox">
+          ${S.mini === 'free' ? '<button class="btn small" type="button" id="mini-newtrip">New trip…</button>' : ''}
           <button class="btn small" type="button" id="tools-btn" aria-expanded="false" aria-controls="tools-menu">Tools ▾</button>
           <div class="toolsmenu" id="tools-menu" hidden>
             ${S.avoid && S.avoid.length ? `<div class="hint">Avoiding ${S.avoid.map(cc => esc(ccName(cc))).join(', ')}</div>` : ''}
             ${S.stakes ? '<div class="hint">High stakes: no help or supplies on this run.</div>' : ''}
             ${RULES.hints === 'off' || S.stakes ? '' : `<button type="button" id="btn-scout" ${S.scouts.length ? 'disabled' : ''}><span>🔭 Scout ahead</span><span class="cost">${S.freeScouts ? `free ×${S.freeScouts}` : '−' + scoutCost()}</span></button>
             <button type="button" id="btn-help-road" ${S.fuel >= v.tank * helpThreshold() ? `disabled title="Only when your tank is under ${helpThreshold() === 0.5 ? 'half' : Math.round(helpThreshold() * 100) + '%'}"` : ''}><span>🛟 ${v.coastal ? 'Resupply at sea' : v.rail ? 'Rail replacement' : S.opts.vehicle === 'bike' ? 'Rest stop' : 'Roadside help'}</span><span class="cost">−${helpCost()}</span></button>`}
-            ${P.consumables.jerrycan && !S.stakes ? `<button type="button" id="use-jerry"><span>⛽ Jerrycan: +30% range</span><span class="cost">×${P.consumables.jerrycan}</span></button>` : ''}
-            ${v.ferry && ferryLimit() > 0 && !S.stakes ? `<button type="button" id="use-ticket" ${!P.consumables.ticket && P.coins < TICKET_PRICE ? `disabled title="A ticket costs ${TICKET_PRICE} coins"` : ''}><span>🎫 ${P.consumables.ticket ? 'Add a ferry ticket' : 'Buy a ferry ticket'}</span><span class="cost">${P.consumables.ticket ? '×' + P.consumables.ticket : '−' + TICKET_PRICE}</span></button>` : ''}
-            ${!S.classic && !S.stakes && P.consumables.tow ? `<button type="button" id="use-tow" ${S.undo ? '' : 'disabled title="Nothing to undo yet"'}><span>🛻 Tow truck: undo last leg</span><span class="cost">×${P.consumables.tow}</span></button>` : ''}
+            ${P.consumables.jerrycan && !S.stakes && !S.mini ? `<button type="button" id="use-jerry"><span>⛽ Jerrycan: +30% range</span><span class="cost">×${P.consumables.jerrycan}</span></button>` : ''}
+            ${v.ferry && ferryLimit() > 0 && !S.stakes && !S.mini ? `<button type="button" id="use-ticket" ${!P.consumables.ticket && P.coins < TICKET_PRICE ? `disabled title="A ticket costs ${TICKET_PRICE} coins"` : ''}><span>🎫 ${P.consumables.ticket ? 'Add a ferry ticket' : 'Buy a ferry ticket'}</span><span class="cost">${P.consumables.ticket ? '×' + P.consumables.ticket : '−' + TICKET_PRICE}</span></button>` : ''}
+            ${!S.classic && !S.stakes && !S.mini && P.consumables.tow ? `<button type="button" id="use-tow" ${S.undo ? '' : 'disabled title="Nothing to undo yet"'}><span>🛻 Tow truck: undo last leg</span><span class="cost">×${P.consumables.tow}</span></button>` : ''}
             <hr>
             <button type="button" id="btn-giveup" class="danger"><span>Give up and see a route</span></button>
           </div>
@@ -81,7 +82,7 @@ function renderPlaying(v) {
         <span class="scoutbtns">${sc.revealed || RULES.hints === 'off' ? '' : `<button class="btn small" type="button" data-reveal="${i}">Reveal<span class="cost">${revealCost() ? '−' + revealCost() : 'free'}</span></button>`}${sc.id === S.dest ? '' : `<button class="btn small" type="button" data-scoutgo="${i}" title="Drive there without naming it: no points, flags or stamps">Go<span class="cost">0 pts</span></button>`}</span></div>`).join('')}</div>` : ''}
     </div>`;
   wireEntry();
-  if (keep) { $('entry-input').value = keep.value; if (keep.focus) $('entry-input').focus(); }
+  if (keep) { $('entry-input').value = keep.value; if (keep.focus) $('entry-input').focus({ preventScroll: true }); }
 }
 function renderFinished() {
   const v = VEHICLES[S.opts.vehicle], bk = `${S.opts.vehicle}-${S.opts.length}`;
@@ -98,6 +99,7 @@ function renderFinished() {
     ? block(`A way to ${esc(G.name[S.dest])} from ${esc(G.name[S.cur])}`, routeList(S.rescue, 'rescue'))
     : block(`The big-city route from the start (${S.par.length - 2} stops)`, routeList(S.par, 'par'));
   $('tripdetail').innerHTML = `<div class="tripdetail">${route}${passed}</div>`;
+  if (S.mini) { renderMiniFinished(); return; }
 
   const disc = Math.round((S.discovery ?? 1) * 100), paid = Math.round(discoveryBonusFactor(S.discovery ?? 1) * 100);
   $('play').innerHTML = `
@@ -143,7 +145,7 @@ function renderPostcard() {
     ${S.voyage && last === S.dest && isleOf(last) ? `<div class="disputed-note isle-note"><b>🏝️ Outpost reached: ${esc(ccName(ccOf(last)))}</b><span>${esc(isleOf(last).note)}</span></div>` : ''}
     ${G.area[last] && DISPUTED[areaName(last)] ? `<div class="disputed-note"><b>⚑ Disputed territory: ${esc(areaName(last))}</b><span>${esc(DISPUTED[areaName(last)])}</span></div>` : ''}
     ${(() => { const n = juiceOn('nudges') && nudges([ccOf(last)], 5).find(x => x.cc === ccOf(last)); return n ? `<div class="postnudge">${n.icon} ${esc(n.text)}</div>` : ''; })()}
-    <div class="chipline"><span class="chip">${esc(tierOf(last).label)}</span><span class="chip">${n ? `Visited ${n}×` : 'Not visited yet'}</span>${n ? `<span class="chip">Next visit ×${familiarity(n).mult}</span>` : ''}</div>
+    <div class="chipline"><span class="chip">${esc(tierOf(last).label)}</span>${S.mini ? `<span class="chip">+${tierOf(last).pts} pts · refills ${Math.round(tierOf(last).refill * 100)}%</span>` : `<span class="chip">${n ? `Visited ${n}×` : 'Not visited yet'}</span>${n ? `<span class="chip">Next visit ×${familiarity(n).mult}</span>` : ''}`}</div>
   </div>`;
 }
 function renderLog() {
@@ -151,7 +153,7 @@ function renderLog() {
     .concat(S.stops.map(s => {
       const t = TIERS.find(x => x.id === s.tier), arrived = s.id === S.dest;
       return `<li class="${s.kind === 'ferry' || s.kind === 'flight' ? 'ferry' : ''}"><span class="dot"></span>
-        <div><div class="where">${placeFlagHtml(s.id)}<a href="${wikiLink(s.id)}" target="_blank" rel="noopener">${esc(G.name[s.id])}</a>${arrived ? '<span class="tier">Destination</span>' : s.checkpoint ? '<span class="tier via">Checkpoint</span>' : `<span class="tier ${t.id}">${t.label}</span>`}${s.fresh ? '<span class="newstamp">New stamp</span>' : ''}</div>
+        <div><div class="where">${placeFlagHtml(s.id)}<a href="${wikiLink(s.id)}" target="_blank" rel="noopener">${esc(G.name[s.id])}</a>${arrived ? '<span class="tier">Destination</span>' : s.checkpoint ? '<span class="tier via">Checkpoint</span>' : `<span class="tier ${t.id}">${t.label}</span>`}${s.fresh && !S.mini ? '<span class="newstamp">New stamp</span>' : ''}</div>
         <div class="meta">${esc(placeLine(s.id))} · pop ${fmt(G.pop[s.id])} · ${s.kind === 'ferry' ? '⛴ ' : s.kind === 'flight' ? '✈ ' : s.kind === 'train' ? '🚆 ' : ''}${fmt(s.km)} km${s.kind === 'train' && !s.own ? ` · −${s.cost} coins` : s.kind === 'flight' ? ` · ${s.cost ? `−${s.cost} coins` : 'free flight'} · tank refilled` : arrived ? '' : ` · +${fmt(s.refill)} km`}${s.hop && s.hop < 1 ? ` · short hop ×${s.hop.toFixed(2)}` : ''}</div></div>
         <div class="pts">${arrived ? '🏁' : '+' + s.pts}${!arrived && s.mult && s.mult !== 1 ? `<small>×${s.mult}</small>` : ''}</div></li>`;
     }));
@@ -221,7 +223,7 @@ function wireEntry() {
     suggIds = prefixIds(key).filter(id => (S.mode !== 'fly' || airportOK(id)) && (S.mode !== 'train' || stationOK(id)) && (!VEHICLES[S.opts.vehicle].rail || hasStation(id))).sort((a, b) => G.pop[b] - G.pop[a]).slice(0, 8);
     if (!suggIds.length) { list.hidden = true; return; }
     list.innerHTML = suggIds.map((id, i) => { const d = dist(G.lat[S.cur], G.lon[S.cur], G.lat[id], G.lon[id]), out = legOutlook(id, S.mode), n = visitsBefore(id);
-      return `<li role="option" id="sg-${i}" data-i="${i}" aria-selected="false"><div>${flagHtml(ccOf(id))}${esc(G.name[id])}<small>${esc(placeLine(id))} · ${esc(tierOf(id).label)}${!S.classic && n ? ` · visited ${n}×` : ''}</small></div><span class="rng ${out.cls}">${fmt(d)} km<br>${out.text}</span></li>`; }).join('');
+      return `<li role="option" id="sg-${i}" data-i="${i}" aria-selected="false"><div>${flagHtml(ccOf(id))}${esc(G.name[id])}<small>${esc(placeLine(id))} · ${esc(tierOf(id).label)}${!S.classic && !S.mini && n ? ` · visited ${n}×` : ''}</small></div><span class="rng ${out.cls}">${fmt(d)} km<br>${out.text}</span></li>`; }).join('');
     list.hidden = false;
   });
   // Enter takes the highlighted suggestion; with none highlighted it takes the top one, unless what was typed is
@@ -247,6 +249,7 @@ function wireEntry() {
   $('tools-btn').onclick = e => { e.stopPropagation(); menu.hidden = !menu.hidden; $('tools-btn').setAttribute('aria-expanded', String(!menu.hidden)); };
   menu.onclick = e => e.stopPropagation();
   if ($('btn-scout')) $('btn-scout').onclick = scout;
+  if ($('mini-newtrip')) $('mini-newtrip').onclick = openMiniNew;
   document.querySelectorAll('.modes [data-mode]').forEach(b => b.onclick = () => { S.mode = b.dataset.mode; save(); lastMsg = S.mode === 'fly' && P.freeFlights && airportOK(S.cur) ? { text: `Your next ${P.freeFlights === 1 ? 'flight is' : P.freeFlights + ' flights are'} on us. After that, flights cost coins by distance. Landing refills your tank but scores nothing.`, cls: 'good' } : S.mode === 'train' ? { text: stationOK(S.cur) ? `Trains follow real track up to ${fmt(trainLimit())} km and cost a few coins${P.freeTrains ? ` (your next ${P.freeTrains === 1 ? 'ride is' : P.freeTrains + ' rides are'} free)` : ''}. They don't use fuel, and the town you arrive in scores half.` : `${G.name[S.cur]} has no ${RULES.trains === 'capitals' ? 'capital station' : 'station'}. Drive to one first.`, cls: '' } : S.mode === 'fly' ? { text: airportOK(S.cur) ? `Flights cost coins by distance: about ${flightCost(1000, S.flights)} coins for 1,000 km. Landing refills your tank but scores nothing.` : `${G.name[S.cur]} has no ${RULES.planes === 'capitals' ? 'capital airport' : RULES.planes === 'large' ? 'big airport' : 'airport'}. Drive to one first.`, cls: '' } : { text: '', cls: '' }; render(); $('entry-input').focus(); });
   if ($('btn-help-road')) $('btn-help-road').onclick = () => { const v = VEH(S.opts.vehicle); S.fuel = Math.max(S.fuel, v.tank * helpThreshold()); S.penalties += helpCost(); S.helps++; setMsg(`Help arrived: ${v.gauge.toLowerCase()} is back to ${Math.round(helpThreshold() * 100)}%. −${helpCost()} pts.`); save(); render(); tripMap.fit(tripBounds(), false, 56, 130); };
   $('btn-giveup').onclick = e => {
@@ -467,7 +470,7 @@ document.addEventListener('keydown', e => {
     if (hit) { e.preventDefault(); runMenuItem(hit); return; }
   }
   // Tab is the game's menu key: the name box keeps the focus while you play, so a letter would just be typed
-  if (e.key !== 'Tab' || e.shiftKey || document.querySelector('dialog[open]')) return;
+  if (e.key !== 'Tab' || e.shiftKey || MINI || document.querySelector('dialog[open]')) return;
   e.preventDefault(); quickMenu(!open);
 });
 $('tier-table').innerHTML = `<thead><tr><th>Stop</th><th>Size</th><th>Points</th><th>Refill</th></tr></thead><tbody>${TIERS.map(t => `<tr><td><span class="tier ${t.id}">${t.label}</span></td><td>${t.id === 'capital' ? 'national capital' : t.note}</td><td>+${t.pts}</td><td>${Math.round(t.refill * 100)}% of tank</td></tr>`).join('')}

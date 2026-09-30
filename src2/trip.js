@@ -293,7 +293,8 @@ let opts = Object.assign({ vehicle: 'car', regions: ['EU'], length: 'short', ass
 opts.regions = regionsOf(opts); delete opts.region;
 const saveOpts = () => store.set('stopover-opts', opts);
 // a race trip is kept apart, so your own trip is still there when the race is over
-const save = () => store.set(S && S.race ? 'stopover-race-trip' : 'stopover-trip', S);
+// the daily game keeps one trip per tab (today's, this week's and free play), so switching tabs loses nothing
+const save = () => store.set(S && S.mini ? 'stopover-trip-' + S.mini : S && S.race ? 'stopover-race-trip' : 'stopover-trip', S);
 const markerFor = vehicle => { const m = MARKERS.find(x => x.id === (P.equip.markers || {})[vehicle]); return m ? m.icon : VEHICLES[vehicle].icon; };
 const fuelNow = () => S.fuel;
 const tripAvoid = () => new Set(((S && S.avoid) || []).map(cc => G.ccIndex[cc]).filter(x => x != null));
@@ -323,22 +324,28 @@ function isoWeek(t = new Date()) {
   return `${y}-W${String(n).padStart(2, '0')}`;
 }
 const weeklyTrip = week => ({ vehicle: 'car', length: 'epic', assist: 'navigator', regions: [WEEKLY_REGIONS[+week.slice(-2) % WEEKLY_REGIONS.length]] });
+// the daily game's weekly trip is simply a long one: the same continent as the full game's challenge, normal rules
+const miniWeeklyTrip = week => ({ vehicle: 'car', length: 'long', regions: [WEEKLY_REGIONS[+week.slice(-2) % WEEKLY_REGIONS.length]] });
 function startTrip(o, daily) {
   if (S && S.race && !S.done) { toast('Finish or give up the race first.'); return false; }
   if (S && S.stakes && !S.done) { toast('Finish or give up your high-stakes run first.'); return false; }
   const weekly = daily === 'weekly'; if (weekly) daily = false;
   const stakes = daily === 'stakes'; if (stakes) daily = false;
   const today = new Date().toISOString().slice(0, 10), week = isoWeek();
-  const seed = daily ? 'daily-' + today : weekly ? 'weekly-' + week : stakes ? 'stakes-' + today : 'trip-' + Date.now() + Math.random();
+  const seed = daily ? 'daily-' + today : weekly ? (MINI ? 'mini-weekly-' : 'weekly-') + week : stakes ? 'stakes-' + today : 'trip-' + Date.now() + Math.random();
   // the high-stakes route is the same for everyone that day; its continent turns over like the daily trip's
   if (stakes) o = { ...o, regions: [['AS', 'EU', 'SA', 'NA', 'AF', 'EU', 'AS'][new Date().getDay()]], skip: [] };
-  if (daily) o = { ...o, vehicle: 'car', length: 'medium', regions: [['EU', 'NA', 'AS', 'EU', 'SA', 'AF', 'EU'][new Date().getDay()]], from: null, to: null, via: [] };
-  if (weekly) o = { ...o, ...weeklyTrip(week), classic: false, from: null, to: null, via: [], skip: [] };
+  // (areas switched off for your own trips don't apply: the daily trip has to be the same for everyone)
+  if (daily) o = { ...o, vehicle: 'car', length: 'medium', regions: [['EU', 'NA', 'AS', 'EU', 'SA', 'AF', 'EU'][new Date().getDay()]], from: null, to: null, via: [], skip: [] };
+  if (weekly) o = { ...o, ...(MINI ? miniWeeklyTrip(week) : weeklyTrip(week)), classic: false, from: null, to: null, via: [], skip: [] };
   const fixed = daily || weekly || stakes, avoidList = fixed || o.classic ? [] : [...(o.avoid || [])];
   // classic keeps the original rules: no planes or trains; the daily trip uses the default rules and the weekly
   // challenge its own hard ones, so everyone on the same board plays the same trip
-  RULES = o.classic ? migrateRules({ planeKm: 0, trainKm: 0 }) : daily ? { ...DEFAULT_RULES } : weekly ? migrateRules(WEEKLY_RULES) : stakes ? migrateRules(STAKES_RULES) : migrateRules(o.rules);
+  RULES = o.classic ? migrateRules({ planeKm: 0, trainKm: 0 }) : daily ? { ...DEFAULT_RULES } : weekly ? (MINI ? { ...DEFAULT_RULES } : migrateRules(WEEKLY_RULES)) : stakes ? migrateRules(STAKES_RULES) : migrateRules(o.rules);
   if (VEHICLES[o.vehicle].rail || VEHICLES[o.vehicle].coastal) RULES = { ...RULES, planeKm: 0, trainKm: 0 };
+  // the daily game is roads and ferries only (no coins to buy tickets with); hard mode also takes the hints away.
+  // Neither changes how the route is drawn, so its daily trip is the full game's daily trip.
+  if (MINI) RULES = { ...RULES, planeKm: 0, trainKm: 0, hints: o.assist === 'navigator' ? 'off' : 'on' };
   if (o.classic && VEHICLES[o.vehicle].rail) { toast('Classic rules have no train trips. Turn Classic off in Settings.'); return false; }
   const avoid = new Set(avoidList.map(cc => G.ccIndex[cc]).filter(x => x != null));
   // picked places are saved by GeoNames id, so they survive a data rebuild
@@ -357,9 +364,9 @@ function startTrip(o, daily) {
   if (voyage || picked.from != null || picked.to != null || trip.via.length) used = lengthForKm(trip.km, o.vehicle);
   const tripOpts = { ...o, length: used.id, regions: regionsOf(o), skip: skipOf(o), voyage: voyage ? 'isles' : null };
   useVoyage({ voyage: trip.voyage, dest: trip.dest }); const v = VEH(o.vehicle);
-  S = { v: 2, classic: !!o.classic, daily: daily ? today : null, weekly: weekly ? week : null, opts: tripOpts, avoid: avoidList, start: trip.start, dest: trip.dest, via: trip.via, par: trip.par, routeKm: trip.km, cur: trip.start, fuel: v.tank, tickets: trip.tickets + seasonTickets(o), ticketsTotal: trip.tickets + seasonTickets(o),
+  S = { v: 2, classic: !!o.classic, daily: daily ? today : null, weekly: weekly ? week : null, mini: MINI ? (daily ? 'daily' : weekly ? 'weekly' : 'free') : null, opts: tripOpts, avoid: avoidList, start: trip.start, dest: trip.dest, via: trip.via, par: trip.par, routeKm: trip.km, cur: trip.start, fuel: v.tank, tickets: trip.tickets + seasonTickets(o), ticketsTotal: trip.tickets + seasonTickets(o),
     stops: [], pts: 0, penalties: 0, scouts: [], helps: 0, done: false, gaveUp: false, km: 0,
-    rules: { ...RULES }, mult: o.classic ? 1 : Math.round(scoreMultiplier(RULES, o.assist, avoidList.length, fixed || voyage ? null : regionsOf(o), o.vehicle) * (voyage ? 1.3 : 1) * 100) / 100, mode: 'ground', flights: 0, airKm: 0, flightCoins: 0, voyage: trip.voyage || null };
+    rules: { ...RULES }, mult: o.classic || MINI ? 1 : Math.round(scoreMultiplier(RULES, o.assist, avoidList.length, fixed || voyage ? null : regionsOf(o), o.vehicle) * (voyage ? 1.3 : 1) * 100) / 100, mode: 'ground', flights: 0, airKm: 0, flightCoins: 0, voyage: trip.voyage || null };
   hintIds = []; lastMsg = { text: '', cls: '' }; GLIDE.self = null; GLIDE.heading = null;
   save(); render(); tripMap.fit(tripBounds(), true, 56, 130);
   if (voyage) { const isle = isleOf(trip.dest); setMsg(`Far-Flung Isles: sail from ${G.name[trip.start]} to ${G.name[trip.dest]}, ${ccName(ccOf(trip.dest))}. ${isle ? isle.note + ' ' : ''}Your boat is stocked for ${fmt(v.tank)} km of open sea: the nearest other shore is ${fmt(trip.voyage.need)} km from the island.`); return true; }
@@ -452,19 +459,19 @@ function travel(id, mode = 'ground', scouted = false) {
   if (!res.ok && (mode === 'fly' || mode === 'train')) { setMsg(res.why, 'bad'); return; }
   if (!res.ok && S.stakes) { stakesBust(explain(res, id)); return; }
   if (!res.ok) {
-    const ticketWouldHelp = VEHICLES[S.opts.vehicle].ferry && ferryLimit() > 0 && (res.why === 'tickets' || (res.why === 'range' && res.ferry));
+    const ticketWouldHelp = !MINI && VEHICLES[S.opts.vehicle].ferry && ferryLimit() > 0 && (res.why === 'tickets' || (res.why === 'range' && res.ferry));
     setMsg(explain(res, id), 'bad', ticketWouldHelp ? { id: 'ticket', label: P.consumables.ticket ? `Use a ticket (${P.consumables.ticket})` : `Buy a ticket · ${TICKET_PRICE}` } : null);
     flashRange(); return;
   }
   const snapshot = JSON.stringify({ ...S, undo: null }), prevVisit = P.visits[placeKey(id)] ? { ...P.visits[placeKey(id)] } : null;
   // in a race every town scores and refuels the same for everyone, whoever has been there before
-  const v = VEH(S.opts.vehicle), tier = tierOf(id), before = visitsBefore(id), fam = S.classic || S.race ? { mult: 1, label: '' } : familiarity(before), arrived = id === S.dest;
+  const v = VEH(S.opts.vehicle), tier = tierOf(id), before = visitsBefore(id), fam = S.classic || S.race || S.mini ? { mult: 1, label: '' } : familiarity(before), arrived = id === S.dest;
   // a paid train ride on a road trip; on a train trip the train is your own vehicle and runs on the rail range
   const ride = res.kind === 'train' && !res.own, checkpoint = (S.via || []).includes(id);
   S.fuel = Math.max(0, S.fuel - (res.fuel || 0));
   const fuelBefore = S.fuel;
   // familiar towns refuel less, so replaying a known route gets harder
-  const tired = S.classic || S.race ? 1 : refuelFactor(before);
+  const tired = S.classic || S.race || S.mini ? 1 : refuelFactor(before);
   if (!arrived && !ride) S.fuel = res.kind === 'flight' ? v.tank : Math.min(v.tank, S.fuel + v.tank * tier.refill * tired);
   // after landing you're back on the ground: the next stop is driven unless you pick Fly again
   if (res.kind === 'flight') { S.mode = 'ground'; if (res.free) { P.freeFlights--; P.coins -= res.upgrade || 0; } else P.coins -= res.cost; renderCoins(); S.flights++; S.airKm += res.km; S.flightCoins += res.cost; }
@@ -510,16 +517,16 @@ function travel(id, mode = 'ground', scouted = false) {
 function finishTrip(gaveUp) {
   S.done = true; S.gaveUp = gaveUp;
   // counted on the website by SimpleAnalytics (no cookies, nothing personal); absent in the single-file build
-  if (window.sa_event) sa_event((gaveUp ? 'trip_gave_up_' : 'trip_finished_') + (S.race ? 'race' : S.daily ? 'daily' : S.weekly ? 'weekly' : S.stakes ? 'stakes' : 'solo'));
+  if (window.sa_event) sa_event((gaveUp ? 'trip_gave_up_' : 'trip_finished_') + (S.mini ? 'mini_' + S.mini : S.race ? 'race' : S.daily ? 'daily' : S.weekly ? 'weekly' : S.stakes ? 'stakes' : 'solo'));
   if (!gaveUp) {
     // the arrival bonus shrinks with the share of the trip you flew
     const groundShare = S.km > 0 ? Math.max(0, (S.km - (S.airKm || 0) - 0.5 * (S.railKm || 0)) / S.km) : 1;
     S.groundShare = groundShare;
     const disc = tripDiscovery(); S.discovery = S.classic ? 1 : disc.share;
     // the arrival bonus grows with the trip's length; a route of towns you already know pays a quarter of it
-    S.bonus = Math.round((lengthOf(S.opts.length).bonus * groundShare * (S.classic || S.race ? 1 : discoveryBonusFactor(disc.share)) + S.tickets * TICKET_BONUS) * (S.mult || 1));
+    S.bonus = Math.round((lengthOf(S.opts.length).bonus * groundShare * (S.classic || S.race || S.mini ? 1 : discoveryBonusFactor(disc.share)) + S.tickets * TICKET_BONUS) * (S.mult || 1));
     // three days away earns a double arrival bonus on the first solo trip back (never on a race or a ranked trip)
-    if (P.boost && !S.race && !S.daily && !S.weekly && !S.classic) { S.boosted = S.bonus; S.bonus *= 2; P.boost = null; }
+    if (P.boost && !S.race && !S.daily && !S.weekly && !S.classic && !S.mini) { S.boosted = S.bonus; S.bonus *= 2; P.boost = null; }
     S.total = Math.max(0, S.pts + S.bonus - S.penalties);
     P.trips += 1;
     const bk = `${S.opts.vehicle}-${S.opts.length}`; P.best[bk] = Math.max(P.best[bk] || 0, S.total);
@@ -547,6 +554,7 @@ function finishTrip(gaveUp) {
   stakesSettle(gaveUp);
   checkAchievements();
   if (HOOKS.afterFinish) HOOKS.afterFinish(gaveUp);
+  if (S.mini) miniFinished(gaveUp);
 }
 // a route from where you are, through any checkpoints still ahead, to the destination
 function rescueRoute() {

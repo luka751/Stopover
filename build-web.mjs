@@ -8,7 +8,11 @@ const out = 'web/public';
 fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(out, { recursive: true });
 
-const js = ['core.js', 'extras.js', 'trip.js', 'isles.js', 'map.js', 'ui.js', 'passport.js', 'blind.js', 'flags.js', 'study.js', 'juice.js', 'social.js', 'garage.js', 'sinks.js', 'online.js'].map(part).join('\n');
+// Two games on one engine: the daily game at / (index.html: today's trip, the weekly trip and free play, no account)
+// and the full game at /world (world.html: accounts, passport, shop, races). They share every game script; the full
+// game adds online.js and log-in (auth.js), the daily game adds mini.js and no log-in at all.
+const shared = ['core.js', 'extras.js', 'trip.js', 'isles.js', 'map.js', 'ui.js', 'passport.js', 'blind.js', 'flags.js', 'study.js', 'juice.js', 'social.js', 'garage.js', 'sinks.js'];
+const js = [...shared, 'online.js'].map(part).join('\n'), miniJs = [...shared, 'mini.js'].map(part).join('\n');
 // The gazetteer is its own file on the website: the raw gzip bytes rather than the base64 text the single-file
 // build embeds (a quarter smaller), named after its contents so browsers keep it for a year and a changed
 // gazetteer gets a new name.
@@ -16,27 +20,30 @@ const geoBytes = Buffer.from(fs.readFileSync('data.b64', 'utf8').trim(), 'base64
 const geoFile = `geo.${createHash('sha256').update(geoBytes).digest('hex').slice(0, 10)}.bin`;
 const inlineGeo = /const b64 = \$\('geo'\)\.textContent\.trim\(\), bin = atob\(b64\), bytes = new Uint8Array\(bin\.length\);\n\s*for \(let i = 0; i < bin\.length; i\+\+\) bytes\[i\] = bin\.charCodeAt\(i\);/;
 if (!inlineGeo.test(js)) throw new Error('loadData changed: update build-web.mjs');
-const game = js.replace(inlineGeo, `const bytes = new Uint8Array(await (await fetch('${geoFile}')).arrayBuffer());`);
+const fetchGeo = src => src.replace(inlineGeo, `const bytes = new Uint8Array(await (await fetch('${geoFile}')).arrayBuffer());`);
+const game = fetchGeo(js), miniGame = fetchGeo(miniJs);
 const names = fs.readFileSync('web/src/names.js', 'utf8').replace(/^export /gm, '');
 
 // the commit a build came from, so an error in Sentry says which version of the game it happened in
 let release = 'dev'; try { release = execSync('git rev-parse --short HEAD').toString().trim() + (execSync('git status --porcelain src2 web/src').toString().trim() ? '-dirty' : ''); } catch {}
 
-const html = `<!doctype html>
+const page = mini => `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <script>
 // one address for the game: static pages are served before the Worker runs, so www is sent to the bare domain here
 if (location.hostname.startsWith('www.')) location.replace('https://' + location.hostname.slice(4) + location.pathname + location.search + location.hash);
+${mini ? `// links from before the daily game took over the front page (password resets, email confirmations) belong to the full game
+else if (/[?&](reset|verify)=/.test(location.search)) location.replace('/world' + location.search + location.hash);` : ''}
 </script>
-<link rel="canonical" href="https://playstopover.me/">
+<link rel="canonical" href="https://playstopover.me/${mini ? '' : 'world'}">
 <script>
 window.__I18N_DICTS = ${JSON.stringify(Object.fromEntries(['ka', 'de', 'uk', 'ru'].map(l => [l, JSON.parse(fs.readFileSync(`src2/i18n/${l}.json`, 'utf8'))])))};
 ${part('i18n.js')}
 </script>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="description" content="Name places, cross the map, collect flags and race your friends.">
+<meta name="description" content="${mini ? 'A daily geography road trip: get from A to B by naming real towns on the way. A new trip every day.' : 'Name places, cross the map, collect flags and race your friends.'}">
 <!-- installable on a phone's home screen, and a proper card when a link is pasted into a chat (icons: build-icons.mjs) -->
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#0B6B3A">
@@ -44,9 +51,9 @@ ${part('i18n.js')}
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Stopover">
-<meta property="og:title" content="Stopover: name places, cross the map, race your friends">
-<meta property="og:description" content="A free geography game in your browser. Plan a route across the world one town at a time, collect flags and race your friends.">
-<meta property="og:url" content="https://playstopover.me/">
+<meta property="og:title" content="${mini ? 'Stopover: the daily geography road trip' : 'Stopover World: name places, cross the map, race your friends'}">
+<meta property="og:description" content="${mini ? 'Get from A to B by naming real towns along the way. A new trip every day, the same for everyone. Free, in your browser, no sign-up.' : 'A free geography game in your browser. Plan a route across the world one town at a time, collect flags and race your friends.'}">
+<meta property="og:url" content="https://playstopover.me/${mini ? '' : 'world'}">
 <meta property="og:image" content="https://playstopover.me/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -72,32 +79,38 @@ window.sentryOnLoad = () => {
 <script>
 if (!/[?&]reset=/.test(location.search)) { const s = document.createElement('script'); s.async = true; s.src = 'https://scripts.simpleanalyticscdn.com/latest.js'; document.head.appendChild(s); }
 </script>
-${part('head.html').replace('</style>', part('online.css') + '\n</style>')}
+${part('head.html').replace('<title>Stopover</title>', mini ? '<title>Stopover · the daily road trip</title>' : '<title>Stopover World</title>').replace('</style>', part(mini ? 'mini.css' : 'online.css') + '\n</style>')}
 </head>
 <body>
-${part('body.html')}
+${mini ? part('body.html') + part('mini.html') : part('body.html').replace('<button class="btn cta" id="btn-new"', '<a class="btn dailylink" href="/" title="Today\'s trip in the daily game: no account, one trip a day">📅 Daily</a>\n      <button class="btn cta" id="btn-new"')}
 <script>
+window.__STOPOVER_MODE = '${mini ? 'mini' : 'world'}';
 window.__stopoverStart = () => {
 'use strict';
-${game}
+${mini ? miniGame : game}
 };
 </script>
-<script>
+${mini ? `<script>
+// the daily game needs no account and no server: it starts straight away and saves in this browser
+window.__stopoverStart(); delete window.__stopoverStart;
+</script>` : `<script>
 (() => {
 'use strict';
 ${names}
 ${part('auth.js')}
 })();
-</script>
+</script>`}
 </body>
 </html>
 `;
-fs.writeFileSync(out + '/index.html', html);
+const html = page(false), miniHtml = page(true);
+fs.writeFileSync(out + '/world.html', html);
+fs.writeFileSync(out + '/index.html', miniHtml);
 
 // Security headers for every file (Cloudflare reads web/public/_headers). The Content-Security-Policy lists the
 // exact inline scripts by hash and the few outside hosts the page uses. It is report-only for now: violations go
 // to Sentry without blocking anything, and once it's quiet the header can be switched to enforcing.
-const hashes = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => `'sha256-${createHash('sha256').update(m[1]).digest('base64')}'`);
+const hashes = [...new Set([...(html + miniHtml).matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]))].map(m => `'sha256-${createHash('sha256').update(m).digest('base64')}'`);
 const sentryReport = 'https://o4512164040146944.ingest.de.sentry.io/api/4512164047814736/security/?sentry_key=b9ace36eee047a9fad47f77414a7f8bc';
 const csp = [
   "default-src 'self'",
@@ -133,4 +146,4 @@ fs.writeFileSync(`${out}/${geoFile}`, geoBytes);
 for (const f of ['rail.json', 'covers.json']) fs.copyFileSync('dist/' + f, `${out}/${f}`);
 for (const dir of ['flags', 'maps']) fs.cpSync('dist/' + dir, `${out}/${dir}`, { recursive: true });
 fs.cpSync('web/static', out, { recursive: true });
-console.log(`${out}/index.html ${(html.length / 1e3).toFixed(0)} kB, plus ${geoFile} (${(geoBytes.length / 1e6).toFixed(1)} MB), rail.json, covers.json, flags/, maps/`);
+console.log(`${out}/index.html ${(miniHtml.length / 1e3).toFixed(0)} kB (daily game) and world.html ${(html.length / 1e3).toFixed(0)} kB, plus ${geoFile} (${(geoBytes.length / 1e6).toFixed(1)} MB), rail.json, covers.json, flags/, maps/`);

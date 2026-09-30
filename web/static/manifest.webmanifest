@@ -1,7 +1,7 @@
 {
   "name": "Stopover",
   "short_name": "Stopover",
-  "description": "Name places, cross the map, collect flags and race your friends.",
+  "description": "A daily geography road trip: get from A to B by naming real towns on the way.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

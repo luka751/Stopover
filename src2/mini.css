@@ -1,0 +1,79 @@
+/* ---------- the daily game (playstopover.me/): one bar, three tabs, nothing to buy ---------- */
+html.mini .bar > nav, html.mini .bar > .stowed, html.mini .ver, html.mini .maplayers { display: none !important; }
+html.mini .bar { flex-wrap: nowrap; gap: 12px; }
+html.mini .brand { flex: 0 1 auto; }
+html.mini .ticker { max-width: 260px; }
+.minitabs { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); margin-inline: auto; flex: none; }
+.minitabs button { border: 0; background: none; border-radius: 999px; padding: 6px 14px; cursor: pointer; font: 700 16px/1 var(--display); letter-spacing: .03em; text-transform: uppercase; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.minitabs button small { font: 600 12px/1 var(--mono); letter-spacing: 0; opacity: .8; }
+.minitabs button:hover { color: var(--ink); }
+.minitabs button[aria-selected="true"] { background: var(--sign); color: var(--sign-ink); }
+.minitabs button i { font-style: normal; font-size: 12px; width: 16px; height: 16px; border-radius: 50%; display: inline-grid; place-items: center; background: var(--good); color: #fff; }
+.minitabs button i.lost { background: var(--danger); }
+.minitabs button[aria-selected="true"] i { background: #fff; color: var(--sign); }
+.minitabs button[aria-selected="true"] i.lost { color: var(--danger); }
+.mininav { display: flex; gap: 6px; align-items: center; flex: none; }
+.mininav .btn { height: 32px; display: inline-flex; align-items: center; justify-content: center; padding-block: 0; }
+.worldlink { text-decoration: none; gap: 6px; font: 700 15px/1 var(--display); letter-spacing: .02em; white-space: nowrap; }
+
+/* once, for players of the full game: where their account went */
+.worldnote { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: space-between; margin-top: 10px; padding: 9px 14px; border-radius: 10px; background: color-mix(in srgb, var(--fuel) 22%, var(--panel)); border: 1px solid color-mix(in srgb, var(--fuel) 50%, var(--line)); font-size: 14px; }
+.worldnote .guestbtns { display: flex; gap: 6px; }
+.worldnote a.btn { text-decoration: none; }
+
+/* the finish card: the score, the squares and the way on */
+.minifinish { gap: 12px; }
+.minisquares { font-size: 22px; line-height: 1.3; letter-spacing: 2px; overflow-wrap: anywhere; }
+.mininext { margin: 0; color: var(--muted); font-size: 14px; }
+.mininext b { color: var(--ink); font: 600 15px/1 var(--mono); font-variant-numeric: tabular-nums; }
+.minifinish .tools { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* how to play */
+.ministeps { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.ministeps li { display: grid; grid-template-columns: 30px 1fr; gap: 10px; align-items: start; }
+.ministeps li > span { font-size: 22px; line-height: 1.1; text-align: center; }
+.minilegend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; font-size: 13.5px; }
+.minilegend span { white-space: nowrap; }
+.minilegend b { font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--muted); }
+.miniworld { display: flex; gap: 14px; align-items: center; justify-content: space-between; background: var(--panel-2); }
+.miniworld div { display: grid; gap: 2px; font-size: 14px; }
+.miniworld span { color: var(--muted); }
+.miniworld .btn { text-decoration: none; white-space: nowrap; }
+
+/* statistics */
+dialog:has(.ministats) { width: min(520px, calc(100vw - 32px)); }
+.ms-result { text-align: center; display: grid; gap: 8px; justify-items: center; background: color-mix(in srgb, var(--accent) 7%, var(--panel)); }
+.ms-result h3 { margin: 0; font: 800 34px/1 var(--display); text-transform: uppercase; }
+.ms-result p { margin: 0; }
+.ms-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-top: 8px; }
+.ms-tile { text-align: center; background: var(--panel-2); border-radius: 8px; padding: 8px 4px; display: grid; gap: 2px; }
+.ms-tile b { font: 700 26px/1 var(--display); font-variant-numeric: tabular-nums; }
+.ms-tile span { font-size: 12px; color: var(--muted); }
+.ms-bars { display: grid; grid-template-columns: repeat(14, minmax(0, 1fr)); gap: 4px; height: 92px; margin: 14px 0 8px; }
+.ms-bar { display: grid; grid-template-rows: 1fr auto; gap: 3px; min-width: 0; }
+.ms-bar i { align-self: end; display: block; border-radius: 3px 3px 1px 1px; background: var(--line); }
+.ms-bar.won i { background: var(--good); }
+.ms-bar.lost i { background: var(--danger); }
+.ms-bar.none i { background: var(--line); opacity: .6; }
+.ms-bar span { font: 500 10px/1 var(--mono); color: var(--muted); text-align: center; }
+.ms-bar.today span { color: var(--ink); font-weight: 700; }
+.minireg .choice { min-width: 0; }
+
+@media (max-width: 1060px) {
+  html.mini .bar { flex-wrap: wrap; row-gap: 8px; }
+  html.mini .brand { flex: 1 1 auto; }
+  .mininav { margin-left: auto; }
+  .minitabs { order: 3; flex: 1 1 100%; justify-content: stretch; }
+  .minitabs button { flex: 1 1 0; justify-content: center; }
+}
+@media (max-width: 560px) {
+  html.mini .brandmode { display: none; }
+  html.mini .brand { gap: 8px; }
+  .mininav { gap: 4px; }
+  .mininav .btn.icon { min-width: 32px; padding-inline: 8px; }
+  .worldlink .wl-text { display: none; }
+  .worldlink { padding-inline: 9px; font-size: 16px; }
+  .minitabs button { padding: 7px 8px; font-size: 15px; }
+  .ms-tile b { font-size: 22px; }
+  .miniworld { flex-direction: column; align-items: stretch; }
+}

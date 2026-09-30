@@ -9,7 +9,7 @@ const bsEntry = id => bsStore()['g' + G.gid[id]];
 // places you already know well enough are not blind spots
 const bsKnown = id => !!P.visits[placeKey(id)] || ((P.study[ccOf(id)] || {}).known || []).includes(G.gid[id]);
 function bsNote(id, kind, amount = 1, quiet = false) {
-  if (id == null || !G) return;
+  if (id == null || !G || MINI) return;
   const deck = bsStore(), k = 'g' + G.gid[id], now = Date.now();
   const e = deck[k] || (deck[k] = { hop: 0, fly: 0, miss: 0, rescue: 0, box: 0, due: 0, seen: 0, t: now });
   e[kind] = (e[kind] || 0) + amount; e.last = now;
@@ -48,6 +48,7 @@ function bsLegTowns(from, to, path, kind, taken) {
     .sort((a, b) => G.pop[b] - G.pop[a]).slice(0, limit).map(c => ({ id: c, kind: over ? 'fly' : 'hop' }));
 }
 function bsRecordLeg(from, to, path, kind) {
+  if (MINI) return;
   const taken = new Set([S.start, ...S.stops.map(s => s.id)]);
   for (const t of bsLegTowns(from, to, path, kind, taken)) bsNote(t.id, t.kind, 1, true);
   renderBlindCount();

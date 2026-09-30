@@ -5,9 +5,17 @@ const fmt = n => Math.round(n).toLocaleString('en-US');
 // On the website the save lives on the server (auth.js loads it before the game starts); the single-file version
 // keeps it in this browser.
 const CLOUD = window.__stopoverCloud || null; delete window.__stopoverCloud;
+// The website has two games on one engine. The daily game (playstopover.me/) is the quick one: today's trip, the
+// weekly trip and free play, with no account, shop, passport or boards; mini.js runs it. The full game
+// (playstopover.me/world) is everything else. MINI is set by the page the build makes (build-web.mjs).
+const MINI = window.__STOPOVER_MODE === 'mini';
+// the daily game keeps its own save in this browser, apart from anything the full game ever stored here
+const LOCAL_PREFIX = MINI ? 'stopover-mini:' : '';
+// the daily game points players of the full game to where their account lives (mini.js)
+if (!MINI) try { localStorage.setItem('stopover-world-player', '1'); } catch {}
 const store = CLOUD ? { get: k => CLOUD.get(k), set: (k, v) => CLOUD.set(k, v) } : {
-  get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
-  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  get(k) { try { return JSON.parse(localStorage.getItem(LOCAL_PREFIX + k)); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(LOCAL_PREFIX + k, JSON.stringify(v)); } catch {} },
 };
 // online.js fills these in on the website: race hooks, the shared leaderboard and the map layer for rivals
 const HOOKS = {};
@@ -404,7 +412,8 @@ async function loadFlags() {
     // City flags load when one is first shown (flagSrc). The rest follow quietly once the player has settled in,
     // not during the first seconds, and never on a connection that asked to save data.
     const names = [...new Set(Object.values(FLAGS.keys).map(e => e[0]))].filter(n => n !== 'base');
-    if (!(navigator.connection && navigator.connection.saveData)) setTimeout(async () => { for (const n of names) await ensureShard(n); }, 30000);
+    // (the daily game has no passport to fill, so it only ever loads the ones it shows)
+    if (!MINI && !(navigator.connection && navigator.connection.saveData)) setTimeout(async () => { for (const n of names) await ensureShard(n); }, 30000);
   } catch { FLAGS.ready = false; FLAGS.failed = true; }
 }
 function ensureShard(name) {
@@ -436,7 +445,7 @@ const PROFILE_DEFAULTS = () => ({ v: 2, visits: {}, trips: 0, best: {}, coins: 0
 const P = Object.assign(PROFILE_DEFAULTS(), store.get('stopover-profile') || {});
 const saveProfile = () => store.set('stopover-profile', P);
 function renderCoins() { $('coin-count').querySelector('span').textContent = fmt(P.coins); }
-function addCoins(n, why) { if (n <= 0) return; P.coins += n; saveProfile(); renderCoins(); if (why) toast(`+${n} coins · ${why}`); }
+function addCoins(n, why) { if (n <= 0 || MINI) return; P.coins += n; saveProfile(); renderCoins(); if (why) toast(`+${n} coins · ${why}`); }
 function migrateV1() {
   const old = store.get('stopover-passport'); if (!old || old.migrated || !old.stamps) return;
   for (const [k, t] of Object.entries(old.stamps)) {

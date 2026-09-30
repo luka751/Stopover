@@ -24,7 +24,7 @@ function feedBackfill() {
   P.feed = out.sort((a, b) => b.t - a.t).slice(0, FEED_MAX);
 }
 function feedTrip() {
-  if (!S || S.classic || S.gaveUp) return;
+  if (!S || S.classic || S.gaveUp || MINI) return;
   const countries = new Set([S.start, ...S.stops.map(s => s.id)].map(i => G.cc[i])).size;
   // flawless: no roadside help, no scouting, no flights, nothing taken off the score
   const flawless = !S.penalties && !S.helps && !(S.scouts || []).length && !S.flights && S.stops.length >= 3;

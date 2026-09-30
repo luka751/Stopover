@@ -115,7 +115,7 @@ function computeStats(p = P) {
   return st;
 }
 function checkAchievements() {
-  if (!G) return; if (!P.feed) feedBackfill(); const st = computeStats();
+  if (!G || MINI) return; if (!P.feed) feedBackfill(); const st = computeStats();
   for (const a of ACHIEVEMENTS) { if (P.achievements[a.id]) continue; const [have, need] = a.progress(st); if (have >= need) { P.achievements[a.id] = Date.now(); saveProfile(); addCoins(a.coins, `Achievement: ${a.name}`); feedAdd({ k: 'ach', id: a.id }); } }
   feedMastery();
 }
@@ -392,15 +392,17 @@ function finishStudy() {
   settleRetiredItems(); ensureEquipDefaults(); renderCoins(); applyCosmetics(); applyTheme(store.get('stopover-theme'));
   FLAGS.onLoad = () => { if (S) render(); flagsArrived(); };
   const flagsLoaded = loadFlags().then(() => { flagsBackfill(); renderLeagueChip(); if (S) render(); flagsArrived(); });
-  loadRail().then(() => { if (S) render(); if ($('dlg-new').open) renderNewTrip(); });
+  // the daily game drives only, so it never needs the rail network
+  if (!MINI) loadRail().then(() => { if (S) render(); if ($('dlg-new').open) renderNewTrip(); });
   tripMap.resize();
-  const saved = store.get('stopover-trip');
-  if (saved && saved.v === 2 && saved.start < G.n && saved.dest < G.n) {
+  const saved = MINI ? null : store.get('stopover-trip');
+  if (MINI) miniBoot();
+  else if (saved && saved.v === 2 && saved.start < G.n && saved.dest < G.n) {
     S = saved; useVoyage(S); RULES = migrateRules(S.rules); hintIds = S.scouts ? S.scouts.map(s => s.id) : []; render(); tripMap.fit(tripBounds(), true, 56, 130);
     setMsg(S.done ? lastMsg.text : `Trip resumed. You're in ${G.name[S.cur]}.`);
   } else if (!startTrip(opts, false)) startTrip({ ...opts, vehicle: opts.vehicle === 'train' ? 'car' : opts.vehicle, regions: ['EU'], length: 'short', avoid: [], from: null, to: null, via: [] }, false);
   // a shared result links to ?play=daily or ?play=weekly: open that same puzzle, unless a trip is under way
-  const play = new URLSearchParams(location.search).get('play');
+  const play = MINI ? null : new URLSearchParams(location.search).get('play');
   if (play === 'daily' || play === 'weekly') {
     history.replaceState(null, '', location.pathname + location.hash);
     const today = new Date().toISOString().slice(0, 10), already = play === 'daily' ? S && S.daily === today : S && S.weekly === isoWeek();
@@ -409,6 +411,7 @@ function finishStudy() {
     if (window.sa_event) sa_event('opened_shared_' + play);
   }
   setTimeout(() => setTimeout(greetOnBoot, 1400), 30);
-  setTimeout(() => { buildSearch(); migrateV1(); backfillStamps(); saveProfile(); renderLeagueChip(); initLeaderboard(); checkAchievements(); bsBackfill(); renderBlindCount(); setTimeout(() => { showNews(false); if (matchMedia('(pointer: fine)').matches && $('entry-input') && !document.querySelector('dialog[open]')) $('entry-input').focus({ preventScroll: true }); }, 900); if (S && !S.done) setMsg(lastMsg.text, lastMsg.cls); if (HOOKS.boot) HOOKS.boot(); }, 30);
+  if (MINI) setTimeout(() => { buildSearch(); if (S && !S.done) setMsg(lastMsg.text, lastMsg.cls); miniAfterBoot(); }, 30);
+  else setTimeout(() => { buildSearch(); migrateV1(); backfillStamps(); saveProfile(); renderLeagueChip(); initLeaderboard(); checkAchievements(); bsBackfill(); renderBlindCount(); setTimeout(() => { showNews(false); if (matchMedia('(pointer: fine)').matches && $('entry-input') && !document.querySelector('dialog[open]')) $('entry-input').focus({ preventScroll: true }); }, 900); if (S && !S.done) setMsg(lastMsg.text, lastMsg.cls); if (HOOKS.boot) HOOKS.boot(); }, 30);
   await flagsLoaded;
 })();
