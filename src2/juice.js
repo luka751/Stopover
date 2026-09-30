@@ -179,11 +179,13 @@ function streakMilestone(n) {
 function shareText() {
   const sq = s => s.id === S.dest ? '🏁' : s.kind === 'ferry' ? '⛴️' : s.kind === 'flight' ? '✈️' : s.kind === 'train' ? '🚆' : s.fresh ? '🟩' : '🟨';
   const head = S.weekly ? `Stopover weekly challenge ${S.weekly}` : S.daily ? `Stopover daily ${S.daily}` : `Stopover · ${lengthOf(S.opts.length).name} ${VEHICLES[S.opts.vehicle].name.toLowerCase()} trip`;
-  const url = /^https?:/.test(location.protocol) && !/localhost|127\.0\.0\.1/.test(location.host) ? '\n' + location.origin : '';
+  // the link opens the same daily or weekly puzzle for whoever taps it
+  const url = /^https?:/.test(location.protocol) && !/localhost|127\.0\.0\.1/.test(location.host) ? '\n' + location.origin + (S.daily ? '/?play=daily' : S.weekly ? '/?play=weekly' : '') : '';
   return `${head}\n${markerFor(S.opts.vehicle)} ${G.name[S.start]} → ${G.name[S.dest]}\n${S.stops.map(sq).join('')}\n${fmt(S.total)} pts · ${fmt(S.km)} km · ${S.stops.length} stops${url}`;
 }
 async function shareTrip() {
   const text = shareText();
+  if (window.sa_event) sa_event('shared_' + (S.daily ? 'daily' : S.weekly ? 'weekly' : 'trip'));
   try { if (navigator.share && matchMedia('(pointer: coarse)').matches) { await navigator.share({ text }); return; } } catch { return; }
   try { await navigator.clipboard.writeText(text); toast('Copied. Paste it anywhere.'); } catch { toast(text.replace(/\n/g, ' · ')); }
 }

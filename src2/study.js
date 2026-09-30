@@ -399,6 +399,15 @@ function finishStudy() {
     S = saved; useVoyage(S); RULES = migrateRules(S.rules); hintIds = S.scouts ? S.scouts.map(s => s.id) : []; render(); tripMap.fit(tripBounds(), true, 56, 130);
     setMsg(S.done ? lastMsg.text : `Trip resumed. You're in ${G.name[S.cur]}.`);
   } else if (!startTrip(opts, false)) startTrip({ ...opts, vehicle: opts.vehicle === 'train' ? 'car' : opts.vehicle, regions: ['EU'], length: 'short', avoid: [], from: null, to: null, via: [] }, false);
+  // a shared result links to ?play=daily or ?play=weekly: open that same puzzle, unless a trip is under way
+  const play = new URLSearchParams(location.search).get('play');
+  if (play === 'daily' || play === 'weekly') {
+    history.replaceState(null, '', location.pathname + location.hash);
+    const today = new Date().toISOString().slice(0, 10), already = play === 'daily' ? S && S.daily === today : S && S.weekly === isoWeek();
+    if (!already && (!S || S.done || !S.stops.length)) startTrip(opts, play === 'daily' ? true : 'weekly');
+    else if (!already) toast(`Finish this trip first, then find the ${play} ${play === 'daily' ? 'trip' : 'challenge'} under New trip.`);
+    if (window.sa_event) sa_event('opened_shared_' + play);
+  }
   setTimeout(() => setTimeout(greetOnBoot, 1400), 30);
   setTimeout(() => { buildSearch(); migrateV1(); backfillStamps(); saveProfile(); renderLeagueChip(); initLeaderboard(); checkAchievements(); bsBackfill(); renderBlindCount(); setTimeout(() => { showNews(false); if (matchMedia('(pointer: fine)').matches && $('entry-input') && !document.querySelector('dialog[open]')) $('entry-input').focus({ preventScroll: true }); }, 900); if (S && !S.done) setMsg(lastMsg.text, lastMsg.cls); if (HOOKS.boot) HOOKS.boot(); }, 30);
   await flagsLoaded;

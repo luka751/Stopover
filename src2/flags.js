@@ -178,7 +178,7 @@ function celebrateFlags(fresh, holo = []) {
   if (streakUp) { const ms = streakMilestone(st.n); if (ms) { coins += ms.coins; lines.push(ms); } }
   if (rankAfter !== rankBefore) lines.push({ icon: '⭐', text: `New rank: ${rankAfter.name}`, big: true });
   if (streakUp) lines.push({ icon: '🔥', text: `${st.n}-day flag streak · coins ×${mult.toFixed(1)}` });
-  else if (st.n === 1 && st.day === day && !P.flagStreakToldDay?.startsWith(day)) { P.flagStreakToldDay = day; lines.push({ icon: '🔥', text: 'Streak started · collect a flag tomorrow for coins ×1.1' }); }
+  else if (st.n === 1 && st.day === day && !P.flagStreakToldDay?.startsWith(day)) { P.flagStreakToldDay = day; lines.push({ icon: '🔥', text: typeof isGuest === 'function' && isGuest() ? 'Streak started · create an account to keep it: guest progress ends when this tab closes' : 'Streak started · collect a flag tomorrow for coins ×1.1' }); }
   P.coins += coins; renderCoins(); bumpCoins();
   P.flagsNew = (P.flagsNew || 0) + flags.length;
   saveProfile(); renderFlagBadge(); renderLeagueChip(); publishScore();
