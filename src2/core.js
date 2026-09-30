@@ -26,43 +26,30 @@ function showToast() {
   const t = $('toast'); t.textContent = toastQueue[0]; t.hidden = false; clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { toastQueue.shift(); if (toastQueue.length) showToast(); else t.hidden = true; }, toastQueue.length > 1 ? 2400 : 3400);
 }
+// Layout tweaks from Stopover Studio (tune.json → layout): CSS laid over the game's own styles, for every screen, for
+// phones, or for wider screens. Each is { selector: { property: value } }.
+const layoutCss = L => {
+  const rules = o => Object.entries(o || {}).map(([sel, props]) => `${sel} { ${Object.entries(props).map(([k, v]) => `${k}: ${v} !important`).join('; ')} }`).join('\n');
+  return `${rules(L.all)}\n@media (max-width: 760px) {\n${rules(L.phone)}\n}\n@media (min-width: 761px) {\n${rules(L.desktop)}\n}`;
+};
+document.head.appendChild(Object.assign(document.createElement('style'), { id: 'tune-layout', textContent: layoutCss(TUNE.layout || {}) }));
 
 // ================= rules =================
-const VEHICLES = {
-  car:  { id: 'car', name: 'Car',  icon: '🚗', tank: 450, gauge: 'Fuel', road: 50, ferry: true, blurb: '450 km tank · short straits by road, ferries for the rest' },
-  bike: { id: 'bike', name: 'Bike', icon: '🚲', tank: 130, gauge: 'Energy', road: 15, ferry: true, blurb: '130 km of legs · perfect for learning small towns' },
-  boat: { id: 'boat', name: 'Boat', icon: '⛵', tank: 650, gauge: 'Provisions', coastal: true, land: 60, blurb: '650 km of provisions · coastal ports only' },
-  train: { id: 'train', name: 'Train', icon: '🚆', tank: 550, gauge: 'Rail range', rail: true, blurb: '550 km of real track · stations only' },
-};
-const TIERS = [
-  { id: 'capital', label: 'Capital', pts: 10, refill: 1.0, rank: 0, test: (p, cap) => cap },
-  { id: 'metropolis', label: 'Metropolis', pts: 10, refill: 1.0, rank: 0, test: p => p >= 1e6, note: '1M+' },
-  { id: 'city', label: 'City', pts: 20, refill: 0.8, rank: 1, test: p => p >= 250000, note: '250k+' },
-  { id: 'large-town', label: 'Large town', pts: 35, refill: 0.6, rank: 2, test: p => p >= 50000, note: '50k+' },
-  { id: 'town', label: 'Town', pts: 55, refill: 0.45, rank: 3, test: p => p >= 10000, note: '10k+' },
-  { id: 'village', label: 'Village', pts: 80, refill: 0.3, rank: 4, test: () => true, note: 'under 10k' },
-];
+const VEHICLES = TUNE.vehicles;
+const TIERS = TUNE.scoring.tiers.map(t => ({ ...t, test: t.id === 'capital' ? (p, cap) => cap : p => p >= t.minPop }));
 // how much a stop pays, given how many times you have stopped there before
 function familiarity(before) {
-  if (before === 0) return { mult: 1.5, label: 'first visit' };
-  if (before === 1) return { mult: 1, label: '2nd visit' };
-  if (before === 2) return { mult: 0.75, label: '3rd visit' };
-  if (before === 3) return { mult: 0.6, label: '4th visit' };
-  return { mult: before <= 5 ? 0.5 : 0.35, label: `${before + 1}th visit` };
+  const m = TUNE.scoring.visitMult, mult = m[Math.min(before, m.length - 1)];
+  return { mult, label: ['first visit', '2nd visit', '3rd visit'][before] || `${before + 1}th visit` };
 }
-const TICKET_BONUS = 25, SCOUT_COST = 20, REVEAL_COST = 10, HELP_COST = 75, FERRY_MAX = 1200;
+const { ticketBonus: TICKET_BONUS, scoutCost: SCOUT_COST, revealCost: REVEAL_COST, helpCost: HELP_COST } = TUNE.costs, FERRY_MAX = TUNE.rules.ferryKm.slider.max;
 const REGIONS = [{ id: 'EU', name: 'Europe' }, { id: 'AS', name: 'Asia' }, { id: 'AF', name: 'Africa' }, { id: 'NA', name: 'North America' }, { id: 'SA', name: 'South America' }, { id: 'OC', name: 'Oceania' }, { id: 'ALL', name: 'Anywhere' }];
 // the arrival bonus grows with the length of the trip, so a long drive pays for the time it takes
-const LENGTHS = [
-  { id: 'short', name: 'Short', km: [350, 700], minPop: 500000, blurb: '350–700 km', bonus: 150 },
-  { id: 'medium', name: 'Medium', km: [700, 1400], minPop: 300000, blurb: '700–1,400 km', bonus: 300 },
-  { id: 'long', name: 'Long', km: [1400, 2600], minPop: 200000, blurb: '1,400–2,600 km', bonus: 500 },
-  { id: 'epic', name: 'Epic', km: [2600, 5000], minPop: 150000, blurb: '2,600–5,000 km', bonus: 800 },
-];
-const LEN_SCALE = { car: 1, bike: 0.3, boat: 1.2, train: 1 };
+const LENGTHS = TUNE.lengths;
+const LEN_SCALE = TUNE.lengthScale;
 const lengthOf = id => LENGTHS.find(l => l.id === id) || LENGTHS[0];
 // a hop shorter than a fifth of the tank scores less (down to a quarter), so ten villages 5 km apart don't beat one real leg
-const hopFactor = (km, tank) => Math.max(0.25, Math.min(1, km / (tank * 0.2)));
+const hopFactor = (km, tank) => Math.max(TUNE.scoring.hop.min, Math.min(1, km / (tank * TUNE.scoring.hop.fullAt)));
 // trip regions are a set now: Europe + Asia, or Anywhere, or Uncharted. Old saves had a single region.
 const regionsOf = o => { const r = Array.isArray(o.regions) && o.regions.length ? o.regions : [o.region || 'EU']; return r.includes('UNCHARTED') ? ['UNCHARTED'] : r.includes('ALL') ? ['ALL'] : r; };
 // Each continent splits into areas you can switch off one by one: Europe without the Balkans, Asia as just the
@@ -126,12 +113,7 @@ const regionLabel = (regions, skip = []) => regions.map(r => {
   const on = all.filter(sr => !skip.includes(sr.id));
   return on.length === 1 ? on[0].name : `${name} (${on.length} of ${all.length} areas)`;
 }).join(' + ');
-const MASTERY = [
-  { at: 0, color: null, name: 'Unexplored' },
-  { at: 1, color: '#D7263D', name: 'Stranger' }, { at: 3, color: '#EE6A2C', name: 'Passer-by' }, { at: 6, color: '#F2A93B', name: 'Visitor' },
-  { at: 10, color: '#EBD437', name: 'Regular' }, { at: 16, color: '#A8CF3C', name: 'Explorer' }, { at: 25, color: '#4DB35E', name: 'Local' },
-  { at: 40, color: '#5EC4D9', name: 'Insider' }, { at: 60, color: '#3B8FDB', name: 'Native' }, { at: 90, color: '#2457B8', name: 'Expert' }, { at: 140, color: '#142E73', name: 'Cartographer' },
-];
+const MASTERY = TUNE.mastery;
 const masteryLevel = score => { let lv = 0; MASTERY.forEach((m, i) => { if (score >= m.at) lv = i; }); return lv; };
 // breakaway and autonomous areas GeoNames has no first-level region for
 const SPECIAL_AREAS = { 'SO.03': 'Puntland', 'SO.18': 'Puntland', 'IQ.11': 'Kurdistan Region', 'IQ.08': 'Kurdistan Region', 'IQ.05': 'Kurdistan Region', 'IQ.19': 'Kurdistan Region' };
@@ -152,29 +134,11 @@ const CONTESTED_SET = ['Crimea', 'Abkhazia', 'South Ossetia', 'Northern Cyprus',
 // Every trip is played under a rule set. Harder rules multiply everything the trip scores.
 // Two kinds: a choice between named options, and a slider over kilometres. A slider at zero
 // shuts the mode off entirely, which is why there is no separate "no planes" option any more.
-const RULE_OPTIONS = {
-  planes: { label: 'Planes', options: [
-    { id: 'all', name: 'Any airport', note: 'Big and regional airports', mult: 0.8 },
-    { id: 'large', name: 'Big airports', note: 'Major airports only', mult: 1 },
-    { id: 'capitals', name: 'Capitals only', note: 'Fly between capital cities', mult: 1.15 } ] },
-  planeKm: { label: 'Flight range', slider: { min: 0, max: 9000, step: 250, def: 9000, offMult: 1.3,
-    note: km => km ? `One hop up to ${fmt(km)} km` : 'No planes · stay on the ground' } },
-  trains: { label: 'Trains', options: [
-    { id: 'all', name: 'Any station', note: 'Every passenger line', mult: 1 },
-    { id: 'capitals', name: 'Capitals only', note: 'Rail between capitals', mult: 1.1 } ] },
-  trainKm: { label: 'Rail range', slider: { min: 0, max: 1500, step: 50, def: 900, offMult: 1.2, maxMult: 0.95,
-    note: km => km ? `One ride up to ${fmt(km)} km of track` : 'No trains · roads and ferries only' } },
-  ferryKm: { label: 'Ferry range', slider: { min: 0, max: FERRY_MAX, step: 50, def: FERRY_MAX, offMult: 1.1,
-    note: km => km ? `Crossings up to ${fmt(km)} km of open water` : 'No ferries · mainland trips only' } },
-  tank: { label: 'Tank', options: [
-    { id: 'big', name: 'Big tank', note: '+30% range', mult: 0.85, scale: 1.3 },
-    { id: 'standard', name: 'Standard', note: 'Normal range', mult: 1, scale: 1 },
-    { id: 'small', name: 'Small tank', note: '−30% range', mult: 1.25, scale: 0.7 } ] },
-  hints: { label: 'Help', options: [
-    { id: 'on', name: 'Hints on', note: 'Scout, reveal and roadside help', mult: 1 },
-    { id: 'off', name: 'No hints', note: 'You are on your own', mult: 1.15 } ] },
-};
-const DEFAULT_RULES = { planes: 'large', planeKm: 9000, trains: 'all', trainKm: 900, ferryKm: FERRY_MAX, tank: 'standard', hints: 'on' };
+const RULE_OPTIONS = TUNE.rules;
+RULE_OPTIONS.planeKm.slider.note = km => km ? `One hop up to ${fmt(km)} km` : 'No planes · stay on the ground';
+RULE_OPTIONS.trainKm.slider.note = km => km ? `One ride up to ${fmt(km)} km of track` : 'No trains · roads and ferries only';
+RULE_OPTIONS.ferryKm.slider.note = km => km ? `Crossings up to ${fmt(km)} km of open water` : 'No ferries · mainland trips only';
+const DEFAULT_RULES = TUNE.defaultRules;
 // Saves and races from before the sliders stored planes/trains/ferries as on-off words. An "off" becomes a
 // zero-kilometre slider, which plays and scores the same, so old trips resume under the rules they started with.
 function migrateRules(rules) {
@@ -245,39 +209,15 @@ async function loadRail() {
 }
 const hasStation = id => RAIL.ready && RAIL.stations.has(id);
 const stationOK = (id, rules = RULES) => rules.trains !== 'off' && hasStation(id) && (rules.trains !== 'capitals' || G.fc[id] === G.capital);
-const flightCost = (km, flightsSoFar) => Math.round((15 + km * 0.04) * Math.pow(1.5, flightsSoFar || 0) * (hasPerk('travelcard') ? 0.75 : 1));
+const flightCost = (km, flightsSoFar) => Math.round((TUNE.flights.base + km * TUNE.flights.perKm) * Math.pow(TUNE.flights.growth, flightsSoFar || 0) * (hasPerk('travelcard') ? 0.75 : 1));
 
 // ================= shop catalogue =================
-const STYLES = {
-  atlas: { name: 'Road atlas', price: 0, blurb: 'The classic daylight road map.' },
-  political: { name: 'Political', price: 150, blurb: 'Every country in its own colour. Great for learning borders.' },
-  night: { name: 'Night drive', price: 200, blurb: 'Dark roads, glowing towns and a neon route.' },
-  antique: { name: 'Antique', price: 250, blurb: 'Sepia paper and brown ink, like an old explorer’s chart.' },
-  blueprint: { name: 'Blueprint', price: 300, blurb: 'White lines on drafting blue, with a grid.' },
-  relief: { name: 'Mastery atlas', price: 300, blurb: 'Every trip map tinted by how well you know each country.' },
-  terrain: { name: 'Terrain', price: 300, blurb: 'Shaded relief with elevation colours: see the Alps, Andes and deserts.' },
-  outdoor: { name: 'Outdoor', price: 300, blurb: 'Bright greens and mountain shading, like a hiking map.' },
-  midcentury: { name: 'Mid-century', price: 350, blurb: 'Soft 1950s atlas colours with shaded relief.' },
-  satellite: { name: 'Satellite', price: 500, blurb: 'NASA Blue Marble imagery of the whole planet.' },
-  nightlights: { name: 'Night lights', price: 450, blurb: 'NASA Black Marble: the world at night, every city glowing where it really is.' },
-  grey: { name: 'Grey relief', price: 250, blurb: 'Quiet grey shaded relief, down to the ocean floor.' },
-  metro: { name: 'Metro', price: 200, blurb: 'Dark transit-map greys that make your route pop.' },
-  newsprint: { name: 'Newsprint', price: 150, blurb: 'Black ink on paper, like a map in a morning paper.' },
-  topo: { name: 'Topographic', price: 200, blurb: 'Survey-map greens, brown borders and a grid.' },
-  synthwave: { name: 'Synthwave', price: 300, blurb: 'Neon pink coasts and cyan borders on deep purple.' },
-};
-const MARKERS = [
-  { id: 'car-sport', vehicle: 'car', icon: '🏎️', name: 'Race car', price: 80 }, { id: 'car-suv', vehicle: 'car', icon: '🚙', name: 'SUV', price: 60 },
-  { id: 'car-pickup', vehicle: 'car', icon: '🛻', name: 'Pickup', price: 60 }, { id: 'car-van', vehicle: 'car', icon: '🚐', name: 'Camper van', price: 90 },
-  { id: 'car-bus', vehicle: 'car', icon: '🚌', name: 'Tour bus', price: 90 }, { id: 'bike-moto', vehicle: 'bike', icon: '🏍️', name: 'Motorbike', price: 80 },
-  { id: 'bike-scooter', vehicle: 'bike', icon: '🛵', name: 'Scooter', price: 60 }, { id: 'boat-speed', vehicle: 'boat', icon: '🚤', name: 'Speedboat', price: 80 },
-  { id: 'boat-ship', vehicle: 'boat', icon: '🚢', name: 'Ocean liner', price: 120 },
-  { id: 'train-bullet', vehicle: 'train', icon: '🚅', name: 'Bullet train', price: 100 }, { id: 'train-steam', vehicle: 'train', icon: '🚂', name: 'Steam engine', price: 90 },
-  { id: 'train-tram', vehicle: 'train', icon: '🚋', name: 'Tram', price: 60 },
-];
-const ROUTES = [{ id: 'red', name: 'Road red', color: '#D7263D', price: 0 }, { id: 'cobalt', name: 'Cobalt', color: '#2F5BEA', price: 40 }, { id: 'violet', name: 'Violet', color: '#8A3FFC', price: 40 }, { id: 'gold', name: 'Gold', color: '#E0A100', price: 60 }, { id: 'neon', name: 'Neon', color: '#18C964', price: 60 }];
-const CURSORS = [{ id: 'default', name: 'Standard', emoji: '', price: 0 }, { id: 'compass', name: 'Compass', emoji: '🧭', price: 30 }, { id: 'pin', name: 'Map pin', emoji: '📍', price: 30 }, { id: 'plane', name: 'Paper plane', emoji: '✈️', price: 40 }];
-const CONSUMABLES = [{ id: 'jerrycan', name: 'Jerrycan', icon: '⛽', price: 40, blurb: 'Use during a trip: +25% of your tank.' }, { id: 'ticket', name: 'Ferry ticket', icon: '🎫', price: 50, blurb: 'Use during a trip: one extra ferry crossing.' }];
+const STYLES = TUNE.shop.styles;
+const MARKERS = TUNE.shop.markers;
+const ROUTES = TUNE.shop.routes;
+const CURSORS = TUNE.shop.cursors;
+const CONSUMABLES = TUNE.shop.supplies;
+const tuned = (list, over) => { for (const x of list) Object.assign(x, over[x.id]); return list; };
 const TICKET_PRICE = CONSUMABLES.find(c => c.id === 'ticket').price;
 
 // ================= geometry =================

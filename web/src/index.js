@@ -3,6 +3,8 @@
 import { DurableObject } from 'cloudflare:workers';
 import * as Sentry from '@sentry/cloudflare';
 import { parseName, nickProblem, randomName } from './names.js';
+// the game's tuning file (Stopover Studio edits it): the server checks race stakes, bounty sizes and slider tops against it
+import TUNE from '../../src2/tune.json';
 
 const SESSION_DAYS = 60, MAX_PLAYERS = 8, CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 // Guests play without an account under a random fruit name. Their key lives only in the browser tab (sessionStorage),
@@ -72,7 +74,7 @@ const BOARD_BY = { flags: 's.flags', rating: 's.rating', places: 's.places', cou
   ...Object.fromEntries(CONTINENTS.map(c => [c, `CAST(COALESCE(json_extract(s.cont, '$.${c}'), 0) AS INTEGER)`])) };
 
 // a bounty's route: fixed start and destination, the vehicle, length and rules it was driven under
-const BOUNTY_REWARDS = [100, 250, 500, 1000, 2000], BOUNTY_DAYS = 7;
+const BOUNTY_REWARDS = TUNE.online.bountyRewards, BOUNTY_DAYS = 7;
 function cleanBountySpec(v) {
   if (!v || typeof v !== 'object') return null;
   const from = gidOrNull(v.from), to = gidOrNull(v.to);
@@ -768,9 +770,9 @@ export class Accounts extends DurableObject {
 // the results. Everyone's browser plays the same trip (the host's browser plans it) and reports each stop.
 const MODES = ['time', 'points', 'distance', 'stops'];
 const SETTING_CHOICES = {
-  mode: MODES, limit: [0, 5, 10, 15, 20, 30], vehicle: ['car', 'bike', 'boat', 'train'],
+  mode: MODES, limit: TUNE.online.raceLimits, vehicle: ['car', 'bike', 'boat', 'train'],
   length: ['short', 'medium', 'long', 'epic'],
-  preset: ['beginner', 'standard', 'expert', 'purist'], show: ['live', 'hidden'], stake: [0, 50, 100, 250, 500],
+  preset: ['beginner', 'standard', 'expert', 'purist'], show: ['live', 'hidden'], stake: TUNE.online.raceStakes,
 };
 // regions is a set now, so a host can race Europe + Asia. It is the one setting that isn't a single choice.
 const REGION_IDS = ['EU', 'AS', 'AF', 'NA', 'SA', 'OC', 'ALL', 'UNCHARTED'];
@@ -784,7 +786,7 @@ const cleanRegions = v => {
 // host picked in shape: known words, whole-number place ids, kilometres inside their slider's track.
 const gidOrNull = v => v === null ? null : Number.isInteger(v) && v > 0 && v < 2e9 ? v : undefined;
 const RULE_WORDS = { planes: ['all', 'large', 'capitals'], trains: ['all', 'capitals'], tank: ['big', 'standard', 'small'], hints: ['on', 'off'] };
-const RULE_KM = { planeKm: 9000, trainKm: 1500, ferryKm: 1200 };
+const RULE_KM = { planeKm: TUNE.rules.planeKm.slider.max, trainKm: TUNE.rules.trainKm.slider.max, ferryKm: TUNE.rules.ferryKm.slider.max };
 function cleanTripSettings(m) {
   const out = {};
   if (['coast', 'isles'].includes(m.voyage)) out.voyage = m.voyage;

@@ -56,7 +56,7 @@ function nextTick() {
 }
 
 // ---- hello: once per visit, fading out of the bar. Three days away earns a boosted first trip back.
-const BOOST_DAYS = 3;
+const BOOST_DAYS = TUNE.rewards.boostDays;
 function greetOnBoot() {
   if (MINI) return;
   const now = Date.now(), last = P.lastPlayed || 0, days = last ? (now - last) / 864e5 : 0;
@@ -142,7 +142,7 @@ function nudgesHtml(focusCcs, limit) {
 
 // ---- holo flags: now and then a flag comes as a foil. New flags can, and flags you already own can on a
 // return visit, so a town you know well still has something to give.
-const HOLO_NEW = 0.05, HOLO_AGAIN = 0.03, HOLO_PAY = 3;
+const { holoNew: HOLO_NEW, holoAgain: HOLO_AGAIN, holoPay: HOLO_PAY } = TUNE.rewards;
 const isHolo = (key, p = P) => !!(p.holo && p.holo[key]);
 // the foil sits over the flag picture only, not its caption
 const holoWrap = (imgHtml, on) => on ? `<span class="foilflag">${imgHtml}<span class="holotag">HOLO</span></span>` : imgHtml;
@@ -167,7 +167,7 @@ function celebrateHoloOnly(keys) {
 }
 
 // ---- streak milestones: the flag streak pays out as it reaches round numbers
-const STREAK_MILESTONES = [[3, 25], [7, 60], [14, 120], [30, 250], [50, 400], [100, 800], [200, 1500], [365, 3000]];
+const STREAK_MILESTONES = TUNE.rewards.streakMilestones;
 function streakMilestone(n) {
   const m = STREAK_MILESTONES.find(([d]) => d === n); if (!m) return null;
   P.streakPaid = P.streakPaid || {};

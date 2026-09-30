@@ -5,7 +5,7 @@
 // ---- study decks: places from all over the world, drilled like a country in Study
 const isCapital = i => G.fc[i] === G.capital;
 const contOfId = i => G.contOf[G.cc[i]];
-const STUDY_DECKS = [
+const STUDY_DECKS = tuned([
   { id: 'capitals-eu', name: 'Capitals of Europe', price: 400, blurb: 'Every European capital.', test: i => isCapital(i) && contOfId(i) === 'EU' },
   { id: 'capitals-as', name: 'Capitals of Asia', price: 400, blurb: 'From Ankara to Tokyo.', test: i => isCapital(i) && contOfId(i) === 'AS' },
   { id: 'capitals-af', name: 'Capitals of Africa', price: 500, blurb: 'All 54 and a few more.', test: i => isCapital(i) && contOfId(i) === 'AF' },
@@ -16,7 +16,7 @@ const STUDY_DECKS = [
   { id: 'disputed', name: 'Disputed ground', price: 700, blurb: 'Towns in breakaway and contested territories.', test: i => { const a = G.area[i] ? areaName(i) : null; return !!a && !!DISPUTED[a] && G.pop[i] >= 5000; } },
   { id: 'million', name: 'Million-plus cities', price: 1200, blurb: 'Every city past a million people.', test: i => G.pop[i] >= 1e6 },
   { id: 'capitals-world', name: 'Every capital on Earth', price: 1500, blurb: 'The whole list, one country after another.', test: isCapital },
-];
+], TUNE.shop.decks);
 const deckOf = id => STUDY_DECKS.find(d => d.id === id);
 const ownsDeck = id => P.owned.includes('deck:' + id);
 const DECK_POOLS = new Map();
@@ -78,8 +78,7 @@ document.addEventListener('click', e => { if (e.target.closest('[data-reroll-wan
 // One wrong turn (a place you can't reach, or one you've been to) ends it, and so does the clock. The clock keeps
 // running in another tab or through a reload, so looking the answer up costs the bet. Reach the destination and
 // the wager comes back doubled.
-const STAKES_WAGERS = [250, 500, 750, 1000], STAKES_SECONDS = 10;
-const STAKES_RULES = { planes: 'capitals', planeKm: 0, trains: 'capitals', trainKm: 0, ferryKm: 800, tank: 'standard', hints: 'off' };
+const { wagers: STAKES_WAGERS, seconds: STAKES_SECONDS, rules: STAKES_RULES } = TUNE.stakes;
 const stakesPlayedToday = () => P.lastStakes === localDay();
 function openStakes() {
   let dlg = $('dlg-stakes');

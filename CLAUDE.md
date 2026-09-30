@@ -22,6 +22,52 @@ Repo: https://github.com/luka751/Stopover (branch `main`; the local branch is `m
 - Big data files are not in git: `data.b64` (the gazetteer), `dist/` (flags, maps, rail, covers), `cache/`.
 - `web/static/`: icons, manifest and the link-preview card (`build-icons.mjs` draws them).
 
+## Tuning: numbers, prices, names and colours
+
+`src2/tune.json` holds every tunable value: scoring (stop sizes, repeat visits, short hops), hint costs, flight
+prices, trip lengths, vehicles, difficulty rules, the whole shop (styles, markers, supplies, perks, themes, decks,
+garage models, finishes, mottos), mastery, flag rarity, leagues, streaks, race stakes and bounties. The game reads it as
+`TUNE` (the builds put `const TUNE = {...}` before the game scripts, see `tools/tune-file.mjs`); the Worker imports it
+for race stakes, time limits, bounty sizes and slider tops. Tables that also hold code (garage drawings, study-deck
+tests, cover-finish artwork) keep that code in their .js file and take their shop fields from tune.json via `tuned()`.
+
+- For a value change, don't open the .js files: `node tools/tune.mjs find <word>`, `get <path>`, `set <path> <value>`
+  (paths like `vehicles.car.tank`, `lengths.short.bonus`, `shop.styles.night.price`), `diff` for what changed.
+- A new tunable goes into tune.json and is read as `TUNE.x`; the Studio shows new keys by themselves (under "Other"
+  until `studio/guide.json` gives them a title and help text).
+- Behaviour tied to a value (a perk's effect, what a supply does) is still code; descriptions that quote a number
+  have to be kept in step (the Studio does this for numbers in the same row).
+
+**Stopover Studio** (`node studio/server.mjs`, or the `studio` launch config → http://localhost:4180) is the owner's
+editor for tune.json: sections with plain-English help, tables with colour pickers, add/duplicate/delete for lists
+that allow it, undo, a change list against the last commit, the offline game running beside it (rebuilt on every load,
+with test-save buttons for coins and a fresh player), and Publish (check → commit tune.json → build-web → deploy →
+optional push). Its help text lives in `studio/guide.json`.
+
+**Layout tweaks** (Studio → Move & resize, `studio/layout.js`): the owner clicks an element in the preview, drags it
+(→ `translate`), pulls its corner (→ `width`/`height`) or sets scale, order, text size and weight, colours, rounding,
+spacing, opacity or hides it, for one element or all like it, on every screen / phones (≤760 px) / wider screens.
+Saved as CSS rules in `tune.json → layout.{all,phone,desktop}` (`{ selector: { property: value } }`); `core.js`
+(`layoutCss`) injects them as `<style id="tune-layout">` with `!important`, so they win over the game's CSS and inline
+styles. When renaming an id or class in body.html or the game's HTML, check `layout` for selectors that use it.
+
+## Where things are in src2/
+
+- `core.js`: utilities, rules (vehicles, stop tiers, familiarity), difficulty options, geometry, gazetteer loading,
+  the profile (coins, saves)
+- `extras.js`: discovery, supplies, perks, cosmetics (signs, trails, arrival effects), interface themes
+- `trip.js`: legs and scoring (`travel()`), route finding, trip state, daily/weekly trips
+- `ui.js`: trip console, dialogs (new trip, settings, shop), quick menu, night mode, presets, announcements
+- `map.js`: map renderer and trip map · `isles.js`: Far-Flung Isles voyages · `blind.js`: blind spots and flashcards
+- `passport.js`: explorer rating, leagues, stamps, covers · `social.js`: expeditions feed, titles, showcase, compare
+- `flags.js`: flag catalogue, rarity, wanted board, collecting, flag drop, albums
+- `study.js`: achievements and stats, passport tab, Study (Seterra-style), boot
+- `juice.js`: sounds, ticker, greeting, stop effects, nudges, holo flags, streak milestones, sharing
+- `garage.js`: vehicle models, exhaust trails, the glide animation, cover finishes, mottos
+- `sinks.js`: study decks, flight classes, wanted-board rerolls, high stakes
+- `online.js` (website only): race lobbies, leaderboards, crowns, profiles, bounties
+- `auth.js` (website only, own closure): sign-in, guests, cloud saves, ConfigCat · `i18n.js`: languages
+
 ## Commands
 
 - `node check.mjs`: every script parses (GitHub Actions runs this plus a Worker dry-run on each push)

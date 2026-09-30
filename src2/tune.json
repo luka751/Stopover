@@ -1,0 +1,457 @@
+{
+  "scoring": {
+    "tiers": [
+      { "id": "capital", "label": "Capital", "pts": 10, "refill": 1, "rank": 0, "minPop": 0 },
+      { "id": "metropolis", "label": "Metropolis", "pts": 10, "refill": 1, "rank": 0, "note": "1M+", "minPop": 1000000 },
+      { "id": "city", "label": "City", "pts": 20, "refill": 0.8, "rank": 1, "note": "250k+", "minPop": 250000 },
+      { "id": "large-town", "label": "Large town", "pts": 35, "refill": 0.6, "rank": 2, "note": "50k+", "minPop": 50000 },
+      { "id": "town", "label": "Town", "pts": 55, "refill": 0.45, "rank": 3, "note": "10k+", "minPop": 10000 },
+      { "id": "village", "label": "Village", "pts": 80, "refill": 0.3, "rank": 4, "note": "under 10k", "minPop": 0 }
+    ],
+    "visitMult": [1.5, 1, 0.75, 0.6, 0.5, 0.5, 0.35],
+    "hop": { "min": 0.25, "fullAt": 0.2 },
+    "viaBonus": 60
+  },
+  "costs": { "ticketBonus": 25, "scoutCost": 20, "revealCost": 10, "helpCost": 75 },
+  "flights": { "base": 15, "perKm": 0.04, "growth": 1.5 },
+  "lengths": [
+    { "id": "short", "name": "Short", "km": [350, 700], "minPop": 500000, "blurb": "350–700 km", "bonus": 150 },
+    { "id": "medium", "name": "Medium", "km": [700, 1400], "minPop": 300000, "blurb": "700–1,400 km", "bonus": 300 },
+    { "id": "long", "name": "Long", "km": [1400, 2600], "minPop": 200000, "blurb": "1,400–2,600 km", "bonus": 500 },
+    { "id": "epic", "name": "Epic", "km": [2600, 5000], "minPop": 150000, "blurb": "2,600–5,000 km", "bonus": 800 }
+  ],
+  "lengthScale": { "car": 1, "bike": 0.3, "boat": 1.2, "train": 1 },
+  "vehicles": {
+    "car": {
+      "id": "car",
+      "name": "Car",
+      "icon": "🚗",
+      "tank": 450,
+      "gauge": "Fuel",
+      "road": 50,
+      "ferry": true,
+      "blurb": "450 km tank · short straits by road, ferries for the rest"
+    },
+    "bike": {
+      "id": "bike",
+      "name": "Bike",
+      "icon": "🚲",
+      "tank": 130,
+      "gauge": "Energy",
+      "road": 15,
+      "ferry": true,
+      "blurb": "130 km of legs · perfect for learning small towns"
+    },
+    "boat": { "id": "boat", "name": "Boat", "icon": "⛵", "tank": 650, "gauge": "Provisions", "coastal": true, "land": 60, "blurb": "650 km of provisions · coastal ports only" },
+    "train": { "id": "train", "name": "Train", "icon": "🚆", "tank": 550, "gauge": "Rail range", "rail": true, "blurb": "550 km of real track · stations only" }
+  },
+  "rules": {
+    "planes": {
+      "label": "Planes",
+      "options": [
+        { "id": "all", "name": "Any airport", "note": "Big and regional airports", "mult": 0.8 },
+        { "id": "large", "name": "Big airports", "note": "Major airports only", "mult": 1 },
+        { "id": "capitals", "name": "Capitals only", "note": "Fly between capital cities", "mult": 1.15 }
+      ]
+    },
+    "planeKm": { "label": "Flight range", "slider": { "min": 0, "max": 9000, "step": 250, "def": 9000, "offMult": 1.3 } },
+    "trains": {
+      "label": "Trains",
+      "options": [
+        { "id": "all", "name": "Any station", "note": "Every passenger line", "mult": 1 },
+        { "id": "capitals", "name": "Capitals only", "note": "Rail between capitals", "mult": 1.1 }
+      ]
+    },
+    "trainKm": { "label": "Rail range", "slider": { "min": 0, "max": 1500, "step": 50, "def": 900, "offMult": 1.2, "maxMult": 0.95 } },
+    "ferryKm": { "label": "Ferry range", "slider": { "min": 0, "max": 1200, "step": 50, "def": 1200, "offMult": 1.1 } },
+    "tank": {
+      "label": "Tank",
+      "options": [
+        { "id": "big", "name": "Big tank", "note": "+30% range", "mult": 0.85, "scale": 1.3 },
+        { "id": "standard", "name": "Standard", "note": "Normal range", "mult": 1, "scale": 1 },
+        { "id": "small", "name": "Small tank", "note": "−30% range", "mult": 1.25, "scale": 0.7 }
+      ]
+    },
+    "hints": {
+      "label": "Help",
+      "options": [
+        { "id": "on", "name": "Hints on", "note": "Scout, reveal and roadside help", "mult": 1 },
+        { "id": "off", "name": "No hints", "note": "You are on your own", "mult": 1.15 }
+      ]
+    }
+  },
+  "defaultRules": { "planes": "large", "planeKm": 9000, "trains": "all", "trainKm": 900, "ferryKm": 1200, "tank": "standard", "hints": "on" },
+  "weeklyRules": { "planes": "capitals", "planeKm": 2500, "trains": "capitals", "trainKm": 500, "ferryKm": 500, "tank": "small", "hints": "off" },
+  "mastery": [
+    { "at": 0, "color": null, "name": "Unexplored" },
+    { "at": 1, "color": "#D7263D", "name": "Stranger" },
+    { "at": 3, "color": "#EE6A2C", "name": "Passer-by" },
+    { "at": 6, "color": "#F2A93B", "name": "Visitor" },
+    { "at": 10, "color": "#EBD437", "name": "Regular" },
+    { "at": 16, "color": "#A8CF3C", "name": "Explorer" },
+    { "at": 25, "color": "#4DB35E", "name": "Local" },
+    { "at": 40, "color": "#5EC4D9", "name": "Insider" },
+    { "at": 60, "color": "#3B8FDB", "name": "Native" },
+    { "at": 90, "color": "#2457B8", "name": "Expert" },
+    { "at": 140, "color": "#142E73", "name": "Cartographer" }
+  ],
+  "shop": {
+    "styles": {
+      "atlas": { "name": "Road atlas", "price": 0, "blurb": "The classic daylight road map." },
+      "political": { "name": "Political", "price": 150, "blurb": "Every country in its own colour. Great for learning borders." },
+      "night": { "name": "Night drive", "price": 200, "blurb": "Dark roads, glowing towns and a neon route." },
+      "antique": { "name": "Antique", "price": 250, "blurb": "Sepia paper and brown ink, like an old explorer’s chart." },
+      "blueprint": { "name": "Blueprint", "price": 300, "blurb": "White lines on drafting blue, with a grid." },
+      "relief": { "name": "Mastery atlas", "price": 300, "blurb": "Every trip map tinted by how well you know each country." },
+      "terrain": { "name": "Terrain", "price": 300, "blurb": "Shaded relief with elevation colours: see the Alps, Andes and deserts." },
+      "outdoor": { "name": "Outdoor", "price": 300, "blurb": "Bright greens and mountain shading, like a hiking map." },
+      "midcentury": { "name": "Mid-century", "price": 350, "blurb": "Soft 1950s atlas colours with shaded relief." },
+      "satellite": { "name": "Satellite", "price": 500, "blurb": "NASA Blue Marble imagery of the whole planet." },
+      "nightlights": { "name": "Night lights", "price": 450, "blurb": "NASA Black Marble: the world at night, every city glowing where it really is." },
+      "grey": { "name": "Grey relief", "price": 250, "blurb": "Quiet grey shaded relief, down to the ocean floor." },
+      "metro": { "name": "Metro", "price": 200, "blurb": "Dark transit-map greys that make your route pop." },
+      "newsprint": { "name": "Newsprint", "price": 150, "blurb": "Black ink on paper, like a map in a morning paper." },
+      "topo": { "name": "Topographic", "price": 200, "blurb": "Survey-map greens, brown borders and a grid." },
+      "synthwave": { "name": "Synthwave", "price": 300, "blurb": "Neon pink coasts and cyan borders on deep purple." }
+    },
+    "markers": [
+      { "id": "car-sport", "vehicle": "car", "icon": "🏎️", "name": "Race car", "price": 80 },
+      { "id": "car-suv", "vehicle": "car", "icon": "🚙", "name": "SUV", "price": 60 },
+      { "id": "car-pickup", "vehicle": "car", "icon": "🛻", "name": "Pickup", "price": 60 },
+      { "id": "car-van", "vehicle": "car", "icon": "🚐", "name": "Camper van", "price": 90 },
+      { "id": "car-bus", "vehicle": "car", "icon": "🚌", "name": "Tour bus", "price": 90 },
+      { "id": "bike-moto", "vehicle": "bike", "icon": "🏍️", "name": "Motorbike", "price": 80 },
+      { "id": "bike-scooter", "vehicle": "bike", "icon": "🛵", "name": "Scooter", "price": 60 },
+      { "id": "boat-speed", "vehicle": "boat", "icon": "🚤", "name": "Speedboat", "price": 80 },
+      { "id": "boat-ship", "vehicle": "boat", "icon": "🚢", "name": "Ocean liner", "price": 120 },
+      { "id": "train-bullet", "vehicle": "train", "icon": "🚅", "name": "Bullet train", "price": 100 },
+      { "id": "train-steam", "vehicle": "train", "icon": "🚂", "name": "Steam engine", "price": 90 },
+      { "id": "train-tram", "vehicle": "train", "icon": "🚋", "name": "Tram", "price": 60 }
+    ],
+    "routes": [
+      { "id": "red", "name": "Road red", "color": "#D7263D", "price": 0 },
+      { "id": "cobalt", "name": "Cobalt", "color": "#2F5BEA", "price": 40 },
+      { "id": "violet", "name": "Violet", "color": "#8A3FFC", "price": 40 },
+      { "id": "gold", "name": "Gold", "color": "#E0A100", "price": 60 },
+      { "id": "neon", "name": "Neon", "color": "#18C964", "price": 60 }
+    ],
+    "cursors": [
+      { "id": "default", "name": "Standard", "emoji": "", "price": 0 },
+      { "id": "compass", "name": "Compass", "emoji": "🧭", "price": 30 },
+      { "id": "pin", "name": "Map pin", "emoji": "📍", "price": 30 },
+      { "id": "plane", "name": "Paper plane", "emoji": "✈️", "price": 40 }
+    ],
+    "supplies": [
+      {
+        "id": "jerrycan",
+        "name": "Jerrycan",
+        "icon": "⛽",
+        "price": 40,
+        "blurb": "Use during a trip: +30% of your tank, right where you are. For the leg that is just out of reach."
+      },
+      { "id": "ticket", "name": "Ferry ticket", "icon": "🎫", "price": 45, "blurb": "Use during a trip: one extra ferry crossing, when an island is the only way on." },
+      {
+        "id": "tow",
+        "name": "Tow truck",
+        "icon": "🛻",
+        "price": 70,
+        "blurb": "Use during a trip: undo your last leg. For the wrong Springfield, or a dead end you drove into."
+      }
+    ],
+    "perks": [
+      {
+        "id": "mechanic",
+        "name": "Mechanic",
+        "icon": "🔧",
+        "price": 350,
+        "league": 0,
+        "blurb": "Roadside help costs 40 points instead of 75, works under 60% of a tank and fills it to 60%."
+      },
+      {
+        "id": "scouts",
+        "name": "Field scout",
+        "icon": "🔭",
+        "price": 400,
+        "league": 0,
+        "blurb": "Scout ahead costs 10 points instead of 20, and revealing a scouted name is free."
+      },
+      { "id": "season", "name": "Ferry season ticket", "icon": "⛴️", "price": 500, "league": 1, "blurb": "One extra ferry ticket on every car and bike trip." },
+      { "id": "travelcard", "name": "Travel card", "icon": "💳", "price": 600, "league": 1, "blurb": "Paid trains and flights on road trips cost 25% less." },
+      {
+        "id": "instinct",
+        "name": "Explorer's instinct",
+        "icon": "🧠",
+        "price": 750,
+        "league": 2,
+        "blurb": "Scout ahead also shows one reachable town you have never visited, for a bigger discovery bonus."
+      },
+      { "id": "tank", "name": "Long-range tank", "icon": "🚀", "price": 1500, "league": 3, "blurb": "Every vehicle carries 10% more range, on every trip." }
+    ],
+    "signs": [
+      { "id": "eroad", "name": "European road sign", "price": 0, "blurb": "The green E-road direction sign." },
+      { "id": "interstate", "name": "US interstate", "price": 120, "blurb": "Blue and red interstate shield colours." },
+      { "id": "motorway", "name": "UK motorway", "price": 120, "blurb": "White on motorway blue." },
+      { "id": "ortstafel", "name": "German town sign", "price": 120, "blurb": "Black on yellow, like an Ortstafel." },
+      { "id": "asphalt", "name": "Asphalt", "price": 150, "blurb": "White road paint on black tarmac, with a centre line." }
+    ],
+    "trails": [
+      { "id": "solid", "name": "Solid line", "price": 0, "blurb": "The classic route line." },
+      { "id": "dotted", "name": "Dotted", "price": 60, "blurb": "Round dots all the way." },
+      { "id": "glow", "name": "Glow", "price": 90, "blurb": "Your route shines on the map." },
+      { "id": "march", "name": "Marching dashes", "price": 120, "blurb": "Dashes that keep moving along your route." },
+      { "id": "rainbow", "name": "Rainbow", "price": 150, "blurb": "Colours that flow along your route." }
+    ],
+    "effects": [
+      { "id": "puff", "name": "Confetti puff", "price": 0, "blurb": "A short burst of confetti when you arrive." },
+      { "id": "none", "name": "No effect", "price": 0, "blurb": "Arrive quietly." },
+      { "id": "fireworks", "name": "Fireworks", "price": 120, "blurb": "Fireworks over the map when you arrive." },
+      { "id": "confetti", "name": "Confetti stamp", "price": 100, "blurb": "An ARRIVED stamp and a shower of confetti." }
+    ],
+    "inkPacks": {
+      "classic": { "name": "Border-post inks", "price": 0, "inks": ["#A32D2D", "#185FA5", "#2E7D32", "#5B3FA6", "#2B2B2B", "#B3541E"] },
+      "navy": { "name": "Consular navy", "price": 50, "inks": ["#1B2A4A", "#23395D", "#2E4A7D", "#3B5B92"] },
+      "neon": { "name": "Neon inks", "price": 80, "inks": ["#FF2E88", "#00A6E0", "#1FBF3A", "#FF8A00", "#9B26FF"] },
+      "gold": { "name": "Gold foil", "price": 120, "inks": ["#B8860B", "#C9A227", "#9C7A1C", "#D4AF37"] }
+    },
+    "soundPacks": {
+      "bells": { "name": "Bells", "icon": "🔔", "price": 0, "type": "triangle", "base": 523.25, "gap": 0.075, "decay": 0.45 },
+      "marimba": { "name": "Marimba", "icon": "🪘", "price": 50, "type": "sine", "base": 261.63, "gap": 0.09, "decay": 0.3 },
+      "arcade": { "name": "Arcade", "icon": "👾", "price": 50, "type": "square", "base": 523.25, "gap": 0.05, "decay": 0.18, "gain": 0.035 },
+      "harp": { "name": "Harp", "icon": "🎼", "price": 60, "type": "sine", "base": 783.99, "gap": 0.06, "decay": 0.9 }
+    },
+    "holo": { "name": "Holo shine", "price": 300, "blurb": "Legendary flags shimmer in your collection and on the flag card." },
+    "themes": {
+      "field": { "name": "Field guide", "price": 0, "blurb": "The original: sage paper and road-sign green." },
+      "sandstone": {
+        "name": "Sandstone",
+        "price": 300,
+        "blurb": "Warm desert paper with terracotta buttons.",
+        "day": { "page": "#F1E8DA", "panel": "#FFFBF4", "panel2": "#F6EDE0", "ink": "#2B1E14", "muted": "#7A6553", "line": "#E0CFBA", "accent": "#B5532C" },
+        "night": { "page": "#17110C", "panel": "#211812", "panel2": "#2A1F17", "ink": "#F2E6D8", "muted": "#B39C86", "line": "#3A2C21", "accent": "#D9703F" }
+      },
+      "nordic": {
+        "name": "Nordic",
+        "price": 300,
+        "blurb": "Pale fjord greys and deep sea blue.",
+        "day": { "page": "#E8EDF1", "panel": "#FFFFFF", "panel2": "#F1F5F8", "ink": "#16212B", "muted": "#5B6B78", "line": "#D0DAE2", "accent": "#1F5C99" },
+        "night": { "page": "#0B1219", "panel": "#121C25", "panel2": "#17232E", "ink": "#E3ECF3", "muted": "#8FA2B2", "line": "#243442", "accent": "#4E93D6" }
+      },
+      "sakura": {
+        "name": "Sakura",
+        "price": 350,
+        "blurb": "Blossom pink with a plum accent.",
+        "day": { "page": "#F7EAEE", "panel": "#FFFBFC", "panel2": "#FBF0F3", "ink": "#2E1622", "muted": "#85606F", "line": "#EDD3DC", "accent": "#A63A6B" },
+        "night": { "page": "#170C12", "panel": "#21121A", "panel2": "#2A1822", "ink": "#F6E4EC", "muted": "#BE93A6", "line": "#3C2330", "accent": "#E0679F" }
+      },
+      "lagoon": {
+        "name": "Lagoon",
+        "price": 350,
+        "blurb": "Clear aqua water and teal buttons.",
+        "day": { "page": "#E2F1F0", "panel": "#FBFFFF", "panel2": "#EDF7F6", "ink": "#0F2A2A", "muted": "#4F7270", "line": "#C7E0DE", "accent": "#0E7C7B" },
+        "night": { "page": "#071514", "panel": "#0D1F1E", "panel2": "#122827", "ink": "#DDF2F0", "muted": "#86ADAA", "line": "#1D3836", "accent": "#2BB3AE" }
+      },
+      "mediterranean": {
+        "name": "Mediterranean",
+        "price": 400,
+        "blurb": "Whitewashed walls, cobalt doors, a lemon highlight.",
+        "day": { "page": "#EEF1F6", "panel": "#FFFFFF", "panel2": "#F3F6FB", "ink": "#101A33", "muted": "#56627E", "line": "#D5DCEA", "accent": "#1F46B8", "fuel": "#E8B400" },
+        "night": { "page": "#080D1C", "panel": "#0F1628", "panel2": "#141D33", "ink": "#E6ECFA", "muted": "#8C99BA", "line": "#222D48", "accent": "#5B80F0", "fuel": "#F2C94C" }
+      },
+      "graphite": {
+        "name": "Graphite",
+        "price": 400,
+        "blurb": "Neutral greys with road-marking yellow.",
+        "day": {
+          "page": "#E9E9E7",
+          "panel": "#FAFAF9",
+          "panel2": "#F0F0EE",
+          "ink": "#1C1C1B",
+          "muted": "#62625F",
+          "line": "#D4D4D0",
+          "accent": "#2B2B2A",
+          "accentInk": "#FFD23F"
+        },
+        "night": {
+          "page": "#0F0F0F",
+          "panel": "#181818",
+          "panel2": "#1F1F1F",
+          "ink": "#EDEDEA",
+          "muted": "#9A9A95",
+          "line": "#2E2E2C",
+          "accent": "#FFD23F",
+          "accentInk": "#141414"
+        }
+      },
+      "forest": {
+        "name": "Black Forest",
+        "price": 400,
+        "blurb": "Pine greens, bark browns and amber.",
+        "day": { "page": "#E4EAE0", "panel": "#FAFCF8", "panel2": "#EEF3EA", "ink": "#17231A", "muted": "#5A6A5C", "line": "#CFDAC9", "accent": "#2F5E3A", "fuel": "#D98E04" },
+        "night": { "page": "#0A110C", "panel": "#111B14", "panel2": "#16231A", "ink": "#E0EDE2", "muted": "#8EA792", "line": "#213225", "accent": "#58A06A", "fuel": "#F0A92B" }
+      },
+      "lavender": {
+        "name": "Provence",
+        "price": 350,
+        "blurb": "Lavender fields at dusk.",
+        "day": { "page": "#EDEAF5", "panel": "#FDFCFF", "panel2": "#F3F0FA", "ink": "#1F1A33", "muted": "#6A6285", "line": "#DAD4EA", "accent": "#6441A5" },
+        "night": { "page": "#100D1A", "panel": "#181425", "panel2": "#1E192E", "ink": "#ECE8F7", "muted": "#A59DC2", "line": "#2C2542", "accent": "#9C7BE0" }
+      },
+      "savanna": {
+        "name": "Savanna",
+        "price": 450,
+        "blurb": "Golden grass, red earth and a sunset orange.",
+        "day": { "page": "#F3E9CF", "panel": "#FFFBEF", "panel2": "#F8F0DC", "ink": "#2A1D08", "muted": "#7C6A45", "line": "#E6D5AA", "accent": "#C2410C" },
+        "night": { "page": "#150F05", "panel": "#20180A", "panel2": "#292010", "ink": "#F5EAD0", "muted": "#BBA67A", "line": "#3A2E17", "accent": "#F26B2A" }
+      },
+      "aurora": {
+        "name": "Aurora",
+        "price": 500,
+        "blurb": "Polar night with green and violet lights.",
+        "day": { "page": "#E6EEF0", "panel": "#FBFEFE", "panel2": "#EFF5F6", "ink": "#0F1E24", "muted": "#50686F", "line": "#CDDDE1", "accent": "#0F8A6B" },
+        "night": {
+          "page": "#050A12",
+          "panel": "#0B1422",
+          "panel2": "#0F1A2C",
+          "ink": "#E2F4F0",
+          "muted": "#86A5B0",
+          "line": "#1A2940",
+          "accent": "#3DDC97",
+          "accentInk": "#04140D",
+          "route": "#B57BFF"
+        }
+      },
+      "terminal": {
+        "name": "Terminal",
+        "price": 500,
+        "blurb": "Phosphor green on black. Amber paper by day.",
+        "day": { "page": "#F4ECD8", "panel": "#FFF9EA", "panel2": "#F7EFDA", "ink": "#2A2010", "muted": "#7D6C49", "line": "#E4D6B2", "accent": "#A35C00" },
+        "night": {
+          "page": "#030603",
+          "panel": "#081008",
+          "panel2": "#0C160C",
+          "ink": "#B8F5B0",
+          "muted": "#6FA86A",
+          "line": "#173017",
+          "accent": "#39FF14",
+          "accentInk": "#031003",
+          "good": "#39FF14"
+        }
+      },
+      "candy": {
+        "name": "Candy shop",
+        "price": 450,
+        "blurb": "Mint, bubblegum and a lot of fun.",
+        "day": { "page": "#E9F7F1", "panel": "#FFFFFF", "panel2": "#F0FAF5", "ink": "#1E2433", "muted": "#5F6B80", "line": "#CFEDE0", "accent": "#E3367A" },
+        "night": { "page": "#0E1117", "panel": "#161B25", "panel2": "#1B2230", "ink": "#F0F4FB", "muted": "#9AA6BC", "line": "#28314A", "accent": "#FF5C9E" }
+      }
+    },
+    "decks": {
+      "capitals-eu": { "name": "Capitals of Europe", "price": 400, "blurb": "Every European capital." },
+      "capitals-as": { "name": "Capitals of Asia", "price": 400, "blurb": "From Ankara to Tokyo." },
+      "capitals-af": { "name": "Capitals of Africa", "price": 500, "blurb": "All 54 and a few more." },
+      "capitals-am": { "name": "Capitals of the Americas", "price": 500, "blurb": "North, Central, South and the Caribbean." },
+      "capitals-oc": { "name": "Capitals of Oceania", "price": 300, "blurb": "Specks in the Pacific included." },
+      "islands": { "name": "Island capitals", "price": 600, "blurb": "The capitals of island nations." },
+      "megacities": { "name": "Megacities", "price": 800, "blurb": "Every city of 5 million or more." },
+      "disputed": { "name": "Disputed ground", "price": 700, "blurb": "Towns in breakaway and contested territories." },
+      "million": { "name": "Million-plus cities", "price": 1200, "blurb": "Every city past a million people." },
+      "capitals-world": { "name": "Every capital on Earth", "price": 1500, "blurb": "The whole list, one country after another." }
+    },
+    "models": {
+      "car-cab": { "name": "Yellow cab", "price": 1000, "blurb": "Checkered stripe and a roof light." },
+      "car-camper": { "name": "Campervan", "price": 1800, "blurb": "Two-tone, with a pop-top roof." },
+      "car-vintage": { "name": "Vintage roadster", "price": 2500, "blurb": "A 1930s open tourer with a spare on the back." },
+      "car-super": { "name": "Supercar", "price": 6000, "blurb": "Wedge nose, racing stripes, rear wing." },
+      "bike-racer": { "name": "Road bike", "price": 1000, "blurb": "Drop bars and a rider in club colours." },
+      "bike-cruiser": { "name": "Cruiser motorbike", "price": 2500, "blurb": "Chrome, leather and wide bars." },
+      "train-steam": { "name": "Steam locomotive", "price": 3500, "blurb": "Black boiler, red cab, and it smokes as it goes." },
+      "train-bullet": { "name": "High-speed locomotive", "price": 5000, "blurb": "A long white nose and a blue stripe, with a carriage behind." },
+      "boat-tallship": { "name": "Tall ship", "price": 4000, "blurb": "Three masts under full sail." },
+      "boat-yacht": { "name": "Luxury yacht", "price": 8000, "blurb": "Teak decks, tinted glass and a helipad." },
+      "plane-biplane": { "name": "Retro biplane", "price": 3500, "blurb": "Red and yellow, with a spinning propeller. Flies your flights." },
+      "plane-jet": { "name": "Private jet", "price": 10000, "blurb": "Swept wings and a gold cheatline. Flies your flights." }
+    },
+    "exhausts": [
+      { "id": "smoke", "name": "Smoke puffs", "price": 750, "blurb": "Soft grey puffs that drift and fade." },
+      { "id": "bubbles", "name": "Wake bubbles", "price": 1000, "blurb": "Blue bubbles, best behind a boat." },
+      { "id": "hearts", "name": "Hearts", "price": 1200, "blurb": "Little red hearts floating off." },
+      { "id": "sparkle", "name": "Gold sparkle", "price": 1500, "blurb": "Glinting golden stars." },
+      { "id": "confetti", "name": "Confetti", "price": 2000, "blurb": "Every colour, tumbling." },
+      { "id": "flames", "name": "Afterburner", "price": 2500, "blurb": "Orange flame licks behind you." },
+      { "id": "rainbow", "name": "Rainbow road", "price": 3000, "blurb": "A ribbon of colour that cycles as you go." }
+    ],
+    "finishes": {
+      "gold": { "name": "Embossed gold", "price": 1000, "blurb": "Gold-foil lettering and a pressed double border." },
+      "parchment": { "name": "Vintage parchment", "price": 1500, "blurb": "Aged paper, sepia ink and foxed edges." },
+      "leather": { "name": "Tooled leather", "price": 2000, "blurb": "Brown hide with a stitched edge." },
+      "obsidian": { "name": "Obsidian", "price": 3000, "blurb": "Volcanic black glass with silver lettering and a glossy sheen." },
+      "holo": { "name": "Holographic", "price": 5000, "blurb": "A foil cover that runs through every colour." }
+    },
+    "mottos": [
+      { "id": "recalc", "text": "Recalculating…", "price": 300 },
+      { "id": "shortest", "text": "Calculating shortest route possible…", "price": 400 },
+      { "id": "not-a-joke", "text": "Not a joke.", "price": 400 },
+      { "id": "paris-vegas", "text": "Paris, Las Vegas", "price": 500 },
+      { "id": "lost", "text": "Lost, but making good time", "price": 500 },
+      { "id": "borders", "text": "I brake for borders", "price": 600 },
+      { "id": "shortcut", "text": "It's a shortcut, trust me", "price": 600 },
+      { "id": "gps", "text": "My GPS has trust issues", "price": 700 },
+      { "id": "fumes", "text": "Running on fumes and optimism", "price": 700 },
+      { "id": "scenic", "text": "Took the scenic route. On purpose.", "price": 800 },
+      { "id": "window", "text": "Window seat or nothing", "price": 800 },
+      { "id": "sydney", "text": "Sydney is not the capital. I checked.", "price": 1000 },
+      { "id": "georgia", "text": "Georgia. No, the other one.", "price": 1000 },
+      { "id": "sweden", "text": "Switzerland? I thought you said Sweden.", "price": 1200 },
+      { "id": "albuquerque", "text": "Should've turned left at Albuquerque", "price": 1500 }
+    ]
+  },
+  "flags": {
+    "rarity": [
+      { "id": "common", "name": "Common", "color": "#7D8A84", "coins": 2 },
+      { "id": "uncommon", "name": "Uncommon", "color": "#1B8A4C", "coins": 3 },
+      { "id": "rare", "name": "Rare", "color": "#1D6FB8", "coins": 6 },
+      { "id": "epic", "name": "Epic", "color": "#8A3FFC", "coins": 10 },
+      { "id": "legendary", "name": "Legendary", "color": "#E0A100", "coins": 20 }
+    ],
+    "ranks": [
+      { "at": 0, "name": "No flags yet" },
+      { "at": 1, "name": "Flag spotter" },
+      { "at": 25, "name": "Pennant keeper" },
+      { "at": 75, "name": "Banner bearer" },
+      { "at": 200, "name": "Standard bearer" },
+      { "at": 500, "name": "Vexillologist" },
+      { "at": 1200, "name": "Herald of nations" }
+    ],
+    "albumSteps": [0.25, 0.5, 0.75, 1],
+    "albumPay": [0.5, 1, 1.5, 3],
+    "ratingMax": 150,
+    "wantedBonus": 20,
+    "sweepBonus": 60
+  },
+  "passport": {
+    "tripPar": { "short": 400, "medium": 750, "long": 1300, "epic": 2200 },
+    "vehiclePar": { "car": 1, "bike": 0.6, "boat": 0.9, "train": 0.8 },
+    "leagues": [
+      { "id": "travel-doc", "at": 0, "name": "Travel document", "color": "#5F6368", "ink": "#D9DCD6", "emblem": "doc", "title": "TRAVEL DOCUMENT" },
+      { "id": "passport", "at": 150, "name": "Passport", "color": "#1F4B35", "ink": "#E7C46A", "emblem": "globe", "title": "PASSPORT" },
+      { "id": "service", "at": 350, "name": "Service passport", "color": "#6B1E2C", "ink": "#E7C46A", "emblem": "globe", "title": "SERVICE PASSPORT" },
+      { "id": "diplomatic", "at": 550, "name": "Diplomatic passport", "color": "#17191C", "ink": "#E7C46A", "emblem": "laurel", "title": "DIPLOMATIC PASSPORT" },
+      { "id": "laissez", "at": 750, "name": "Laissez-passer", "color": "#1D5FA8", "ink": "#EAF2FB", "emblem": "laurel", "title": "LAISSEZ-PASSER" }
+    ],
+    "coverUnlock": 25
+  },
+  "rewards": {
+    "streakMilestones": [[3, 25], [7, 60], [14, 120], [30, 250], [50, 400], [100, 800], [200, 1500], [365, 3000]],
+    "boostDays": 3,
+    "holoNew": 0.05,
+    "holoAgain": 0.03,
+    "holoPay": 3
+  },
+  "stakes": {
+    "wagers": [250, 500, 750, 1000],
+    "seconds": 10,
+    "rules": { "planes": "capitals", "planeKm": 0, "trains": "capitals", "trainKm": 0, "ferryKm": 800, "tank": "standard", "hints": "off" }
+  },
+  "online": { "raceLimits": [0, 5, 10, 15, 20, 30], "raceStakes": [0, 50, 100, 250, 500], "bountyRewards": [100, 250, 500, 1000, 2000] },
+  "layout": { "all": {}, "phone": {}, "desktop": {} }
+}

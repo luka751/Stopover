@@ -10,7 +10,7 @@ const rr = (c, x, y, w, h, r) => { c.beginPath(); if (c.roundRect) c.roundRect(x
 const fillRR = (c, x, y, w, h, r, col) => { rr(c, x, y, w, h, r); c.fillStyle = col; c.fill(); };
 const dot = (c, x, y, r, col) => { c.beginPath(); c.arc(x, y, r, 0, 7); c.fillStyle = col; c.fill(); };
 const wheels = (c, xs, y, w = 6, h = 3, col = '#1C1C1C') => { for (const x of xs) for (const s of [-1, 1]) fillRR(c, x - w / 2, s * y - h / 2, w, h, 1.2, col); };
-const MODELS = [
+const MODELS = tuned([
   { id: 'car-cab', kind: 'car', name: 'Yellow cab', price: 1000, blurb: 'Checkered stripe and a roof light.', draw: (c) => {
     wheels(c, [-9, 9], 7.6); fillRR(c, -16, -7, 32, 14, 4, '#F4C20D'); fillRR(c, -7, -6, 13, 12, 3, '#2E3A44');
     fillRR(c, -5, -3, 7, 6, 1.5, '#FFFFFF'); c.fillStyle = '#1C1C1C'; for (let i = 0; i < 6; i++) c.fillRect(-15 + i * 5, (i % 2 ? -7 : 5.5), 2.5, 1.5);
@@ -62,7 +62,7 @@ const MODELS = [
     c.beginPath(); c.moveTo(-15, -1.5); c.lineTo(-21, -7); c.lineTo(-23, -7); c.lineTo(-19, -1.5); c.moveTo(-15, 1.5); c.lineTo(-21, 7); c.lineTo(-23, 7); c.lineTo(-19, 1.5); c.fill();
     c.beginPath(); c.moveTo(22, 0); c.bezierCurveTo(20, -3, 14, -3.2, 8, -3.2); c.lineTo(-20, -2.4); c.lineTo(-22, 0); c.lineTo(-20, 2.4); c.lineTo(8, 3.2); c.bezierCurveTo(14, 3.2, 20, 3, 22, 0); c.fillStyle = '#FFFFFF'; c.fill(); c.strokeStyle = '#AEB8C2'; c.lineWidth = .7; c.stroke();
     c.fillStyle = '#C9A227'; c.fillRect(-20, -.6, 38, 1.2); fillRR(c, 15, -1.8, 4, 3.6, 1.6, '#1E2A38'); } },
-];
+], TUNE.shop.models);
 const MODEL_KINDS = [['car', 'Car'], ['bike', 'Bike'], ['boat', 'Boat'], ['train', 'Train'], ['plane', 'Flights']];
 const modelFor = kind => { const id = ((P.equip || {}).models || {})[kind]; return MODELS.find(m => m.id === id && m.kind === kind) || null; };
 // a model drawn at (x, y) facing angle a (radians, screen space); a soft shadow lifts it off the map
@@ -88,15 +88,7 @@ function paintModelPreview(canvas, id) {
 }
 
 // ---- exhaust trails: particles left behind while a vehicle is moving
-const EXHAUSTS = [
-  { id: 'smoke', name: 'Smoke puffs', price: 750, blurb: 'Soft grey puffs that drift and fade.' },
-  { id: 'bubbles', name: 'Wake bubbles', price: 1000, blurb: 'Blue bubbles, best behind a boat.' },
-  { id: 'hearts', name: 'Hearts', price: 1200, blurb: 'Little red hearts floating off.' },
-  { id: 'sparkle', name: 'Gold sparkle', price: 1500, blurb: 'Glinting golden stars.' },
-  { id: 'confetti', name: 'Confetti', price: 2000, blurb: 'Every colour, tumbling.' },
-  { id: 'flames', name: 'Afterburner', price: 2500, blurb: 'Orange flame licks behind you.' },
-  { id: 'rainbow', name: 'Rainbow road', price: 3000, blurb: 'A ribbon of colour that cycles as you go.' },
-];
+const EXHAUSTS = TUNE.shop.exhausts;
 const CONFETTI = ['#EF476F', '#FFD166', '#06D6A0', '#118AB2', '#8A3FFC'];
 function drawParticle(ctx, p, x, y, k) {
   const fade = 1 - k;
@@ -217,26 +209,11 @@ const COVER_FINISHES = {
     defs: '<linearGradient id="cf-holo" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFD6E8"/><stop offset=".25" stop-color="#C8F1FF"/><stop offset=".5" stop-color="#E4D4FF"/><stop offset=".75" stop-color="#D2FFE4"/><stop offset="1" stop-color="#FFF1C2"/></linearGradient><linearGradient id="cf-holoshine" x1="0" y1="1" x2="1" y2="0"><stop offset=".35" stop-color="#FFF" stop-opacity="0"/><stop offset=".5" stop-color="#FFF" stop-opacity=".55"/><stop offset=".65" stop-color="#FFF" stop-opacity="0"/></linearGradient>',
     over: '<rect width="220" height="310" rx="10" fill="url(#cf-holoshine)"/>' },
 };
+for (const [id, f] of Object.entries(TUNE.shop.finishes)) Object.assign(COVER_FINISHES[id] || {}, f);
 // the finish a passport carries: yours from your equipment, anyone else's from their public profile
 const finishOf = p => { const f = ((p || {}).equip || {}).finish; return COVER_FINISHES[f] ? f : null; };
 
 // ---- mottos: a line of your own under your name, bought, not earned
-const MOTTOS = [
-  { id: 'recalc', text: 'Recalculating…', price: 300 },
-  { id: 'shortest', text: 'Calculating shortest route possible…', price: 400 },
-  { id: 'not-a-joke', text: 'Not a joke.', price: 400 },
-  { id: 'paris-vegas', text: 'Paris, Las Vegas', price: 500 },
-  { id: 'lost', text: 'Lost, but making good time', price: 500 },
-  { id: 'borders', text: 'I brake for borders', price: 600 },
-  { id: 'shortcut', text: "It's a shortcut, trust me", price: 600 },
-  { id: 'gps', text: 'My GPS has trust issues', price: 700 },
-  { id: 'fumes', text: 'Running on fumes and optimism', price: 700 },
-  { id: 'scenic', text: 'Took the scenic route. On purpose.', price: 800 },
-  { id: 'window', text: 'Window seat or nothing', price: 800 },
-  { id: 'sydney', text: 'Sydney is not the capital. I checked.', price: 1000 },
-  { id: 'georgia', text: 'Georgia. No, the other one.', price: 1000 },
-  { id: 'sweden', text: 'Switzerland? I thought you said Sweden.', price: 1200 },
-  { id: 'albuquerque', text: "Should've turned left at Albuquerque", price: 1500 },
-];
+const MOTTOS = TUNE.shop.mottos;
 const mottoText = id => (MOTTOS.find(m => m.id === id) || {}).text || '';
 const myMotto = () => P.motto && P.owned.includes('motto:' + P.motto) ? P.motto : null;

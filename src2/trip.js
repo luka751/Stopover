@@ -313,9 +313,9 @@ function setMsg(text, cls = '', act = null) {
 const viaLeft = () => (S && S.via || []).filter(v => !S.stops.some(s => s.id === v));
 // where the sign points: the next place you have to pass through, then the destination
 const nextTarget = () => viaLeft()[0] ?? S.dest;
-const VIA_BONUS = 60;
+const VIA_BONUS = TUNE.scoring.viaBonus;
 // The weekly challenge: an Epic car trip from memory under hard rules, on a continent that turns over each week.
-const WEEKLY_RULES = { planes: 'capitals', planeKm: 2500, trains: 'capitals', trainKm: 500, ferryKm: 500, tank: 'small', hints: 'off' };
+const WEEKLY_RULES = TUNE.weeklyRules;
 const WEEKLY_REGIONS = ['EU', 'AS', 'NA', 'AF', 'SA', 'EU', 'AS'];
 function isoWeek(t = new Date()) {
   const d = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate())), day = d.getUTCDay() || 7;

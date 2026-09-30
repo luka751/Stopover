@@ -3,15 +3,9 @@
 //   trips (up to 600): average of your last 10 finished trips, each scored against a par for its length and vehicle
 //   knowledge (up to 400): unique places you know, with diminishing returns
 //   flags (up to 150): the size of your flag collection, with diminishing returns
-const TRIP_PAR = { short: 400, medium: 750, long: 1300, epic: 2200 };
-const VEHICLE_PAR = { car: 1, bike: 0.6, boat: 0.9, train: 0.8 };
-const LEAGUES = [
-  { id: 'travel-doc', at: 0, name: 'Travel document', color: '#5F6368', ink: '#D9DCD6', emblem: 'doc', title: 'TRAVEL DOCUMENT' },
-  { id: 'passport', at: 150, name: 'Passport', color: '#1F4B35', ink: '#E7C46A', emblem: 'globe', title: 'PASSPORT' },
-  { id: 'service', at: 350, name: 'Service passport', color: '#6B1E2C', ink: '#E7C46A', emblem: 'globe', title: 'SERVICE PASSPORT' },
-  { id: 'diplomatic', at: 550, name: 'Diplomatic passport', color: '#17191C', ink: '#E7C46A', emblem: 'laurel', title: 'DIPLOMATIC PASSPORT' },
-  { id: 'laissez', at: 750, name: 'Laissez-passer', color: '#1D5FA8', ink: '#EAF2FB', emblem: 'laurel', title: 'LAISSEZ-PASSER' },
-];
+const TRIP_PAR = TUNE.passport.tripPar;
+const VEHICLE_PAR = TUNE.passport.vehiclePar;
+const LEAGUES = TUNE.passport.leagues;
 function explorerRating(p = P) {
   const recent = (p.history || []).slice(0, 10);
   // a trip through places you already knew counts for less: 40% for an all-familiar route, 100% for an all-new one
@@ -173,7 +167,7 @@ function renderLeagueChip() {
 $('league-chip').onclick = () => { if (!P.flagsNew) ppTab = 'book'; $('btn-passport').click(); };
 
 // ---- earned country covers: know 25 places in a country (Local mastery) and its passport cover is yours
-const COVER_UNLOCK = 25;
+const COVER_UNLOCK = TUNE.passport.coverUnlock;
 const COVERS = { data: null, loading: null };
 function loadCovers() { return COVERS.loading ||= fetch('covers.json').then(r => r.ok ? r.json() : null).then(d => { COVERS.data = d; }).catch(() => {}); }
 // a country's own cover colour: measured from its passport where known, else the nearest of the common cover colours
