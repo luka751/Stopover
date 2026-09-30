@@ -248,7 +248,7 @@ async function api(req, env, url, ctx) {
         changes[k] = text;
         const s = body.summary || {};
         stats = { flags: Object.keys(val.flagsSeen || {}).length, coins: int(val.coins, 1e9), trips: int(val.trips, 1e6), km: int(val.km, 1e9),
-          rating: int(s.rating, 1e5), league: /^[a-z-]{1,20}$/.test(s.league) ? s.league : 'travel-doc', places: int(s.places, 1e7), countries: int(s.countries, 400),
+          rating: int(s.rating, 1e5), league: typeof s.league === 'string' && /^[a-z-]{1,20}$/.test(s.league) ? s.league : 'travel-doc', places: int(s.places, 1e7), countries: int(s.countries, 400),
           known: cleanKnown(s.known), flair: cc2(s.flair), cover: cc2(s.cover), title: cleanTitle(s.title), motto: cleanWord(s.motto), cont: cleanCont(s.cont) };
       } else changes[k] = v;
     }
