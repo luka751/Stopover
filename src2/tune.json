@@ -407,9 +407,9 @@
     "emojiSets": {
       "native": { "name": "Standard", "price": 0, "blurb": "Your device's own emoji." },
       "color": { "name": "Classic", "price": 300, "blurb": "Flat, bright and friendly: the full set, every emoji drawn." },
-      "glyph-neue": { "name": "Silhouette", "price": 250, "blurb": "Bold black cut-outs, like road signs." },
-      "carbon_copy": { "name": "Sketch", "price": 250, "blurb": "Fine pencil outlines." },
-      "ink": { "name": "Engraving", "price": 300, "blurb": "Old atlas woodcuts in solid black." },
+      "glyph-neue": { "name": "Silhouette", "price": 250, "blurb": "Bold black cut-outs, like road signs.", "tone": "dark" },
+      "carbon_copy": { "name": "Sketch", "price": 250, "blurb": "Fine pencil outlines.", "tone": "dark" },
+      "ink": { "name": "Engraving", "price": 300, "blurb": "Old atlas woodcuts in solid black.", "tone": "dark" },
       "softteal-color": { "name": "Soft", "price": 300, "blurb": "Rounded shapes in calm colours." },
       "mini-stickers": { "name": "Mini Stickers", "price": 300, "blurb": "Tiny die-cut stickers with a white edge." },
       "stencil": { "name": "Poster", "price": 300, "blurb": "Two-colour travel-poster stencils." },
@@ -417,7 +417,7 @@
       "arcade": { "name": "Cartoon", "price": 350, "blurb": "Chunky cartoon icons with a soft shadow." },
       "dusk": { "name": "Cute", "price": 350, "blurb": "Pastel line-and-fill drawings." },
       "papercut": { "name": "Papercut", "price": 350, "blurb": "Layered paper cut-outs." },
-      "comic": { "name": "Comic", "price": 350, "blurb": "Inked comic-book drawings." },
+      "comic": { "name": "Comic", "price": 350, "blurb": "Inked comic-book drawings.", "tone": "dark" },
       "nolan": { "name": "Gradient Line", "price": 350, "blurb": "Thin lines fading blue to pink." },
       "clr-gls": { "name": "Glass", "price": 400, "blurb": "Bright shapes with a see-through glass layer." },
       "pulsar-gradient": { "name": "Rainbow", "price": 400, "blurb": "Outlines in every colour of the rainbow." },
@@ -426,11 +426,11 @@
       "keek": { "name": "Kawaii", "price": 400, "blurb": "Everything has a little face." },
       "scribby": { "name": "Scribble", "price": 400, "blurb": "Wild marker scribbles and bright colour." },
       "fluent": { "name": "Fluent", "price": 450, "blurb": "Polished, softly lit icons." },
-      "liquid-glass": { "name": "Frosted", "price": 450, "blurb": "Frosted silver glass. Made for night mode." },
+      "liquid-glass": { "name": "Frosted", "price": 450, "blurb": "Frosted silver glass. Made for night mode.", "tone": "light" },
       "liquid-glass-color": { "name": "Liquid Glass", "price": 450, "blurb": "Glossy coloured glass." },
       "color-pixels": { "name": "Pixel Art", "price": 450, "blurb": "Retro pixels from an 8-bit atlas." },
       "emoji": { "name": "Emoji Deluxe", "price": 500, "blurb": "Rich, detailed emoji in one polished style." },
-      "neon": { "name": "Neon", "price": 500, "blurb": "Glowing neon tubes. Made for night mode." }
+      "neon": { "name": "Neon", "price": 500, "blurb": "Glowing neon tubes. Made for night mode.", "tone": "light" }
     }
   },
   "flags": {

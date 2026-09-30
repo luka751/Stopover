@@ -230,8 +230,10 @@ function applyEmojiSet() {
   // back to plain text first, so a set change never leaves the last set's cells behind
   document.querySelectorAll('.emo').forEach(s => { if (!s.style.backgroundImage) s.replaceWith(s.textContent); });
   if (emojiObserver) { emojiObserver.disconnect(); emojiObserver = null; }
-  if (!set) { delete root.dataset.emoji; root.style.removeProperty('--emo-sheet'); return; }
+  if (!set) { delete root.dataset.emoji; delete root.dataset.emojiTone; root.style.removeProperty('--emo-sheet'); return; }
   root.dataset.emoji = id;
+  // black line art turns white at night and light-on-dark art turns dark by day (head.html), so neither disappears
+  if (EMOJI_SETS[id].tone) root.dataset.emojiTone = EMOJI_SETS[id].tone; else delete root.dataset.emojiTone;
   root.style.setProperty('--emo-sheet', `url(${set.file})`);
   emojiMissing = new Set(set.missing);
   paintEmoji(document.body);
