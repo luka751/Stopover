@@ -45,7 +45,6 @@
     "boat": { "id": "boat", "name": "Boat", "icon": "⛵", "tank": 650, "gauge": "Provisions", "coastal": true, "land": 60, "blurb": "650 km of provisions · coastal ports only" },
     "train": { "id": "train", "name": "Train", "icon": "🚆", "tank": 550, "gauge": "Rail range", "rail": true, "blurb": "550 km of real track · stations only" }
   },
-  "glide": { "minMs": 1100, "maxMs": 2400, "flightMs": 2400, "msPerPixel": 5, "smoothing": 0.004, "lookAhead": 0.05 },
   "rules": {
     "planes": {
       "label": "Planes",
@@ -482,5 +481,5 @@
     "rules": { "planes": "capitals", "planeKm": 0, "trains": "capitals", "trainKm": 0, "ferryKm": 800, "tank": "standard", "hints": "off" }
   },
   "online": { "raceLimits": [0, 5, 10, 15, 20, 30], "raceStakes": [0, 50, 100, 250, 500], "bountyRewards": [100, 250, 500, 1000, 2000] },
-  "layout": { "all": {}, "phone": {}, "desktop": {} }
+  "layout": { "all": { "#quickmenu": { "translate": "150px 0px" } }, "phone": {}, "desktop": {} }
 }
