@@ -166,13 +166,25 @@ function showcaseCandidates() {
   return groups.filter(([, list]) => list.length);
 }
 let showcaseEditing = false;
+// Pins that can't be shown any more (a crown someone took, a flag or cover no longer held) are dropped, so they
+// don't fill the showcase invisibly. Current pins are listed first, so any of them can be unpinned even when newer
+// flags push it out of the picker's lists.
+function livePins() {
+  // crowns come from the server a moment after start; until they have, a crown pin is kept as it is
+  const owner = CLOUD && CLOUD.user.name, cur = P.showcase || [], waiting = HOOKS.crownsOf && !(HOOKS.crownsReady && HOOKS.crownsReady());
+  const live = cur.filter(ref => (waiting && ref.startsWith('crown:')) || showcaseItem(ref, P, owner));
+  if (live.length !== cur.length) { P.showcase = live; saveProfile(); }
+  return live;
+}
 function renderShowcaseEditor(el) {
   if (!showcaseEditing) { el.innerHTML = ''; return; }
-  const pick = P.showcase || [];
+  const pick = livePins();
+  const groups = showcaseCandidates().map(([name, list]) => [name, list.filter(ref => !pick.includes(ref))]).filter(([, list]) => list.length);
+  if (pick.length) groups.unshift(['Pinned now · tap to unpin', pick]);
   el.innerHTML = `<div class="sceditor"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div class="label">Pick up to ${SHOWCASE_MAX} · ${pick.length} pinned</div><button class="btn small go" type="button" id="sc-done">Done</button></div>
-    ${showcaseCandidates().map(([name, list]) => `<div><div class="label" style="margin:10px 0 6px">${name}</div><div class="scpick">${list.map(ref => { const it = showcaseItem(ref, P, CLOUD && CLOUD.user.name); return it ? `<button type="button" data-sc="${esc(ref)}" aria-pressed="${pick.includes(ref)}" title="${esc(it.label)} · ${esc(it.sub)}">${showcaseBadge(it)}<span>${esc(it.label)}</span></button>` : ''; }).join('')}</div></div>`).join('') || '<p class="hint">Earn an achievement, a rare flag or a stamp first.</p>'}</div>`;
+    ${groups.map(([name, list]) => `<div><div class="label" style="margin:10px 0 6px">${name}</div><div class="scpick">${list.map(ref => { const it = showcaseItem(ref, P, CLOUD && CLOUD.user.name); return it ? `<button type="button" data-sc="${esc(ref)}" aria-pressed="${pick.includes(ref)}" title="${esc(it.label)} · ${esc(it.sub)}">${showcaseBadge(it)}<span>${esc(it.label)}</span></button>` : ''; }).join('')}</div></div>`).join('') || '<p class="hint">Earn an achievement, a rare flag or a stamp first.</p>'}</div>`;
   el.querySelectorAll('[data-sc]').forEach(b => b.onclick = () => {
-    const ref = b.dataset.sc, cur = P.showcase || [];
+    const ref = b.dataset.sc, cur = livePins();
     if (cur.includes(ref)) P.showcase = cur.filter(x => x !== ref);
     else if (cur.length >= SHOWCASE_MAX) { toast(`The showcase holds ${SHOWCASE_MAX}. Unpin one first.`); return; }
     else P.showcase = [...cur, ref];

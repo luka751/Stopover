@@ -863,6 +863,7 @@ if (CLOUD) {
   HOOKS.challengeLine = challengeLine;
   HOOKS.crownOf = cc => { const c = CROWNS.data && CROWNS.data[cc]; return c ? { who: c.nick || nameInfo(c.name).name, name: c.name, n: c.n, mine: c.name === CLOUD.user.name } : null; };
   HOOKS.crownsOf = name => CROWNS.data ? Object.keys(CROWNS.data).filter(cc => CROWNS.data[cc].name === name) : [];
+  HOOKS.crownsReady = () => !!CROWNS.data;
   HOOKS.publishScore = () => CLOUD.flush();
   HOOKS.render = () => {
     renderRacePanel();

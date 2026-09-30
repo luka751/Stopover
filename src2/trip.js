@@ -438,7 +438,10 @@ function checkFlight(to) {
   if (P.coins < total) return { ok: false, why: `A ${fclass === 'economy' ? '' : flightClass().name.toLowerCase() + ' '}flight to ${G.name[to]} costs ${total} coins and you have ${fmt(P.coins)}.`, cost: total };
   return { ok: true, info: { d }, kind: 'flight', fuel: 0, km: d, cost: total, upgrade, fclass, free };
 }
-function travel(id, mode = 'ground') {
+// scouted: the player clicked Go on a Scout ahead pick instead of naming the place. The car still drives there,
+// but a place you didn't name earns nothing: no points, flags, stamps, or credit towards knowing the country
+// (which is what crowns are decided by).
+function travel(id, mode = 'ground', scouted = false) {
   if (S.done) return;
   if (S.race && Date.now() < S.race.startAt) { setMsg('Wait for the start!', 'bad'); return; }
   if (S.stakes && (id === S.cur || id === S.start || S.stops.some(s => s.id === id))) { stakesBust(`you had already stopped in ${G.name[id]}.`); return; }
@@ -471,28 +474,30 @@ function travel(id, mode = 'ground') {
   // planes land for free but score nothing; paid trains score half (the railway did the navigating);
   // a very short hop scores less; everything else scores with familiarity and the trip's difficulty
   const legKm = res.km || res.info.d, hop = S.classic || res.kind === 'flight' ? 1 : hopFactor(legKm, S.voyage ? VEHICLES.boat.tank : v.tank);
-  const bonus = checkpoint && !S.classic ? Math.round(VIA_BONUS * (S.mult || 1)) : 0;
-  const pts = (arrived || res.kind === 'flight' ? 0 : Math.round(tier.pts * fam.mult * (S.mult || 1) * (ride ? 0.5 : 1) * hop)) + bonus;
-  S.stops.push({ id, kind: res.kind, own: !!res.own, cost: res.cost || 0, km: legKm, path: res.path || null, pts, mult: fam.mult, famLabel: fam.label, hop, checkpoint, refill: S.fuel - fuelBefore, tier: tier.id, fresh: before === 0 });
+  const bonus = checkpoint && !S.classic && !scouted ? Math.round(VIA_BONUS * (S.mult || 1)) : 0;
+  const pts = (arrived || res.kind === 'flight' || scouted ? 0 : Math.round(tier.pts * fam.mult * (S.mult || 1) * (ride ? 0.5 : 1) * hop)) + bonus;
+  S.stops.push({ id, kind: res.kind, own: !!res.own, cost: res.cost || 0, km: legKm, path: res.path || null, pts, mult: fam.mult, famLabel: fam.label, hop, checkpoint, refill: S.fuel - fuelBefore, tier: tier.id, fresh: before === 0 && !scouted, scouted });
   S.km += legKm; S.pts += pts; S.cur = id; S.scouts = []; hintIds = [];
   stakesTurn();
   S.undo = arrived || S.classic ? null : { s: snapshot, pk: placeKey(id), visit: prevVisit, refund: res.free ? res.upgrade || 0 : res.cost || 0, freeTrain: ride && res.free, freeFlight: res.kind === 'flight' && res.free };
-  if (!S.classic) { const from = S.stops.length > 1 ? S.stops[S.stops.length - 2].id : S.start; bsRecordLeg(from, id, res.path || null, res.kind); bsVisited(id); }
+  if (!S.classic) { const from = S.stops.length > 1 ? S.stops[S.stops.length - 2].id : S.start; bsRecordLeg(from, id, res.path || null, res.kind); if (!scouted) bsVisited(id); }
   startSelfGlide(S.stops.length > 1 ? S.stops[S.stops.length - 2].id : S.start, id, res.path || null, res.kind);
   const pk = placeKey(id), now = Date.now();
-  P.visits[pk] = { n: before + 1, first: (P.visits[pk] || {}).first || now, last: now }; P.km += legKm;
-  const newFlags = S.classic ? [] : collectFlags(id, now), holo = S.classic ? [] : rollHolo(id, newFlags);
+  if (!scouted) P.visits[pk] = { n: before + 1, first: (P.visits[pk] || {}).first || now, last: now };
+  P.km += legKm;
+  const newFlags = S.classic || scouted ? [] : collectFlags(id, now), holo = S.classic || scouted ? [] : rollHolo(id, newFlags);
   S.lastFlagsNew = newFlags;
   // a new country is a first stamp for it, crossed into from somewhere else (not the country the trip started in)
   const cameFrom = S.stops.length > 1 ? S.stops[S.stops.length - 2].id : S.start, hadStamp = !!(P.stamps && P.stamps[ccOf(id)]);
-  if (!S.classic) { if (S.stops.length === 1) recordStamp(S.start, 'road'); recordStamp(id, res.kind); }
-  const newCountry = !S.classic && !hadStamp && ccOf(id) !== ccOf(cameFrom);
+  if (!S.classic) { if (S.stops.length === 1) recordStamp(S.start, 'road'); if (!scouted) recordStamp(id, res.kind); }
+  const newCountry = !S.classic && !scouted && !hadStamp && ccOf(id) !== ccOf(cameFrom);
   saveProfile();
   const target = nextTarget(), left = dist(G.lat[id], G.lon[id], G.lat[target], G.lon[target]);
   const onward = `${fmt(left)} km to ${G.name[target]}${target !== S.dest ? `, then on to ${G.name[S.dest]}` : ''}.`;
   const hopNote = hop < 1 ? ` (short hop ×${hop.toFixed(2)})` : '';
   const cpNote = checkpoint ? ` Checkpoint reached: +${bonus} bonus.` : '';
   if (arrived) finishTrip(false);
+  else if (scouted) setMsg(`Your scout led the way to ${G.name[id]}. A place you didn't name scores nothing: no points, flags or stamps. ${v.gauge} +${fmt(S.fuel - fuelBefore)} km. ${onward}`, 'good');
   else if (ride) setMsg(`Train arrived in ${G.name[id]} after ${fmt(res.km)} km of track: ${res.free ? `free ride${P.freeTrains ? ` (${P.freeTrains} left)` : ''}` : `−${res.cost} coins`}, +${pts} pts (trains score half)${hopNote}.${cpNote} ${onward}`, 'good');
   else if (res.kind === 'flight') setMsg(`Landed in ${G.name[id]}: ${res.free ? `free flight${P.freeFlights ? ` (${P.freeFlights} left)` : ''}${res.upgrade ? `, −${res.upgrade} coins for the upgrade` : ''}` : `−${res.cost} coins`} and a full tank.${classNote} Landing scores no points. ${onward}`, 'good');
   else setMsg(`${res.kind === 'ferry' ? 'Ferry crossing done. ' : res.own ? `${fmt(res.km)} km of track. ` : ''}Welcome to ${G.name[id]}: +${pts} pts${!S.classic && fam.mult !== 1 ? ` (${fam.label}, ×${fam.mult})` : ''}${hopNote}.${cpNote} ${v.gauge} +${fmt(S.fuel - fuelBefore)} km${tired < 1 ? ` (familiar town: ${tired === 0.5 ? 'half' : 'a quarter of the'} usual refuel)` : ''}. ${onward}`, 'good');

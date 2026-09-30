@@ -78,7 +78,7 @@ function renderPlaying(v) {
       </div>
       ${S.scouts.length ? `<div class="scouts">${S.scouts.map((sc, i) => `
         <div class="scout"><span class="pin">${i + 1}</span><div><span class="masked">${esc(sc.revealed ? G.name[sc.id] : maskName(G.name[sc.id]))}</span><small>${sc.fresh ? '🔭 never visited · ' : ''}${flagHtml(ccOf(sc.id))}${esc(tierOf(sc.id).label)} · ${fmt(dist(G.lat[S.cur], G.lon[S.cur], G.lat[sc.id], G.lon[sc.id]))} km ${compass(bearing(G.lat[S.cur], G.lon[S.cur], G.lat[sc.id], G.lon[sc.id]))}</small></div>
-        ${sc.revealed || RULES.hints === 'off' ? '' : `<button class="btn small" type="button" data-reveal="${i}">Reveal<span class="cost">${revealCost() ? '−' + revealCost() : 'free'}</span></button>`}</div>`).join('')}</div>` : ''}
+        <span class="scoutbtns">${sc.revealed || RULES.hints === 'off' ? '' : `<button class="btn small" type="button" data-reveal="${i}">Reveal<span class="cost">${revealCost() ? '−' + revealCost() : 'free'}</span></button>`}${sc.id === S.dest ? '' : `<button class="btn small" type="button" data-scoutgo="${i}" title="Drive there without naming it: no points, flags or stamps">Go<span class="cost">0 pts</span></button>`}</span></div>`).join('')}</div>` : ''}
     </div>`;
   wireEntry();
   if (keep) { $('entry-input').value = keep.value; if (keep.focus) $('entry-input').focus(); }
@@ -249,6 +249,8 @@ function wireEntry() {
   if ($('use-jerry')) $('use-jerry').onclick = useJerrycan;
   if ($('use-tow')) $('use-tow').onclick = useTow;
   if ($('use-ticket')) $('use-ticket').onclick = buyTicketNow;
+  // Go: drive to a scouted place without naming it (it scores nothing, see travel)
+  document.querySelectorAll('[data-scoutgo]').forEach(b => b.onclick = () => { const sc = S.scouts[+b.dataset.scoutgo]; if (sc) travel(sc.id, 'ground', true); });
   document.querySelectorAll('[data-reveal]').forEach(b => b.onclick = () => { S.scouts[+b.dataset.reveal].revealed = true; bsNote(S.scouts[+b.dataset.reveal].id, 'miss'); S.penalties += revealCost(); save(); render(); });
 }
 

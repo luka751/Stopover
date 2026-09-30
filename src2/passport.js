@@ -72,9 +72,13 @@ const EMBLEMS = {
 };
 // sub: an earned title, lettered small between the document type and the holder's name
 // finish: a bought cover finish (garage.js) laid over the league or country colours
+// Every cover gets its own gradient ids: url(#id) finds the first element with that id in the whole page, and when
+// that one sits in a closed dialog (the shop's previews) the browser paints nothing, so the finish never showed.
+let coverSeq = 0;
 function coverSvg({ color, ink, emblem, title, top, bottom, emblemImg, sub, finish }) {
-  const F = finish && COVER_FINISHES[finish]; if (F) { color = F.color || color; ink = F.ink || ink; }
-  return `<svg viewBox="0 0 220 310" role="img" aria-label="${esc(title)} cover${F ? ', ' + esc(F.name.toLowerCase()) : ''}">${F ? `<defs>${F.defs}</defs>` : ''}<rect x="0" y="0" width="220" height="310" rx="10" fill="${color}"/>${F ? F.over : ''}<rect x="0" y="0" width="12" height="310" rx="4" fill="rgba(0,0,0,.22)"/>
+  const F = finish && COVER_FINISHES[finish], uid = ++coverSeq, own = s => String(s || '').replace(/\bcf-([a-z]+)/g, `cf-$1-${uid}`);
+  if (F) { color = own(F.color || color); ink = own(F.ink || ink); }
+  return `<svg viewBox="0 0 220 310" role="img" aria-label="${esc(title)} cover${F ? ', ' + esc(F.name.toLowerCase()) : ''}">${F ? `<defs>${own(F.defs)}</defs>` : ''}<rect x="0" y="0" width="220" height="310" rx="10" fill="${color}"/>${F ? own(F.over) : ''}<rect x="0" y="0" width="12" height="310" rx="4" fill="rgba(0,0,0,.22)"/>
     <text x="116" y="46" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="15" letter-spacing="3" fill="${ink}">${esc(top)}</text>
     ${emblemImg ? `<image href="${emblemImg}" x="66" y="92" width="100" height="100" preserveAspectRatio="xMidYMid meet"/>` : `<g transform="translate(116 142)">${EMBLEMS[emblem](ink)}</g>`}
     <text x="116" y="236" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="${title.length > 16 ? 13 : 17}" letter-spacing="2.5" fill="${ink}">${esc(title)}</text>
