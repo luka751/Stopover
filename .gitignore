@@ -8,3 +8,4 @@ data.b64
 # Icons8 library (licensed to the owner, not for redistribution; copy what the game uses into web/static)
 assets/icons8/
 __pycache__/
+studio/.emoji/

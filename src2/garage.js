@@ -107,6 +107,8 @@ function drawParticle(ctx, p, x, y, k) {
 // ---- the glide: a move is drawn along its leg over about a second, then the vehicle settles at the stop
 // A glide lives in lat/lon, so the map can pan or zoom mid-move and the vehicle stays on its road.
 const GLIDE = { self: null, rivals: new Map(), parts: [], raf: 0, heading: null };
+// how long a leg takes and how closely a vehicle follows its path: tune.json → glide (Studio: Gameplay → Vehicle movement)
+const GLIDE_TUNE = TUNE.glide || { minMs: 1100, maxMs: 2400, flightMs: 2400, msPerPixel: 5, smoothing: 0.004, lookAhead: 0.05 };
 const glideOn = () => juiceOn('fx') && !reduceMotion();
 function kickMapAnim() {
   if (GLIDE.raf) return;
@@ -137,10 +139,10 @@ function simplifyPath(pts, tolKm) {
 }
 function makeGlide(pts, kind, ms) {
   const raw = [0]; for (let i = 1; i < pts.length; i++) raw.push(raw[i - 1] + dist(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]));
-  pts = simplifyPath(pts, Math.max(0.3, raw[raw.length - 1] * 0.004));
+  pts = simplifyPath(pts, Math.max(0.3, raw[raw.length - 1] * GLIDE_TUNE.smoothing));
   const segs = [0]; for (let i = 1; i < pts.length; i++) segs.push(segs[i - 1] + dist(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]));
   const now = performance.now(), total = segs[segs.length - 1] || 1;
-  return { pts, segs, total, look: total * 0.05, kind, start: now, end: now + ms, lastEmit: now };
+  return { pts, segs, total, look: total * GLIDE_TUNE.lookAhead, kind, start: now, end: now + ms, lastEmit: now };
 }
 // the point a distance d (km) along a glide's path
 function glidePoint(g, d) {
@@ -164,9 +166,9 @@ function startSelfGlide(from, to, path, kind) {
     const k = Math.min(1, Math.max(0, (now - prev.start) / (prev.end - prev.start))), d = (k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2) * prev.total;
     pts = [glidePoint(prev, d), ...prev.pts.filter((_, i) => prev.segs[i] > d), ...pts.slice(1)];
   }
-  // slow enough to watch the vehicle cross the map: 1.1 to 2.4 seconds by distance on screen, flights the longest
+  // slow enough to watch the vehicle cross the map: minMs to maxMs by distance on screen, flights take flightMs
   let px = 0; for (let i = 1; i < pts.length; i++) { const [x1, y1] = tripMap.px(pts[i - 1][1], pts[i - 1][0]), [x2, y2] = tripMap.px(pts[i][1], pts[i][0]); px += Math.hypot(x2 - x1, y2 - y1); }
-  GLIDE.self = makeGlide(pts, kind, kind === 'flight' ? 2400 : Math.max(1100, Math.min(2400, px * 5)));
+  GLIDE.self = makeGlide(pts, kind, kind === 'flight' ? GLIDE_TUNE.flightMs : Math.max(GLIDE_TUNE.minMs, Math.min(GLIDE_TUNE.maxMs, px * GLIDE_TUNE.msPerPixel)));
   kickMapAnim();
 }
 const angleOn = (m, a, b) => { const [x1, y1] = m.px(a[1], a[0]), [x2, y2] = m.px(b[1], b[0]); return Math.atan2(y2 - y1, x2 - x1); };
@@ -211,7 +213,7 @@ function drawRival(m, ctx, pal, id, gid, vehicle, look, tryLabel) {
   let g = GLIDE.rivals.get(id);
   if (!g || g.to !== gid) {
     const from = g ? G.byGid.get(g.to) : null;
-    g = from != null && from !== at && glideOn() ? { ...makeGlide(legLatLon(from, at), 'road', 1100), to: gid } : { to: gid, end: 0, still: true, heading: g && g.heading };
+    g = from != null && from !== at && glideOn() ? { ...makeGlide(legLatLon(from, at), 'road', GLIDE_TUNE.minMs), to: gid } : { to: gid, end: 0, still: true, heading: g && g.heading };
     GLIDE.rivals.set(id, g); if (!g.still) kickMapAnim();
   }
   let la = G.lat[at], lo = G.lon[at], ang = g.heading ?? 0;

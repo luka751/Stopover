@@ -45,6 +45,7 @@
     "boat": { "id": "boat", "name": "Boat", "icon": "⛵", "tank": 650, "gauge": "Provisions", "coastal": true, "land": 60, "blurb": "650 km of provisions · coastal ports only" },
     "train": { "id": "train", "name": "Train", "icon": "🚆", "tank": 550, "gauge": "Rail range", "rail": true, "blurb": "550 km of real track · stations only" }
   },
+  "glide": { "minMs": 1100, "maxMs": 2400, "flightMs": 2400, "msPerPixel": 5, "smoothing": 0.004, "lookAhead": 0.05 },
   "rules": {
     "planes": {
       "label": "Planes",

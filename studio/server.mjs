@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import { execFile } from 'node:child_process';
 import { readTune, writeTune } from '../tools/tune-file.mjs';
 import { pageHtml } from '../build-page.mjs';
+import { buildEmojiArt } from '../tools/emoji-art.mjs';
 
 const root = new URL('../', import.meta.url);
 const here = f => new URL(f, import.meta.url);
@@ -38,6 +39,21 @@ const send = (res, code, body, type = 'application/json') => { res.writeHead(cod
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp' };
 const typeOf = f => TYPES[f.slice(f.lastIndexOf('.'))] || 'application/octet-stream';
 
+// emoji styles for the preview: the same sprite sheets the website gets (tools/emoji-art.mjs), packed into
+// studio/.emoji when the Studio starts and again whenever the list of styles in the shop changes
+const EMOJI_OUT = new URL('.emoji/', import.meta.url).pathname;
+let emojiKey = null, emojiArt = Promise.resolve(null);
+function previewEmoji() {
+  const sets = readTune().shop.emojiSets || {}, key = Object.keys(sets).sort().join();
+  if (key !== emojiKey) {
+    emojiKey = key;
+    fs.rmSync(EMOJI_OUT, { recursive: true, force: true });
+    emojiArt = buildEmojiArt(EMOJI_OUT, sets).catch(e => { console.log('emoji styles not packed:', e.message); return null; });
+  }
+  return emojiArt;
+}
+previewEmoji();
+
 http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://x'), p = url.pathname;
@@ -49,8 +65,13 @@ http.createServer(async (req, res) => {
     if (p === '/play') {
       // errors are passed up to the Studio, which shows them over the preview
       const report = `<script>addEventListener('error', e => parent.postMessage({ studioError: e.message }, '*')); addEventListener('unhandledrejection', e => parent.postMessage({ studioError: String(e.reason && e.reason.message || e.reason) }, '*'));</script>`;
-      const page = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">${report}</head><body>${pageHtml()}</body></html>`;
+      const art = await previewEmoji(), emoji = art ? `<script>window.EMOJI_ART = ${JSON.stringify(art)};</script>` : '';
+      const page = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">${report}${emoji}</head><body>${pageHtml()}</body></html>`;
       return send(res, 200, page, TYPES['.html']);
+    }
+    if (/^\/emoji\/[\w.-]+\.webp$/.test(p)) {
+      const f = EMOJI_OUT + p.slice(1);
+      return fs.existsSync(f) ? send(res, 200, fs.readFileSync(f), typeOf(p)) : send(res, 404, 'not found', 'text/plain');
     }
     if (/^\/(flags|maps)\//.test(p) || p === '/rail.json' || p === '/covers.json') {
       const f = new URL('dist' + decodeURIComponent(p), root);
