@@ -7,20 +7,9 @@
 //   streak    – collect a flag on consecutive days for a coin multiplier up to ×1.5
 //   rank      – collector ranks, and up to +150 explorer rating, so a bigger collection lifts your passport league
 const FLAG_KINDS = [{ id: 'country', name: 'Countries', one: 'Country' }, { id: 'region', name: 'Regions', one: 'Region' }, { id: 'city', name: 'Cities', one: 'City' }];
-const RARITY = [
-  // flags top up a trip's coins rather than outearning it: a new town's three flags pay about as much as a good stop
-  { id: 'common', name: 'Common', color: '#7D8A84', coins: 2 },
-  { id: 'uncommon', name: 'Uncommon', color: '#1B8A4C', coins: 3 },
-  { id: 'rare', name: 'Rare', color: '#1D6FB8', coins: 6 },
-  { id: 'epic', name: 'Epic', color: '#8A3FFC', coins: 10 },
-  { id: 'legendary', name: 'Legendary', color: '#E0A100', coins: 20 },
-];
-const FLAG_RANKS = [
-  { at: 0, name: 'No flags yet' }, { at: 1, name: 'Flag spotter' }, { at: 25, name: 'Pennant keeper' }, { at: 75, name: 'Banner bearer' },
-  { at: 200, name: 'Standard bearer' }, { at: 500, name: 'Vexillologist' }, { at: 1200, name: 'Herald of nations' },
-];
-const ALBUM_STEPS = [0.25, 0.5, 0.75, 1], ALBUM_PAY = [0.5, 1, 1.5, 3], FLAG_RATING_MAX = 150;
-const WANTED_BONUS = 20, SWEEP_BONUS = 60;
+const RARITY = TUNE.flags.rarity;
+const FLAG_RANKS = TUNE.flags.ranks;
+const { albumSteps: ALBUM_STEPS, albumPay: ALBUM_PAY, ratingMax: FLAG_RATING_MAX, wantedBonus: WANTED_BONUS, sweepBonus: SWEEP_BONUS } = TUNE.flags;
 const wantedMult = () => 3;
 const flagRankOf = n => { let r = FLAG_RANKS[0]; for (const x of FLAG_RANKS) if (n >= x.at) r = x; return r; };
 const flagRating = n => Math.round(FLAG_RATING_MAX * (1 - Math.exp(-n / 400)));

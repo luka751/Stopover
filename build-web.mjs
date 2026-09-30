@@ -3,12 +3,13 @@
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import { execSync } from 'node:child_process';
+import { tunePrelude } from './tools/tune-file.mjs';
 const part = f => fs.readFileSync('src2/' + f, 'utf8');
 const out = 'web/public';
 fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(out, { recursive: true });
 
-const js = ['core.js', 'extras.js', 'trip.js', 'isles.js', 'map.js', 'ui.js', 'passport.js', 'blind.js', 'flags.js', 'study.js', 'juice.js', 'social.js', 'garage.js', 'sinks.js', 'online.js'].map(part).join('\n');
+const js = tunePrelude() + ['core.js', 'extras.js', 'trip.js', 'isles.js', 'map.js', 'ui.js', 'passport.js', 'blind.js', 'flags.js', 'study.js', 'juice.js', 'social.js', 'garage.js', 'sinks.js', 'online.js'].map(part).join('\n');
 // The gazetteer is its own file on the website: the raw gzip bytes rather than the base64 text the single-file
 // build embeds (a quarter smaller), named after its contents so browsers keep it for a year and a changed
 // gazetteer gets a new name.

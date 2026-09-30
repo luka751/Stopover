@@ -1,0 +1,553 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Stopover Studio</title>
+<style>
+:root {
+  --page: #EEF2EE; --panel: #FFFFFF; --panel2: #F5F8F5; --ink: #17231C; --muted: #5E6E64; --line: #D8E1DA;
+  --accent: #0B6B3A; --accent-ink: #FFFFFF; --warn: #B3541E; --bad: #B3261E; --changed: #E0A100; --focus: #2F6FDB;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --page: #0D1410; --panel: #151E18; --panel2: #1B261F; --ink: #E4EDE6; --muted: #92A398; --line: #2A372F;
+    --accent: #2FA566; --accent-ink: #06140C; --warn: #E08A4F; --bad: #F2766B; --changed: #F2C94C; }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--page); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; display: grid; grid-template-rows: auto 1fr; }
+button { font: inherit; color: inherit; cursor: pointer; }
+input, select, textarea { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 7px; min-width: 0; }
+input:focus, textarea:focus, select:focus, button:focus-visible { outline: 2px solid var(--focus); outline-offset: -1px; }
+.btn { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 6px 12px; white-space: nowrap; }
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+.btn.small { padding: 3px 8px; font-size: 12px; border-radius: 6px; }
+.btn:disabled { opacity: .5; cursor: default; }
+.iconbtn { border: 0; background: none; padding: 2px 6px; border-radius: 5px; color: var(--muted); }
+.iconbtn:hover { background: var(--panel2); color: var(--ink); }
+
+header { display: flex; align-items: center; gap: 10px; padding: 8px 14px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; margin-right: 6px; }
+.brand .sign { background: #0B6B3A; color: #fff; border-radius: 5px; padding: 1px 7px; font-size: 13px; border: 2px solid #fff; box-shadow: 0 0 0 1px #0B6B3A; }
+.spacer { flex: 1; }
+.pill { border: 1px solid var(--line); border-radius: 999px; padding: 4px 11px; background: var(--panel2); }
+.pill b { color: var(--changed); }
+.status { color: var(--muted); font-size: 13px; }
+.status.dirty { color: var(--warn); font-weight: 600; }
+
+main { display: grid; grid-template-columns: 250px minmax(0, 1fr) var(--preview-w, 440px); min-height: 0; }
+main.nopreview { grid-template-columns: 250px minmax(0, 1fr) 0; }
+main.nopreview #preview { display: none; }
+nav { border-right: 1px solid var(--line); overflow: auto; padding: 10px 8px 30px; background: var(--panel); }
+nav input[type=search] { width: 100%; margin-bottom: 10px; }
+nav h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 14px 8px 4px; }
+nav a { display: flex; justify-content: space-between; gap: 6px; padding: 5px 8px; border-radius: 6px; color: inherit; text-decoration: none; }
+nav a:hover { background: var(--panel2); }
+nav a.on { background: var(--accent); color: var(--accent-ink); }
+nav a .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--changed); align-self: center; flex: none; }
+
+#editor { overflow: auto; padding: 18px 22px 80px; }
+#editor h1 { font-size: 20px; margin: 0 0 4px; }
+#editor .help { color: var(--muted); margin: 0 0 16px; max-width: 75ch; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 14px; overflow-x: auto; }
+.fields { display: grid; grid-template-columns: minmax(140px, max-content) minmax(0, 1fr); gap: 8px 14px; align-items: center; }
+.fields > .lab { font-weight: 600; }
+.fields > .lab small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; max-width: 42ch; }
+.fields > .full { grid-column: 1 / -1; }
+fieldset { border: 1px solid var(--line); border-radius: 8px; margin: 0; padding: 8px 10px 10px; }
+legend { font-weight: 600; padding: 0 4px; }
+
+table.grid { border-collapse: collapse; width: 100%; }
+table.grid th { text-align: left; font-size: 12px; font-weight: 600; color: var(--muted); padding: 4px 6px; border-bottom: 1px solid var(--line); white-space: nowrap; cursor: help; }
+table.grid td { padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.grid tr:last-child td { border-bottom: 0; }
+table.grid td.key { font-family: var(--mono); font-size: 12px; color: var(--muted); padding-top: 9px; white-space: nowrap; }
+table.grid tr.detail > td { background: var(--panel2); padding: 10px; }
+table.grid input[type=number] { width: 88px; }
+table.grid input.txt { width: 100%; min-width: 120px; }
+table.grid input.short { width: 70px; min-width: 50px; }
+table.grid textarea { width: 100%; min-width: 220px; resize: vertical; }
+td.acts { white-space: nowrap; text-align: right; }
+.missing { white-space: nowrap; color: var(--muted); font-size: 12px; border: 1px dashed var(--line); background: none; border-radius: 6px; padding: 4px 8px; }
+.changed { box-shadow: inset 3px 0 0 var(--changed); }
+input.changed, textarea.changed, select.changed { border-color: var(--changed); box-shadow: 0 0 0 1px var(--changed); }
+.bad { border-color: var(--bad) !important; box-shadow: 0 0 0 1px var(--bad) !important; }
+.color { display: inline-flex; gap: 4px; align-items: center; }
+.color input[type=color] { width: 30px; height: 28px; padding: 1px; border-radius: 6px; }
+.color input.hex { width: 84px; font-family: var(--mono); font-size: 12px; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.chips input[type=number] { width: 78px; }
+.chips input.hex, .chips input.txt { width: 90px; }
+.chip { display: inline-flex; align-items: center; gap: 2px; }
+.chip .lbl { font-size: 11px; color: var(--muted); margin-right: 2px; }
+.swatches { display: inline-flex; gap: 2px; vertical-align: middle; margin-left: 6px; }
+.swatches i { width: 12px; height: 12px; border-radius: 3px; border: 1px solid rgba(0,0,0,.2); }
+.rowfilter { font-size: 12px; color: var(--muted); margin: -6px 0 8px; }
+
+#preview { border-left: 1px solid var(--line); display: grid; grid-template-rows: auto auto 1fr; min-height: 0; background: var(--panel); }
+#preview .bar { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; border-bottom: 1px solid var(--line); align-items: center; }
+#preview .bar b { margin-right: auto; }
+#gameerr { background: var(--bad); color: #fff; padding: 6px 10px; font-size: 12px; font-family: var(--mono); white-space: pre-wrap; }
+#frame-wrap { position: relative; min-height: 0; overflow: auto; background: var(--page); }
+#frame-wrap iframe { border: 0; width: 100%; height: 100%; display: block; background: #fff; }
+#frame-wrap.phone { display: grid; place-items: start center; padding: 10px 0; }
+#frame-wrap.phone iframe { width: 390px; height: 780px; border-radius: 18px; box-shadow: 0 0 0 8px #222, 0 8px 30px rgba(0,0,0,.3); }
+
+dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink); padding: 0; width: min(720px, 94vw); max-height: 88vh; }
+dialog::backdrop { background: rgba(0,0,0,.4); }
+dialog .dhead { padding: 14px 18px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; }
+dialog .dhead h2 { margin: 0; font-size: 17px; flex: 1; }
+dialog .dbody { padding: 14px 18px; overflow: auto; max-height: calc(88vh - 130px); }
+dialog .dfoot { padding: 12px 18px; border-top: 1px solid var(--line); display: flex; gap: 8px; justify-content: flex-end; align-items: center; flex-wrap: wrap; }
+.changelist { list-style: none; margin: 0; padding: 0; }
+.changelist li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--line); align-items: center; }
+.changelist .where { font-weight: 600; }
+.changelist .where a { color: inherit; }
+.changelist .what { font-family: var(--mono); font-size: 12px; color: var(--muted); word-break: break-word; }
+.changelist .what del { color: var(--bad); } .changelist .what ins { color: var(--accent); text-decoration: none; }
+pre.log { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 10px; font-size: 12px; max-height: 300px; overflow: auto; white-space: pre-wrap; }
+.warnbox { border: 1px solid var(--warn); color: var(--warn); border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; font-size: 13px; }
+textarea.msg { width: 100%; min-height: 60px; }
+
+#toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--ink); color: var(--page); padding: 8px 14px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 10; max-width: 90vw; }
+#toast.on { opacity: 1; }
+.empty { color: var(--muted); padding: 30px; text-align: center; }
+
+@media (max-width: 1100px) {
+  main, main.nopreview { grid-template-columns: 210px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 60vh; }
+  #preview { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--line); }
+}
+@media (max-width: 700px) {
+  main, main.nopreview { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) 60vh; }
+  nav { max-height: 30vh; border-right: 0; border-bottom: 1px solid var(--line); }
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><span class="sign">Stopover</span> Studio</div>
+  <button class="btn small" id="undo" title="Undo (⌘Z outside a text box)">↶ Undo</button>
+  <button class="btn small" id="redo" title="Redo (⌘⇧Z)">↷ Redo</button>
+  <span class="status" id="status">Loading…</span>
+  <span class="spacer"></span>
+  <button class="pill" id="changes-btn" title="Everything changed since the last publish">Changes <b id="nchanges">0</b></button>
+  <button class="btn small" id="toggle-preview">Hide game</button>
+  <button class="btn" id="save" title="Save and reload the game (⌘S)">Save &amp; test</button>
+  <button class="btn primary" id="publish">Publish…</button>
+</header>
+<main id="main">
+  <nav id="nav"><input type="search" id="search" placeholder="Search: price, tank, Night…" aria-label="Search"><div id="navlist"></div></nav>
+  <section id="editor"><div class="empty">Loading…</div></section>
+  <aside id="preview">
+    <div class="bar">
+      <b>Game preview</b>
+      <button class="btn small" id="reload" title="Reload the game">⟳ Reload</button>
+      <button class="btn small" id="phone" title="Phone-sized preview">📱 Phone</button>
+      <button class="btn small" id="newtab" title="Open the game in its own tab">↗ Tab</button>
+    </div>
+    <div class="bar" style="padding-top:0; border-bottom:0">
+      <span class="status">Test save:</span>
+      <button class="btn small" data-coins="1000">+1,000 coins</button>
+      <button class="btn small" data-coins="25000">+25,000</button>
+      <button class="btn small" id="reset-save" title="Start the preview from a brand-new player">Reset player</button>
+    </div>
+    <div id="gameerr" hidden></div>
+    <div id="frame-wrap"><iframe id="game" title="Game preview"></iframe></div>
+  </aside>
+</main>
+
+<dialog id="changes-dlg">
+  <div class="dhead"><h2>Changes since the last publish</h2><button class="iconbtn" data-close aria-label="Close">✕</button></div>
+  <div class="dbody"><ul class="changelist" id="changelist"></ul></div>
+  <div class="dfoot"><button class="btn" data-close>Close</button></div>
+</dialog>
+
+<dialog id="publish-dlg">
+  <div class="dhead"><h2>Publish to playstopover.me</h2><button class="iconbtn" data-close aria-label="Close">✕</button></div>
+  <div class="dbody">
+    <div id="pub-warn"></div>
+    <p style="margin-top:0">This saves your changes, runs the checks, records them in git, builds the game and puts it live for every player.</p>
+    <ul class="changelist" id="pub-list"></ul>
+    <p><label for="pub-msg"><b>What changed</b> (the note in the project's history)</label><br><textarea id="pub-msg" class="msg"></textarea></p>
+    <label><input type="checkbox" id="pub-push" checked> Also push to GitHub</label>
+    <pre class="log" id="pub-log" hidden></pre>
+  </div>
+  <div class="dfoot"><span class="status" id="pub-status"></span><button class="btn" data-close>Cancel</button><button class="btn primary" id="pub-go">Publish now</button></div>
+</dialog>
+
+<div id="toast" role="status"></div>
+
+<script>
+'use strict';
+// ================= state =================
+let TUNE = null, SAVED = '', COMMITTED = null, GUIDE = null, SECTIONS = [], current = null, query = '';
+const undoStack = [], redoStack = [];
+const $ = id => document.getElementById(id);
+const clone = v => JSON.parse(JSON.stringify(v));
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const getAt = (o, path) => path.reduce((x, k) => x == null ? undefined : x[k], o);
+function setAt(o, path, v) { const p = getAt(o, path.slice(0, -1)); p[path[path.length - 1]] = v; }
+const isScalar = v => v === null || typeof v !== 'object';
+const isColor = v => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v);
+const human = k => String(k).replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[-_]/g, ' ').replace(/^./, c => c.toUpperCase());
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const el = (tag, attrs = {}, ...kids) => { const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) { if (k === 'class') e.className = v; else if (k.startsWith('on')) e[k] = v; else if (v !== false && v != null) e.setAttribute(k, v === true ? '' : v); } for (const c of kids.flat()) if (c != null) e.append(c); return e; };
+let toastT = 0;
+function toast(t) { const e = $('toast'); e.textContent = t; e.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => e.classList.remove('on'), 2600); }
+
+// ================= loading =================
+async function load() {
+  const [t, g] = await Promise.all([fetch('/api/tune').then(r => r.json()), fetch('/guide.json').then(r => r.json())]);
+  TUNE = t.tune; SAVED = JSON.stringify(TUNE); COMMITTED = t.committed || clone(TUNE); GUIDE = g;
+  SECTIONS = buildSections();
+  const want = decodeURIComponent(location.hash.slice(1));
+  current = SECTIONS.find(s => s.path === want) || SECTIONS[0];
+  renderNav(); renderEditor(); refreshStatus(); loadGame();
+}
+// every section from the guide, plus anything in tune.json the guide doesn't name yet (new settings show up by themselves)
+function buildSections() {
+  const out = GUIDE.sections.filter(s => getAt(TUNE, s.path.split('.')) !== undefined).map(s => ({ ...s, key: s.path.split('.') }));
+  const named = new Set(out.map(s => s.path));
+  const walk = (obj, path) => { for (const k of Object.keys(obj)) {
+    const p = [...path, k], ps = p.join('.');
+    if (named.has(ps)) continue;
+    if ([...named].some(n => n.startsWith(ps + '.')) && obj[k] && typeof obj[k] === 'object' && !Array.isArray(obj[k])) walk(obj[k], p);
+    else out.push({ path: ps, key: p, group: 'Other', title: human(k), help: 'Not described in the Studio guide yet (studio/guide.json).' });
+  } };
+  walk(TUNE, []);
+  return out;
+}
+const sectionOf = path => SECTIONS.filter(s => path.slice(0, s.key.length).join('.') === s.path).sort((a, b) => b.key.length - a.key.length)[0];
+
+// ================= navigation =================
+function sectionText(s) { return (s.title + ' ' + (s.help || '') + ' ' + JSON.stringify(getAt(TUNE, s.key))).toLowerCase(); }
+function renderNav() {
+  const list = $('navlist'); list.innerHTML = '';
+  const groups = [...GUIDE.groups, 'Other'];
+  for (const g of groups) {
+    const items = SECTIONS.filter(s => s.group === g && (!query || sectionText(s).includes(query)));
+    if (!items.length) continue;
+    list.append(el('h3', {}, g));
+    for (const s of items) {
+      const changed = !same(getAt(TUNE, s.key), getAt(COMMITTED, s.key));
+      list.append(el('a', { href: '#' + s.path, class: s === current ? 'on' : '', onclick: e => { e.preventDefault(); openSection(s); } }, el('span', {}, s.title), changed ? el('span', { class: 'dot', title: 'Changed since the last publish' }) : null));
+    }
+  }
+  if (!list.children.length) list.append(el('p', { class: 'status', style: 'padding:8px' }, 'Nothing matches.'));
+}
+function openSection(s) { current = s; history.replaceState(null, '', '#' + s.path); renderNav(); renderEditor(); $('editor').scrollTop = 0; }
+
+// ================= editing =================
+// every edit goes through here: remembers the state before it (for undo), then updates the markers
+function edit(path, value, { input, rerender } = {}) {
+  const before = JSON.stringify(TUNE);
+  setAt(TUNE, path, value);
+  pushUndo(before);
+  if (rerender) renderEditor(); else if (input) markInput(input, path);
+  refreshStatus(); renderNavDots();
+}
+function pushUndo(before) {
+  const last = undoStack[undoStack.length - 1];
+  // typing in one box counts as one step
+  if (last && last.at > Date.now() - 800 && last.after === before) { last.after = JSON.stringify(TUNE); last.at = Date.now(); return; }
+  undoStack.push({ before, after: JSON.stringify(TUNE), at: Date.now() }); if (undoStack.length > 300) undoStack.shift();
+  redoStack.length = 0;
+}
+function undo() { const s = undoStack.pop(); if (!s) return toast('Nothing to undo'); redoStack.push(s); TUNE = JSON.parse(s.before); afterJump(); }
+function redo() { const s = redoStack.pop(); if (!s) return toast('Nothing to redo'); undoStack.push({ ...s, at: 0 }); TUNE = JSON.parse(s.after); afterJump(); }
+function afterJump() { SECTIONS = buildSections(); current = SECTIONS.find(s => s.path === current.path) || SECTIONS[0]; renderNav(); renderEditor(); refreshStatus(); }
+
+function syncText(path, oldN, newN) {
+  // the object holding the number (or holding the list the number is in)
+  let i = path.length - 1, row = getAt(TUNE, path.slice(0, i));
+  if (Array.isArray(row)) { row = getAt(TUNE, path.slice(0, i - 1)); }
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return 0;
+  const pairs = [[oldN.toLocaleString('en-US'), newN.toLocaleString('en-US')], [String(oldN), String(newN)]].filter((p, j, a) => j === 0 || p[0] !== a[0][0]);
+  let n = 0;
+  for (const [k, v] of Object.entries(row)) if (typeof v === 'string' && v.length > 6) {
+    let s = v;
+    for (const [a, b] of pairs) s = s.replace(new RegExp(`(?<![\\d.,])${a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\d]|[.,]\\d)`, 'g'), b);
+    if (s !== v) { row[k] = s; n++; }
+  }
+  return n;
+}
+
+function markInput(input, path) {
+  const was = getAt(COMMITTED, path), now = getAt(TUNE, path);
+  const changed = !same(was, now);
+  input.classList.toggle('changed', changed);
+  input.title = changed ? `Was: ${was === undefined ? '(not set)' : JSON.stringify(was)}` : '';
+}
+function renderNavDots() { renderNav(); }
+
+// ================= controls =================
+function fieldHelp(key) { return current && current.fields && current.fields[key]; }
+function scalarInput(path, opts = {}) {
+  const v = getAt(TUNE, path);
+  const key = path[path.length - 1];
+  let box;
+  const tag = e => { e.dataset.path = JSON.stringify(path); return e; };
+  if (typeof v === 'boolean') {
+    const c = el('input', { type: 'checkbox' }); c.checked = v;
+    c.onchange = () => edit(path, c.checked, { input: c }); markInput(c, path); return tag(c);
+  }
+  if (typeof v === 'number') {
+    const n = el('input', { type: 'number', step: 'any', value: v });
+    n.oninput = () => { const x = n.valueAsNumber; if (!Number.isFinite(x)) { n.classList.add('bad'); return; } n.classList.remove('bad'); edit(path, x, { input: n }); };
+    // once the box is left: a number that also appears in the same row's text (e.g. "450 km tank") is kept in step
+    n.onfocus = () => { n.dataset.start = getAt(TUNE, path); };
+    n.onchange = () => {
+      const from = +n.dataset.start, to = getAt(TUNE, path); n.dataset.start = to;
+      if (from === to || !Number.isFinite(from)) return;
+      const before = JSON.stringify(TUNE);
+      if (syncText(path, from, to)) { pushUndo(before); toast('Also updated the number in the description'); renderEditor(); refreshStatus(); }
+    };
+    markInput(n, path); return tag(n);
+  }
+  if (isColor(v)) {
+    const pick = el('input', { type: 'color', value: v.toLowerCase() }), hex = el('input', { class: 'hex', value: v, spellcheck: 'false' });
+    pick.oninput = () => { hex.value = pick.value.toUpperCase(); hex.classList.remove('bad'); edit(path, hex.value, { input: hex }); };
+    hex.oninput = () => { if (isColor(hex.value)) { hex.classList.remove('bad'); pick.value = hex.value.toLowerCase(); edit(path, hex.value, { input: hex }); } else hex.classList.add('bad'); };
+    markInput(hex, path); tag(hex);
+    return el('span', { class: 'color' }, pick, hex);
+  }
+  // text (null shows as an empty box and goes back to null when cleared)
+  const wasNull = v === null, s = v ?? '';
+  const long = s.length > 42 || /blurb|note|desc|help/i.test(key);
+  box = long ? el('textarea', { rows: Math.min(4, Math.ceil(s.length / 60) || 1) }) : el('input', { class: opts.short || (s.length <= 4 && !/name|label|title|text/i.test(key)) ? 'short' : 'txt', spellcheck: 'true' });
+  box.value = s; if (wasNull) box.placeholder = 'none';
+  box.oninput = () => edit(path, wasNull && box.value === '' ? null : box.value, { input: box });
+  markInput(box, path); return tag(box);
+}
+
+// a list of plain values: numbers, words or colours
+function chipList(path, labels) {
+  const arr = getAt(TUNE, path), wrap = el('div', { class: 'chips' });
+  arr.forEach((_, i) => {
+    const c = scalarInput([...path, i]);
+    wrap.append(el('span', { class: 'chip' }, labels && labels[i] ? el('span', { class: 'lbl' }, labels[Math.min(i, labels.length - 1)]) : null, c,
+      arr.length > 1 && !labels ? el('button', { class: 'iconbtn', title: 'Remove', onclick: () => { const a = clone(getAt(TUNE, path)); a.splice(i, 1); edit(path, a, { rerender: true }); } }, '×') : null));
+  });
+  if (!labels) wrap.append(el('button', { class: 'iconbtn', title: 'Add one', onclick: () => { const a = clone(getAt(TUNE, path)); a.push(a[a.length - 1] ?? 0); edit(path, a, { rerender: true }); } }, '+ add'));
+  return wrap;
+}
+
+// tables: a list of things, or a group of things under names (styles, vehicles, themes)
+const tableLike = obj => {
+  const vals = Object.values(obj);
+  if (vals.length < 2 || !vals.every(v => v && typeof v === 'object' && !Array.isArray(v))) return false;
+  const sets = vals.map(v => new Set(Object.keys(v))), union = new Set(sets.flatMap(s => [...s])), both = [...union].filter(k => sets.every(s => s.has(k)));
+  return both.length / union.size >= 0.5;
+};
+function table(path, { addable, columns } = {}) {
+  const data = getAt(TUNE, path), keyed = !Array.isArray(data);
+  const rows = keyed ? Object.keys(data) : data.map((_, i) => i);
+  // array of pairs, e.g. streak milestones [[3, 25], ...]
+  if (!keyed && data.every(Array.isArray)) {
+    const t = el('table', { class: 'grid' }, el('tr', {}, (columns || data[0].map((_, i) => `#${i + 1}`)).map(c => el('th', {}, c)), addable !== false ? el('th') : null));
+    rows.forEach(i => t.append(el('tr', {}, data[i].map((_, j) => el('td', {}, scalarInput([...path, i, j]))),
+      el('td', { class: 'acts' }, el('button', { class: 'iconbtn', title: 'Remove this row', onclick: () => { const a = clone(data); a.splice(i, 1); edit(path, a, { rerender: true }); } }, '×')))));
+    return el('div', {}, t, el('button', { class: 'btn small', style: 'margin-top:8px', onclick: () => { const a = clone(data); a.push(clone(a[a.length - 1])); edit(path, a, { rerender: true }); } }, '+ Add row'));
+  }
+  const cols = []; for (const r of rows) for (const k of Object.keys(data[r])) if (!cols.includes(k)) cols.push(k);
+  // a named group whose rows repeat their name as "id" shows it once
+  if (keyed && cols.includes('id') && rows.every(r => data[r].id === r)) cols.splice(cols.indexOf('id'), 1);
+  const head = el('tr', {}, keyed ? el('th', { title: 'Its id in code and in players\' saves' }, 'id') : null,
+    cols.map(c => el('th', { title: fieldHelp(c) || '' }, c === 'id' ? 'id' : human(c) + (fieldHelp(c) ? ' ⓘ' : ''))), el('th'));
+  const t = el('table', { class: 'grid' }, head);
+  let shown = 0;
+  for (const r of rows) {
+    const row = data[r];
+    if (query && current && !current.title.toLowerCase().includes(query) && !JSON.stringify([r, row]).toLowerCase().includes(query)) continue;
+    shown++;
+    const tr = el('tr'); const details = [];
+    if (keyed) tr.append(el('td', { class: 'key' }, r));
+    for (const c of cols) {
+      const p = [...path, r, c], v = row[c];
+      if (!(c in row)) { tr.append(el('td', {}, el('button', { class: 'missing', title: 'Not set for this one. Click to add it.', onclick: () => { const from = rows.map(x => data[x]).find(x => c in x); edit(p, clone(from[c]), { rerender: true }); } }, '+ set'))); continue; }
+      if (c === 'id' && !addable) { tr.append(el('td', { class: 'key' }, v)); continue; }
+      if (isScalar(v)) { tr.append(el('td', {}, scalarInput(p))); continue; }
+      if (Array.isArray(v) && v.every(isScalar)) { tr.append(el('td', {}, chipList(p))); continue; }
+      // something bigger (a palette, a list of options): opens underneath the row
+      const colors = v && typeof v === 'object' && !Array.isArray(v) ? Object.values(v).filter(isColor) : [];
+      const open = openRows.has(p.join('.'));
+      const b = el('button', { class: 'btn small', onclick: () => { openRows.has(p.join('.')) ? openRows.delete(p.join('.')) : openRows.add(p.join('.')); renderEditor(); } }, open ? '▾ ' : '▸ ', human(c),
+        colors.length ? el('span', { class: 'swatches' }, colors.slice(0, 8).map(x => el('i', { style: `background:${x}` }))) : null);
+      if (!same(v, getAt(COMMITTED, p))) b.classList.add('changed');
+      tr.append(el('td', {}, b));
+      if (open) details.push(el('tr', { class: 'detail' }, el('td', { colspan: cols.length + 2 }, el('b', {}, `${keyed ? r : row.name || row.id || '#' + r} · ${human(c)}`), el('div', { style: 'margin-top:8px' }, editor(p)))));
+    }
+    const acts = el('td', { class: 'acts' });
+    if (addable) {
+      acts.append(el('button', { class: 'iconbtn', title: 'Duplicate', onclick: () => duplicate(path, r) }, '⧉'),
+        el('button', { class: 'iconbtn', title: 'Delete', onclick: () => { if (!confirm(`Delete ${keyed ? r : row.name || row.id || 'this row'}? Players who own it keep it in their save, but it won't show in the game.`)) return; const d = clone(data); if (keyed) delete d[r]; else d.splice(r, 1); edit(path, d, { rerender: true }); } }, '🗑'));
+    }
+    tr.append(acts);
+    if (!same(row, getAt(COMMITTED, [...path, r]))) tr.classList.add('changed');
+    t.append(tr, ...details);
+  }
+  const out = el('div', {}, shown < rows.length ? el('p', { class: 'rowfilter' }, `Showing ${shown} of ${rows.length} matching “${query}”`) : null, t);
+  if (addable) out.append(el('button', { class: 'btn small', style: 'margin-top:8px', onclick: () => duplicate(path, rows[rows.length - 1], true) }, '+ Add'));
+  return out;
+}
+const openRows = new Set();
+function duplicate(path, r, fresh) {
+  const data = clone(getAt(TUNE, path)), keyed = !Array.isArray(data), copy = clone(data[r]);
+  const taken = new Set(keyed ? Object.keys(data) : data.map(x => x.id));
+  const base = keyed ? r : copy.id;
+  let id = prompt(`An id for the new one (letters, numbers and dashes; it can't change later, because saves refer to it):`, `${base}-${fresh ? 'new' : 'copy'}`);
+  if (id == null) return; id = id.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-');
+  if (!id || taken.has(id)) return toast(id ? `“${id}” is already used` : 'It needs an id');
+  if ('id' in copy) copy.id = id;
+  for (const k of ['name', 'label', 'text']) if (typeof copy[k] === 'string') { copy[k] = fresh ? `New ${human(k).toLowerCase()}` : `${copy[k]} (copy)`; break; }
+  if (keyed) data[id] = copy; else data.splice(fresh ? data.length : r + 1, 0, copy);
+  edit(path, data, { rerender: true }); toast(`Added ${id}. Save & test to see it in the game.`);
+}
+
+// anything: picks a table, a list or a form by the shape of the value
+function editor(path, sec = {}) {
+  const v = getAt(TUNE, path);
+  if (isScalar(v)) return el('div', { class: 'fields' }, el('div', { class: 'lab' }, human(path[path.length - 1]), fieldHelp(path[path.length - 1]) ? el('small', {}, fieldHelp(path[path.length - 1])) : null), scalarInput(path));
+  if (Array.isArray(v)) {
+    if (v.every(isScalar)) return chipList(path, sec.labels);
+    return table(path, { addable: sec.add, columns: sec.columns && sec.columns[path[path.length - 1]] });
+  }
+  if (tableLike(v)) return table(path, { addable: sec.add });
+  // a form: one row per setting
+  const f = el('div', { class: 'fields' });
+  for (const [k, x] of Object.entries(v)) {
+    const p = [...path, k], h = fieldHelp(k);
+    const lab = el('div', { class: 'lab' }, human(k), h ? el('small', {}, h) : null);
+    if (isScalar(x)) f.append(lab, scalarInput(p));
+    else if (Array.isArray(x) && x.every(isScalar)) f.append(lab, chipList(p));
+    else f.append(el('fieldset', { class: 'full' }, el('legend', {}, human(k)), h ? el('p', { class: 'status', style: 'margin:0 0 8px' }, h) : null,
+      editor(p, { add: false, columns: sec.columns })));
+  }
+  return f;
+}
+
+function renderEditor() {
+  const ed = $('editor'), focused = document.activeElement && document.activeElement.dataset.path, scroll = ed.scrollTop; ed.innerHTML = '';
+  if (!current) return;
+  const v = getAt(TUNE, current.key);
+  ed.append(el('h1', {}, current.title), el('p', { class: 'help' }, current.help || ''));
+  const body = isScalar(v) ? el('div', { class: 'fields' }, el('div', { class: 'lab' }, current.title), scalarInput(current.key)) : editor(current.key, current);
+  ed.append(el('div', { class: 'card' }, body));
+  ed.append(el('p', { class: 'status' }, 'In tune.json at ', el('code', {}, current.path), '. Changed boxes have a yellow edge; hover one to see what it was.'));
+  ed.scrollTop = scroll;
+  if (focused) { const f = [...ed.querySelectorAll('[data-path]')].find(x => x.dataset.path === focused); if (f) f.focus(); }
+}
+
+// ================= status, changes =================
+function diff(a, b, path = [], out = []) {
+  if (same(a, b)) return out;
+  const obj = x => x && typeof x === 'object';
+  if (obj(a) && obj(b) && Array.isArray(a) === Array.isArray(b) && (!Array.isArray(a) || a.length === b.length)) {
+    for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) diff(a[k], b[k], [...path, Array.isArray(a) ? +k : k], out);
+  } else out.push({ path, before: a, after: b });
+  return out;
+}
+const changes = () => diff(COMMITTED, TUNE);
+function where(path) {
+  const s = sectionOf(path); if (!s) return path.join(' › ');
+  const rest = path.slice(s.key.length), base = getAt(TUNE, s.key) ?? getAt(COMMITTED, s.key);
+  const parts = [s.title];
+  // name rows by their name rather than their position
+  let node = base;
+  for (const k of rest) { const x = node && node[k]; parts.push(typeof k === 'number' && x && (x.name || x.label || x.id || x.text) ? (x.name || x.label || x.id || x.text) : human(k)); node = x; }
+  return parts.join(' › ');
+}
+const show = v => v === undefined ? '(none)' : typeof v === 'string' ? `“${v}”` : JSON.stringify(v).slice(0, 140);
+function changeItems(list, revert) {
+  return list.map(c => el('li', {}, el('div', {},
+    el('div', { class: 'where' }, el('a', { href: '#', onclick: e => { e.preventDefault(); const s = sectionOf(c.path); if (s) { $('changes-dlg').close(); openSection(s); } } }, where(c.path))),
+    el('div', { class: 'what' }, el('del', {}, show(c.before)), ' → ', el('ins', {}, show(c.after)))),
+    revert ? el('button', { class: 'btn small', onclick: () => { if (c.before === undefined) { const p = getAt(TUNE, c.path.slice(0, -1)); const d = clone(p); Array.isArray(d) ? d.splice(c.path.at(-1), 1) : delete d[c.path.at(-1)]; edit(c.path.slice(0, -1), d, { rerender: true }); } else edit(c.path, clone(c.before), { rerender: true }); openChanges(); } }, 'Undo this') : null));
+}
+function refreshStatus() {
+  const n = changes().length, dirty = JSON.stringify(TUNE) !== SAVED;
+  $('nchanges').textContent = n;
+  const st = $('status'); st.textContent = dirty ? '● Not saved yet' : n ? 'Saved · not published' : 'Up to date with the live game';
+  st.classList.toggle('dirty', dirty);
+  document.title = (dirty ? '● ' : '') + 'Stopover Studio';
+}
+function openChanges() {
+  const list = changes(), ul = $('changelist'); ul.innerHTML = '';
+  if (!list.length) ul.append(el('li', {}, el('span', { class: 'status' }, 'No changes since the last publish.')));
+  else ul.append(...changeItems(list, true));
+  if (!$('changes-dlg').open) $('changes-dlg').showModal();
+}
+
+// ================= save, preview =================
+async function save() {
+  if (JSON.stringify(TUNE) === SAVED) { reloadGame(); return true; }
+  const r = await fetch('/api/tune', { method: 'PUT', body: JSON.stringify(TUNE) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { alert('Not saved:\n' + (j.error || r.status)); return false; }
+  SAVED = JSON.stringify(TUNE); refreshStatus(); toast('Saved. Reloading the game…'); reloadGame(); return true;
+}
+function loadGame() { $('gameerr').hidden = true; $('game').src = '/play?t=' + Date.now(); }
+// the game saves as it closes, so it is stopped before its save is changed
+function reloadGame(change) {
+  const f = $('game'); f.src = 'about:blank';
+  setTimeout(() => { if (change) change(); loadGame(); }, 60);
+}
+addEventListener('message', e => { if (e.source === $('game').contentWindow && e.data && e.data.studioError) { const b = $('gameerr'); b.hidden = false; b.textContent = '⚠ The game hit an error: ' + e.data.studioError; } });
+const PROFILE = 'stopover-profile';
+document.querySelectorAll('[data-coins]').forEach(b => b.onclick = () => reloadGame(() => {
+  let p = {}; try { p = JSON.parse(localStorage.getItem(PROFILE)) || {}; } catch {}
+  p.coins = (p.coins || 0) + +b.dataset.coins; localStorage.setItem(PROFILE, JSON.stringify(p)); toast(`The test player has ${p.coins.toLocaleString('en-US')} coins`);
+}));
+$('reset-save').onclick = () => { if (!confirm('Start the preview as a brand-new player? This only clears the Studio\'s test player, not anyone\'s real save.')) return;
+  reloadGame(() => { for (const k of Object.keys(localStorage)) if (k.startsWith('stopover')) localStorage.removeItem(k); toast('Fresh player'); }); };
+$('reload').onclick = () => reloadGame();
+$('phone').onclick = () => { const w = $('frame-wrap'); w.classList.toggle('phone'); $('phone').classList.toggle('primary', w.classList.contains('phone')); };
+$('newtab').onclick = () => open('/play', '_blank');
+$('toggle-preview').onclick = () => { const m = $('main'); m.classList.toggle('nopreview'); $('toggle-preview').textContent = m.classList.contains('nopreview') ? 'Show game' : 'Hide game'; };
+
+// ================= publishing =================
+function summary(list) {
+  const lines = list.slice(0, 12).map(c => `${where(c.path)}: ${show(c.before)} → ${show(c.after)}`);
+  if (list.length > 12) lines.push(`…and ${list.length - 12} more`);
+  return 'Tuning: ' + (list.length === 1 ? lines[0] : `${list.length} changes\n\n` + lines.join('\n'));
+}
+$('publish').onclick = async () => {
+  if (!await save()) return;
+  const list = changes(), st = await fetch('/api/status').then(r => r.json()).catch(() => ({}));
+  $('pub-list').innerHTML = ''; $('pub-list').append(...(list.length ? changeItems(list, false) : [el('li', {}, el('span', { class: 'status' }, 'No tuning changes. Publishing will just rebuild and redeploy the current game.'))]));
+  $('pub-msg').value = list.length ? summary(list) : 'Redeploy';
+  const warn = $('pub-warn'); warn.innerHTML = '';
+  if (st.otherChanges && st.otherChanges.length) warn.append(el('div', { class: 'warnbox' }, el('b', {}, 'Other unsaved code changes will go live too. '), 'These files have changes that aren\'t in git yet (maybe from a coding session in progress): ',
+    el('code', {}, st.otherChanges.map(l => l.slice(3)).join(', ')), '. If you\'re not sure they\'re finished, cancel and ask first.'));
+  if (st.branch && st.branch !== 'master' && st.branch !== 'main') warn.append(el('div', { class: 'warnbox' }, `You're on the branch “${st.branch}”, not master.`));
+  $('pub-log').hidden = true; $('pub-status').textContent = ''; $('pub-go').disabled = false;
+  $('publish-dlg').showModal();
+};
+$('pub-go').onclick = async () => {
+  $('pub-go').disabled = true; $('pub-status').textContent = 'Publishing… this takes a minute or two';
+  const r = await fetch('/api/publish', { method: 'POST', body: JSON.stringify({ message: $('pub-msg').value.trim(), push: $('pub-push').checked }) }).then(r => r.json()).catch(e => ({ ok: false, log: String(e) }));
+  const log = $('pub-log'); log.hidden = false; log.textContent = r.log || r.error || '';
+  $('pub-status').textContent = r.ok ? '✅ Live on playstopover.me' : '❌ Stopped: see the log';
+  if (r.ok) { const t = await fetch('/api/tune').then(r => r.json()); COMMITTED = t.committed || COMMITTED; refreshStatus(); renderNav(); renderEditor(); }
+  else $('pub-go').disabled = false;
+};
+
+// ================= wiring =================
+document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => b.closest('dialog').close());
+$('changes-btn').onclick = openChanges;
+addEventListener('hashchange', () => { const s = SECTIONS.find(x => x.path === decodeURIComponent(location.hash.slice(1))); if (s && s !== current) openSection(s); });
+$('save').onclick = save;
+$('undo').onclick = undo; $('redo').onclick = redo;
+$('search').oninput = e => { query = e.target.value.trim().toLowerCase(); renderNav(); renderEditor(); };
+addEventListener('keydown', e => {
+  const mod = e.metaKey || e.ctrlKey, typing = /INPUT|TEXTAREA/.test(document.activeElement.tagName) && document.activeElement.type !== 'checkbox';
+  if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); save(); }
+  else if (mod && e.key.toLowerCase() === 'z' && !typing) { e.preventDefault(); e.shiftKey ? redo() : undo(); }
+});
+addEventListener('beforeunload', e => { if (TUNE && JSON.stringify(TUNE) !== SAVED) { e.preventDefault(); e.returnValue = ''; } });
+load().catch(e => { $('editor').innerHTML = `<div class="empty">Couldn't load: ${esc(e.message)}. Is the Studio server running?</div>`; });
+</script>
+</body>
+</html>

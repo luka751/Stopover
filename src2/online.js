@@ -10,9 +10,9 @@ const RACE_MODES = {
   distance: { name: 'Shortest route', blurb: 'Fewest kilometres travelled wins' },
   stops: { name: 'Fewest stops', blurb: 'Reach it in the fewest stops' },
 };
-const RACE_LIMITS = [0, 5, 10, 15, 20, 30];
+const RACE_LIMITS = TUNE.online.raceLimits;
 // an entry fee: everyone who races pays it, and the winner takes the lot; if nobody finishes, everyone gets theirs back
-const RACE_STAKES = [0, 50, 100, 250, 500];
+const RACE_STAKES = TUNE.online.raceStakes;
 const raceStake = () => (ONLINE.state && ONLINE.state.settings.stake) || 0;
 const RACE_REGIONS = ['EU', 'AS', 'AF', 'NA', 'SA', 'OC', 'ALL', 'UNCHARTED'];
 // A lobby used to carry one continent. It carries a set now, like a solo trip, so a host can race
@@ -762,7 +762,7 @@ function renderProfile(x, showAll) {
 
 // ---- bounties: coins put up on a route you finished, for whoever beats your score on it first
 // The route is fixed (same start, same destination, same vehicle and rules), so it's you against their best.
-const BOUNTY_REWARDS = [100, 250, 500, 1000, 2000];
+const BOUNTY_REWARDS = TUNE.online.bountyRewards;
 const BOUNTY = { data: null, at: 0, posting: false, msg: '' };
 async function loadBounties(force) {
   if (!force && BOUNTY.data && Date.now() - BOUNTY.at < 20000) return BOUNTY.data;
