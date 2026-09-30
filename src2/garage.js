@@ -119,21 +119,54 @@ function legLatLon(a, b, path) {
   if (path && path.length > 1) return path.map(([la, lo]) => [la, lo]);
   const out = []; for (let i = 0; i <= 32; i++) out.push(interp(G.lat[a], G.lon[a], G.lat[b], G.lon[b], i / 32)); return out;
 }
-function makeGlide(pts, kind, ms) {
-  const segs = [0]; for (let i = 1; i < pts.length; i++) segs.push(segs[i - 1] + dist(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]));
-  const now = performance.now(); return { pts, segs, total: segs[segs.length - 1] || 1, kind, start: now, end: now + ms, lastEmit: now };
+// Rail and road paths carry every bend of the track, down to a few metres. Followed point by point, a vehicle
+// shivers left and right, so a glide drops the bends too small to see (Ramer–Douglas–Peucker, tolerance a small
+// share of the leg) and faces a point a little further along the route rather than the next point.
+function simplifyPath(pts, tolKm) {
+  if (pts.length < 3) return pts;
+  const k = Math.cos(pts[0][0] * Math.PI / 180), xy = pts.map(([la, lo]) => [lo * 111.32 * k, la * 110.57]), keep = new Uint8Array(pts.length);
+  keep[0] = keep[pts.length - 1] = 1;
+  const stack = [[0, pts.length - 1]];
+  while (stack.length) {
+    const [a, b] = stack.pop(), [ax, ay] = xy[a], [bx, by] = xy[b], len = Math.hypot(bx - ax, by - ay) || 1e-9;
+    let far = -1, worst = tolKm;
+    for (let i = a + 1; i < b; i++) { const d = Math.abs((bx - ax) * (ay - xy[i][1]) - (ax - xy[i][0]) * (by - ay)) / len; if (d > worst) { worst = d; far = i; } }
+    if (far > 0) { keep[far] = 1; stack.push([a, far], [far, b]); }
+  }
+  return pts.filter((_, i) => keep[i]);
 }
-// where a glide is at time t: lat, lon and the point just ahead (to face along the road)
+function makeGlide(pts, kind, ms) {
+  const raw = [0]; for (let i = 1; i < pts.length; i++) raw.push(raw[i - 1] + dist(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]));
+  pts = simplifyPath(pts, Math.max(0.3, raw[raw.length - 1] * 0.004));
+  const segs = [0]; for (let i = 1; i < pts.length; i++) segs.push(segs[i - 1] + dist(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]));
+  const now = performance.now(), total = segs[segs.length - 1] || 1;
+  return { pts, segs, total, look: total * 0.05, kind, start: now, end: now + ms, lastEmit: now };
+}
+// the point a distance d (km) along a glide's path
+function glidePoint(g, d) {
+  d = Math.min(g.total, Math.max(0, d));
+  let i = 1; while (i < g.segs.length - 1 && g.segs[i] < d) i++;
+  const a = g.pts[i - 1], b = g.pts[i] || a, f = (d - g.segs[i - 1]) / Math.max(1e-9, g.segs[i] - g.segs[i - 1]);
+  return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
+}
+// where a glide is at time t: lat, lon, and two points a little behind and ahead on the route to face along it
 function glideAt(g, t) {
   const k = Math.min(1, Math.max(0, (t - g.start) / (g.end - g.start))), e = k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2, d = e * g.total;
-  let i = 1; while (i < g.segs.length - 1 && g.segs[i] < d) i++;
-  const a = g.pts[i - 1], b = g.pts[i], f = (d - g.segs[i - 1]) / Math.max(1e-9, g.segs[i] - g.segs[i - 1]);
-  return { la: a[0] + (b[0] - a[0]) * f, lo: a[1] + (b[1] - a[1]) * f, ahead: b, behind: a, k };
+  const [la, lo] = glidePoint(g, d), look = g.look || 0;
+  return { la, lo, behind: glidePoint(g, Math.min(d - look, g.total - 2 * look)), ahead: glidePoint(g, Math.max(d + look, 2 * look)), k };
 }
 function startSelfGlide(from, to, path, kind) {
   if (!glideOn()) return;
-  const pts = legLatLon(from, to, path), [x1, y1] = tripMap.px(pts[0][1], pts[0][0]), [x2, y2] = tripMap.px(pts[pts.length - 1][1], pts[pts.length - 1][0]);
-  GLIDE.self = makeGlide(pts, kind, kind === 'flight' ? 1500 : Math.max(650, Math.min(1500, Math.hypot(x2 - x1, y2 - y1) * 4)));
+  let pts = legLatLon(from, to, path);
+  // typed on before the last glide landed: carry on from where the vehicle is, through the rest of that leg
+  const now = performance.now(), prev = GLIDE.self;
+  if (prev && now < prev.end) {
+    const k = Math.min(1, Math.max(0, (now - prev.start) / (prev.end - prev.start))), d = (k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2) * prev.total;
+    pts = [glidePoint(prev, d), ...prev.pts.filter((_, i) => prev.segs[i] > d), ...pts.slice(1)];
+  }
+  // slow enough to watch the vehicle cross the map: 1.1 to 2.4 seconds by distance on screen, flights the longest
+  let px = 0; for (let i = 1; i < pts.length; i++) { const [x1, y1] = tripMap.px(pts[i - 1][1], pts[i - 1][0]), [x2, y2] = tripMap.px(pts[i][1], pts[i][0]); px += Math.hypot(x2 - x1, y2 - y1); }
+  GLIDE.self = makeGlide(pts, kind, kind === 'flight' ? 2400 : Math.max(1100, Math.min(2400, px * 5)));
   kickMapAnim();
 }
 const angleOn = (m, a, b) => { const [x1, y1] = m.px(a[1], a[0]), [x2, y2] = m.px(b[1], b[0]); return Math.atan2(y2 - y1, x2 - x1); };
@@ -159,14 +192,18 @@ function drawSelf(m, ctx, pal) {
   let la = G.lat[S.cur], lo = G.lon[S.cur], ang = GLIDE.heading, kind = S.stops.length ? S.stops[S.stops.length - 1].kind : 'road';
   if (g) { const at = glideAt(g, now); la = at.la; lo = at.lo; ang = angleOn(m, at.behind, at.ahead); GLIDE.heading = ang; kind = g.kind; }
   if (ang == null) { const next = [...viaLeft(), S.dest][0]; ang = angleOn(m, [G.lat[S.cur], G.lon[S.cur]], [G.lat[next], G.lon[next]]); }
-  const flying = g && kind === 'flight', model = flying ? modelFor('plane') : kind === 'train' && !VEHICLES[S.opts.vehicle].rail && g ? modelFor('train') : modelFor(S.opts.vehicle);
+  // the vehicle of the last leg stays on the map until the next one leaves: the plane after a flight, the train
+  // after a paid train ride, the boat after a ferry, even though the next leg goes back to your own vehicle
+  const own = S.opts.vehicle, flying = kind === 'flight', railed = kind === 'train' && !VEHICLES[own].rail, ferried = kind === 'ferry' && own !== 'boat';
+  const model = flying ? modelFor('plane') : railed ? modelFor('train') : ferried ? modelFor('boat') : modelFor(own);
   const fx = (P.equip || {}).exhaust || (model && model.smoke ? 'smoke' : null), [x, y] = m.px(lo, la);
   if (g) emitParts(g, fx, la, lo, ang, now);
   drawParts(m, ctx);
   if (model) { drawModel(ctx, model, x, y, ang, flying ? 1.05 : .95); return; }
   if (flying) { ctx.save(); ctx.translate(x, y); ctx.rotate(ang); ctx.font = '22px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#2B2B2B'; ctx.fillText('✈', 0, 1); ctx.restore(); return; }
+  const boatMarker = MARKERS.find(x2 => x2.id === (P.equip.markers || {}).boat);
   ctx.beginPath(); ctx.arc(x, y, 15, 0, 7); ctx.fillStyle = pal.land; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = pal.ink; ctx.stroke();
-  ctx.font = '17px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = pal.ink; ctx.fillText(g && kind === 'train' && !VEHICLES[S.opts.vehicle].rail ? '🚆' : markerFor(S.opts.vehicle), x, y + 1);
+  ctx.font = '17px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = pal.ink; ctx.fillText(railed ? markerFor('train') : ferried ? (boatMarker ? boatMarker.icon : '⛴️') : markerFor(own), x, y + 1);
 }
 // a rival in a race: the model they chose for this vehicle, ringed in their username's colour; their fruit disc if they have none
 function drawRival(m, ctx, pal, id, gid, vehicle, look, tryLabel) {
