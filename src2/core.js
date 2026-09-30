@@ -401,9 +401,10 @@ async function loadFlags() {
   try {
     const res = await fetch('flags/base.json'); if (!res.ok) throw new Error(String(res.status));
     const data = await res.json(); FLAGS.keys = data.keys; FLAGS.shards.base = data.files; FLAGS.ready = true;
-    // fetch the city shards quietly in the background
+    // City flags load when one is first shown (flagSrc). The rest follow quietly once the player has settled in,
+    // not during the first seconds, and never on a connection that asked to save data.
     const names = [...new Set(Object.values(FLAGS.keys).map(e => e[0]))].filter(n => n !== 'base');
-    (async () => { for (const n of names) await ensureShard(n); })();
+    if (!(navigator.connection && navigator.connection.saveData)) setTimeout(async () => { for (const n of names) await ensureShard(n); }, 30000);
   } catch { FLAGS.ready = false; FLAGS.failed = true; }
 }
 function ensureShard(name) {

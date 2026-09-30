@@ -224,7 +224,15 @@ function wireEntry() {
       return `<li role="option" id="sg-${i}" data-i="${i}" aria-selected="false"><div>${flagHtml(ccOf(id))}${esc(G.name[id])}<small>${esc(placeLine(id))} · ${esc(tierOf(id).label)}${!S.classic && n ? ` · visited ${n}×` : ''}</small></div><span class="rng ${out.cls}">${fmt(d)} km<br>${out.text}</span></li>`; }).join('');
     list.hidden = false;
   });
-  const submit = () => { if (!list.hidden && suggSel >= 0) { const id = suggIds[suggSel]; list.hidden = true; input.value = ''; travel(id, S.mode); return; } list.hidden = true; submitName(input.value); };
+  // Enter takes the highlighted suggestion; with none highlighted it takes the top one, unless what was typed is
+  // already a place's full name ("Genev" + Enter goes to Geneva, "Bern" + Enter stays Bern)
+  const submit = () => {
+    let id = !list.hidden && suggSel >= 0 ? suggIds[suggSel] : null;
+    if (id == null && !list.hidden && suggIds.length) { const key = fold(input.value); if (!suggIds.some(x => fold(G.name[x]) === key)) id = suggIds[0]; }
+    list.hidden = true;
+    if (id != null) { input.value = ''; travel(id, S.mode); return; }
+    submitName(input.value);
+  };
   input.addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); submit(); return; }
     if (list.hidden || !suggIds.length) return;
@@ -657,10 +665,15 @@ function renderRules() {
 // Planes open first; trains open after, so the train card sits on top of the plane card. Closing it reveals planes.
 function showNews(force) {
   P.news = P.news || {};
+  // a brand-new player gets the free flights and trains quietly: feature news means nothing before a first trip
+  const fresh = !force && !P.trips && !Object.keys(P.visits || {}).length;
+  if (fresh) { P.news.planes = P.news.planes || Date.now(); P.news.trains = P.news.trains || Date.now(); }
   const plane = force === 'planes' || force === 'all' || (!force && !P.news.planes), train = force === 'trains' || force === 'all' || (!force && !P.news.trains);
-  if (!P.news.planes) { P.news.planes = Date.now(); P.freeFlights = (P.freeFlights || 0) + 2; }
-  if (!P.news.trains) { P.news.trains = Date.now(); P.freeTrains = (P.freeTrains || 0) + 2; }
+  if (!P.news.planes || (fresh && !P.newsGift)) { P.news.planes = P.news.planes || Date.now(); P.freeFlights = (P.freeFlights || 0) + 2; }
+  if (!P.news.trains || (fresh && !P.newsGift)) { P.news.trains = P.news.trains || Date.now(); P.freeTrains = (P.freeTrains || 0) + 2; }
+  P.newsGift = true;
   saveProfile(); if (S && !S.done) render();
+  if (fresh) return;
   if (plane && !$('dlg-news').open) $('dlg-news').showModal();
   if (train && !$('dlg-news-train').open) $('dlg-news-train').showModal();
   $('dlg-news-train').classList.toggle('stacked', $('dlg-news').open);

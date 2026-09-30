@@ -62,7 +62,7 @@ function greetOnBoot() {
   P.lastPlayed = now;
   if (last && days >= BOOST_DAYS && !P.boost) P.boost = { at: now };
   saveProfile();
-  if (!last) return; // a first visit is welcomed by the news cards
+  if (!last) { tick('Welcome to Stopover 👋 Name a town in range to set off towards the green sign', { still: true, hold: 7000, kind: 'greet' }); return; }
   const nm = HOOKS.greetName ? HOOKS.greetName() : P.playerName && P.playerName !== 'Traveller' ? P.playerName : '';
   const who = nm ? `<b>${esc(nm)}</b>` : '', h = new Date().getHours();
   const part = h < 5 ? 'Up late' : h < 12 ? 'Morning' : h < 18 ? 'Afternoon' : 'Evening', pick = a => a[Math.floor(Math.random() * a.length)];

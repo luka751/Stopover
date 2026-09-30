@@ -9,10 +9,14 @@ fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(out, { recursive: true });
 
 const js = ['core.js', 'extras.js', 'trip.js', 'isles.js', 'map.js', 'ui.js', 'passport.js', 'blind.js', 'flags.js', 'study.js', 'juice.js', 'social.js', 'garage.js', 'sinks.js', 'online.js'].map(part).join('\n');
-// the gazetteer is its own file on the website, so the log-in screen doesn't wait for 7 MB and browsers can cache it
-const inlineGeo = "const b64 = $('geo').textContent.trim(), bin = atob(b64)";
-if (!js.includes(inlineGeo)) throw new Error('loadData changed: update build-web.mjs');
-const game = js.replace(inlineGeo, "const b64 = (await (await fetch('geo.txt')).text()).trim(), bin = atob(b64)");
+// The gazetteer is its own file on the website: the raw gzip bytes rather than the base64 text the single-file
+// build embeds (a quarter smaller), named after its contents so browsers keep it for a year and a changed
+// gazetteer gets a new name.
+const geoBytes = Buffer.from(fs.readFileSync('data.b64', 'utf8').trim(), 'base64');
+const geoFile = `geo.${createHash('sha256').update(geoBytes).digest('hex').slice(0, 10)}.bin`;
+const inlineGeo = /const b64 = \$\('geo'\)\.textContent\.trim\(\), bin = atob\(b64\), bytes = new Uint8Array\(bin\.length\);\n\s*for \(let i = 0; i < bin\.length; i\+\+\) bytes\[i\] = bin\.charCodeAt\(i\);/;
+if (!inlineGeo.test(js)) throw new Error('loadData changed: update build-web.mjs');
+const game = js.replace(inlineGeo, `const bytes = new Uint8Array(await (await fetch('${geoFile}')).arrayBuffer());`);
 const names = fs.readFileSync('web/src/names.js', 'utf8').replace(/^export /gm, '');
 
 // the commit a build came from, so an error in Sentry says which version of the game it happened in
@@ -44,7 +48,7 @@ if (location.hostname.startsWith('www.')) location.replace('https://' + location
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Stopover: a green road sign reading Name places. Cross the map. Race your friends.">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="preload" href="geo.txt" as="fetch" crossorigin="anonymous">
+<link rel="preload" href="${geoFile}" as="fetch" crossorigin="anonymous">
 <!-- Sentry (GitHub Student Pack): errors from players' browsers -->
 <script>
 window.sentryOnLoad = () => {
@@ -106,9 +110,23 @@ fs.writeFileSync(out + '/_headers', `/*
   Content-Security-Policy-Report-Only: ${csp}
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
+
+# the gazetteer's name changes with its contents, so it never needs checking again
+/geo.*.bin
+  Cache-Control: public, max-age=31536000, immutable
+
+# flags, maps and covers change rarely: reuse for a day, refresh in the background after that
+/flags/*
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+/maps/*
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+/covers.json
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+/rail.json
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
 `);
-fs.copyFileSync('data.b64', out + '/geo.txt');
+fs.writeFileSync(`${out}/${geoFile}`, geoBytes);
 for (const f of ['rail.json', 'covers.json']) fs.copyFileSync('dist/' + f, `${out}/${f}`);
 for (const dir of ['flags', 'maps']) fs.cpSync('dist/' + dir, `${out}/${dir}`, { recursive: true });
 fs.cpSync('web/static', out, { recursive: true });
-console.log(`${out}/index.html ${(html.length / 1e3).toFixed(0)} kB, plus geo.txt, rail.json, covers.json, flags/, maps/`);
+console.log(`${out}/index.html ${(html.length / 1e3).toFixed(0)} kB, plus ${geoFile} (${(geoBytes.length / 1e6).toFixed(1)} MB), rail.json, covers.json, flags/, maps/`);
