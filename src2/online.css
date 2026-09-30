@@ -165,3 +165,8 @@
   .guestbar .guesttext { flex-basis: 160px; }
   .guestbar .btn.small { padding: 5px 8px; font-size: 12px; }
 }
+
+/* language picker (src2/i18n.js), and a Georgian font behind Barlow for Georgian letters */
+.langpick { width: auto; padding: 5px 8px; font-size: 13px; margin-left: auto; }
+.authcard > .langpick { display: block; margin: 12px 0 0 auto; }
+html.lang-ka { --body: "Barlow", "Noto Sans Georgian", "Helvetica Neue", Arial, sans-serif; --display: "Barlow Condensed", "Noto Sans Georgian", "Arial Narrow", sans-serif; }

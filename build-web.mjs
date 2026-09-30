@@ -31,6 +31,10 @@ const html = `<!doctype html>
 if (location.hostname.startsWith('www.')) location.replace('https://' + location.hostname.slice(4) + location.pathname + location.search + location.hash);
 </script>
 <link rel="canonical" href="https://playstopover.me/">
+<script>
+window.__I18N_DICTS = ${JSON.stringify(Object.fromEntries(['ka', 'ru'].map(l => [l, JSON.parse(fs.readFileSync(`src2/i18n/${l}.json`, 'utf8'))])))};
+${part('i18n.js')}
+</script>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="description" content="Name places, cross the map, collect flags and race your friends.">
 <!-- installable on a phone's home screen, and a proper card when a link is pasted into a chat (icons: build-icons.mjs) -->
