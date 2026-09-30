@@ -1,20 +1,20 @@
-// ================= languages: English, Georgian, Russian =================
+// ================= languages: English, Georgian, German, Ukrainian, Russian =================
 // The game is written in English. Rather than route every string through a function, this watches the page and
 // replaces English text as it appears, wherever it came from: a text node, or a placeholder / title / aria-label /
 // alt attribute. Dictionaries (src2/i18n/<lang>.json, managed in POEditor) map English to the translation, either
 // exactly ("Log in") or as a pattern with named gaps ("Welcome to {place}: +{pts} pts"). Canvas text (map labels)
 // and place names are never touched: they aren't dictionary keys.
-// ?lang=ka|ru|en picks a language and remembers it; otherwise the browser's language decides.
+// ?lang=en|ka|de|uk|ru picks a language and remembers it; otherwise the browser's language decides.
 // ?i18n=collect (and localhost) records every English line not yet translated: __i18n.missing, __i18n.copyMissing().
 (() => {
   'use strict';
-  const DICTS = window.__I18N_DICTS || {}, LANGS = { en: 'English', ka: 'ქართული', ru: 'Русский' };
+  const DICTS = window.__I18N_DICTS || {}, LANGS = { en: 'English', ka: 'ქართული', de: 'Deutsch', uk: 'Українська', ru: 'Русский' };
   const store = { get() { try { return localStorage.getItem('stopover-lang'); } catch { return null; } }, set(v) { try { localStorage.setItem('stopover-lang', v); } catch {} } };
   function pick() {
     const q = new URLSearchParams(location.search).get('lang');
     if (q && LANGS[q]) { store.set(q); return q; }
     const saved = store.get(); if (saved && LANGS[saved]) return saved;
-    for (const l of navigator.languages || [navigator.language || '']) { const b = String(l).slice(0, 2).toLowerCase(); if (b === 'ka' || b === 'ru') return b; }
+    for (const l of navigator.languages || [navigator.language || '']) { const b = String(l).slice(0, 2).toLowerCase(); if (b === 'en') return 'en'; if (LANGS[b]) return b; }
     return 'en';
   }
   const lang = pick(), collect = /[?&]i18n=collect/.test(location.search) || /^(localhost|127\.0\.0\.1)$/.test(location.hostname);

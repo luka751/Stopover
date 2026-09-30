@@ -1,9 +1,10 @@
-// Keeps the game's translations in POEditor (GitHub Student Pack), so Georgian and Russian can be corrected there by
+// Keeps the game's translations in POEditor (GitHub Student Pack), so Georgian, German, Ukrainian and Russian can be
+// corrected there by
 // people who speak them, without touching code.
 //
 //   node tools/poeditor.mjs push   upload every English line (dictionary keys + src2/i18n/catalog.json) and the
-//                                  current Georgian and Russian translations; creates the project the first time
-//   node tools/poeditor.mjs pull   download Georgian and Russian from POEditor into src2/i18n/<lang>.json
+//                                  current translations; creates the project the first time
+//   node tools/poeditor.mjs pull   download every language from POEditor into src2/i18n/<lang>.json
 //
 // Needs POEDITOR_TOKEN (POEditor → Account settings → API access) in web/.dev.vars or the environment, and
 // POEDITOR_PROJECT once the project exists (push prints it the first time).
@@ -14,7 +15,7 @@ try { for (const l of fs.readFileSync('web/.dev.vars', 'utf8').split('\n')) { co
 const env = k => process.env[k] || vars[k];
 const TOKEN = env('POEDITOR_TOKEN'); let PROJECT = env('POEDITOR_PROJECT');
 if (!TOKEN) { console.error('Put POEDITOR_TOKEN=... in web/.dev.vars (POEditor → Account settings → API access).'); process.exit(1); }
-const LANGS = ['ka', 'ru'], dictFile = l => `src2/i18n/${l}.json`;
+const LANGS = ['ka', 'de', 'uk', 'ru'], dictFile = l => `src2/i18n/${l}.json`;
 const readJson = f => JSON.parse(fs.readFileSync(f, 'utf8'));
 
 async function call(path, fields, file) {

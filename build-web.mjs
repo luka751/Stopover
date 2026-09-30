@@ -32,7 +32,7 @@ if (location.hostname.startsWith('www.')) location.replace('https://' + location
 </script>
 <link rel="canonical" href="https://playstopover.me/">
 <script>
-window.__I18N_DICTS = ${JSON.stringify(Object.fromEntries(['ka', 'ru'].map(l => [l, JSON.parse(fs.readFileSync(`src2/i18n/${l}.json`, 'utf8'))])))};
+window.__I18N_DICTS = ${JSON.stringify(Object.fromEntries(['ka', 'de', 'uk', 'ru'].map(l => [l, JSON.parse(fs.readFileSync(`src2/i18n/${l}.json`, 'utf8'))])))};
 ${part('i18n.js')}
 </script>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">

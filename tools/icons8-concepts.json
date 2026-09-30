@@ -1,0 +1,87 @@
+{
+  "travel": {
+    "airplane": "airplane", "airport": "airport", "departure": "departure", "train": "train", "high-speed-train": "high speed train",
+    "steam-train": "steam engine", "tram": "tram", "metro": "subway", "bus": "bus", "minibus": "van", "car": "car", "suv": "suv",
+    "pickup": "pickup truck", "truck": "truck", "race-car": "racing car", "taxi": "taxi", "motorcycle": "motorcycle", "scooter": "scooter",
+    "rickshaw": "rickshaw", "bicycle": "bicycle", "walking": "walking", "hiking": "hiking", "cruise-ship": "cruise ship", "ferry": "ferry",
+    "speedboat": "speedboat", "sailboat": "sailboat", "canoe": "canoe", "anchor": "anchor", "lifebuoy": "lifebuoy", "helicopter": "helicopter",
+    "rocket": "rocket", "horse": "horse", "camel": "camel", "cable-car": "cable car", "gas-station": "gas station", "oil-barrel": "oil barrel",
+    "fuel-gauge": "fuel", "road": "road", "highway": "highway", "road-sign": "road sign", "traffic-light": "traffic light",
+    "road-works": "under construction", "parking": "parking", "ticket": "ticket", "boarding-pass": "boarding pass", "passport": "passport",
+    "customs": "customs", "border": "border", "visa": "visa", "stamp": "stamp", "luggage": "luggage", "backpack": "backpack", "seat": "seat",
+    "hotel": "hotel", "tent": "tent", "camper": "camper"
+  },
+  "map": {
+    "map": "map", "world-map": "world map", "globe": "globe", "earth": "earth planet", "globe-europe": "europe", "globe-americas": "america",
+    "globe-asia": "asia", "compass": "compass", "location-pin": "marker", "pin": "pin", "route": "route", "directions": "directions",
+    "gps": "gps", "treasure-map": "treasure map", "finish-flag": "finish flag", "flag": "flag", "white-flag": "white flag", "flag-filled": "flag filled",
+    "flags": "flags", "telescope": "telescope", "binoculars": "binoculars", "magnifier-map": "search location", "radar": "radar",
+    "distance": "distance", "place-marker": "place marker", "waypoint": "waypoint", "north": "north direction", "coordinates": "latitude"
+  },
+  "places": {
+    "mountain": "mountain", "snowy-mountain": "snow mountain", "volcano": "volcano", "island": "island", "palm-tree": "palm tree",
+    "beach": "beach", "waves": "waves", "ocean": "ocean", "lake": "lake", "river": "river", "waterfall": "waterfall", "forest": "forest",
+    "tree": "tree", "desert": "desert", "cactus": "cactus", "canyon": "canyon", "glacier": "glacier", "iceberg": "iceberg", "cave": "cave",
+    "city": "city", "city-night": "night city", "skyscraper": "skyscraper", "village": "village", "castle": "castle", "mosque": "mosque",
+    "church": "church", "temple": "temple", "pagoda": "pagoda", "museum": "museum", "hut": "hut", "house": "house", "lighthouse": "lighthouse",
+    "bridge": "bridge", "eiffel-tower": "eiffel tower", "statue-of-liberty": "statue of liberty", "pyramids": "pyramid", "colosseum": "colosseum",
+    "big-ben": "big ben", "great-wall": "great wall", "taj-mahal": "taj mahal", "windmill": "windmill", "stadium": "stadium", "port": "port",
+    "harbor": "harbor"
+  },
+  "nature": {
+    "sun": "sun", "moon": "moon", "half-moon": "half moon", "night": "night", "cloud": "cloud", "rain": "rain", "snowflake": "snowflake",
+    "storm": "storm", "rainbow": "rainbow", "wind": "wind", "temperature": "temperature", "ice": "ice cube", "clover": "clover",
+    "cherry-blossom": "cherry blossom", "penguin": "penguin", "kangaroo": "kangaroo", "llama": "llama", "moose": "moose", "bear": "bear",
+    "elephant": "elephant", "lion": "lion", "panda": "panda", "koala": "koala", "whale": "whale", "fish": "fish", "seashell": "shell",
+    "eagle": "eagle", "parrot": "parrot", "turtle": "turtle"
+  },
+  "culture": {
+    "graduation-cap": "graduation cap", "top-hat": "top hat", "drum": "drum", "music-notes": "musical notes", "guitar": "guitar",
+    "waffle": "waffle", "pot": "cooking pot", "pizza": "pizza", "sushi": "sushi", "croissant": "croissant", "taco": "taco", "noodles": "noodles",
+    "coffee": "coffee", "tea": "tea", "champagne": "champagne", "cheers": "cheers", "scales": "scales", "broom": "broom", "camera": "camera",
+    "postcard": "postcard", "souvenir": "souvenir", "language": "language", "translate": "translation", "book": "book", "open-book": "open book",
+    "books": "books", "notebook": "notebook", "dictionary": "dictionary", "brain": "brain", "idea": "idea", "globe-study": "geography",
+    "atlas": "atlas", "school": "school"
+  },
+  "game": {
+    "trophy": "trophy", "gold-medal": "gold medal", "silver-medal": "silver medal", "bronze-medal": "bronze medal", "medal": "medal",
+    "first-place": "first place", "podium": "podium", "crown": "crown", "star": "star", "stars": "stars", "sparkles": "sparkle",
+    "fire": "fire", "streak": "flame", "lightning": "lightning", "energy": "energy", "heart": "heart", "lives": "heart health",
+    "coins": "coins", "coin": "coin", "money-bag": "money bag", "gem": "diamond", "treasure-chest": "treasure chest", "gift": "gift",
+    "shop": "shop", "shopping-cart": "shopping cart", "credit-card": "credit card", "wallet": "wallet", "price-tag": "price tag",
+    "target": "target", "bullseye": "bullseye", "dice": "dice", "puzzle": "puzzle", "joystick": "joystick", "game-controller": "controller",
+    "space-invader": "space invader", "level-up": "level up", "badge": "badge", "achievement": "achievement", "reward": "reward",
+    "quest": "quest", "hint": "hint", "timer": "timer", "stopwatch": "stopwatch", "hourglass": "hourglass", "alarm-clock": "alarm clock",
+    "clock": "clock", "calendar": "calendar", "daily": "calendar day", "fireworks": "fireworks", "party": "party popper", "confetti": "confetti",
+    "balloons": "balloons", "climbing": "climbing", "strength": "strength", "running": "running", "sword": "sword", "shield": "shield",
+    "key": "key", "lock": "lock", "unlock": "unlock", "garage": "garage", "wrench": "wrench", "toolbox": "toolbox", "paint": "paint",
+    "sticker": "sticker", "collection": "collection", "cards": "cards", "leaderboard": "leaderboard", "versus": "versus", "handshake": "handshake",
+    "thumbs-up": "thumbs up", "clapping": "clapping", "wave-hand": "waving hand", "smile": "smile", "sad": "sad", "wink": "wink",
+    "thinking": "thinking", "cool": "cool", "surprised": "surprised", "angry": "angry", "eyes": "eyes", "ghost": "ghost", "robot": "robot",
+    "alien": "alien", "skull": "skull", "bomb": "bomb", "magic-wand": "magic wand", "crystal-ball": "crystal ball", "rocket-launch": "launch"
+  },
+  "ui": {
+    "home": "home", "back": "back", "forward": "forward", "left": "left", "right": "right", "up": "up", "down": "down", "expand": "expand",
+    "collapse": "collapse", "chevron-left": "chevron left", "chevron-right": "chevron right", "chevron-down": "chevron down", "chevron-up": "chevron up",
+    "close": "close", "menu": "menu", "more": "more", "more-vertical": "menu vertical", "search": "search", "filter": "filter", "sort": "sort",
+    "settings": "settings", "sliders": "slider", "share": "share", "copy": "copy", "link": "link", "download": "download", "upload": "upload",
+    "refresh": "refresh", "sync": "sync", "undo": "undo", "redo": "redo", "play": "play", "pause": "pause", "stop": "stop", "skip": "skip",
+    "replay": "replay", "shuffle": "shuffle", "repeat": "repeat", "fullscreen": "fullscreen", "exit-fullscreen": "exit full screen",
+    "zoom-in": "zoom in", "zoom-out": "zoom out", "layers": "layers", "info": "info", "help": "help", "question": "question mark",
+    "error": "error", "warning": "warning", "checkmark": "checkmark", "check-circle": "ok", "cancel": "cancel", "plus": "plus", "minus": "minus",
+    "add": "add", "edit": "edit", "delete": "trash", "save": "save", "sound-on": "speaker", "sound-off": "mute", "volume": "volume",
+    "music": "music", "vibrate": "vibration", "bell": "bell", "no-bell": "notification off", "chat": "chat", "comment": "comment",
+    "send": "send", "email": "email", "megaphone": "megaphone", "user": "user", "user-circle": "user circle", "users": "users", "group": "group",
+    "add-user": "add user", "invite": "invite", "login": "login", "logout": "logout", "password": "password", "visible": "visible",
+    "hidden": "hide", "eye": "eye", "privacy": "privacy", "security": "security", "dark-mode": "dark mode", "light-mode": "light mode",
+    "theme": "theme", "keyboard": "keyboard", "mouse": "mouse", "touch": "touch", "smartphone": "smartphone", "desktop": "monitor",
+    "wifi": "wifi", "offline": "offline", "cloud-sync": "cloud sync", "qr-code": "qr code", "image": "image", "list": "list", "grid": "grid",
+    "chart-line": "line chart", "chart-bar": "bar chart", "pie-chart": "pie chart", "statistics": "statistics", "trending-up": "growth",
+    "history": "history", "bookmark": "bookmark", "like": "like", "favorite": "favorite", "report": "report", "bug": "bug",
+    "feedback": "feedback", "support": "support", "accessibility": "accessibility", "document": "document", "rules": "rules",
+    "tutorial": "tutorial", "restart": "restart", "exit": "exit", "power": "power", "crosshair": "crosshair", "center": "center",
+    "location-arrow": "navigation", "loading": "loading", "cursor": "cursor", "drag": "drag", "hand": "hand", "tap": "tap",
+    "swipe": "swipe", "pencil": "pencil", "clipboard": "clipboard", "calendar-check": "calendar check", "coupon": "coupon",
+    "crown-premium": "premium", "verified": "verified", "new": "new", "hot": "hot", "sale": "sale"
+  }
+}
